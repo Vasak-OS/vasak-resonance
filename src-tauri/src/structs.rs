@@ -1,0 +1,29 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Track {
+    pub id: Option<i64>,
+    pub path: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub duration_seconds: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanSummary {
+    pub scanned_files: usize,
+    pub inserted_tracks: usize,
+    pub skipped_duplicates: usize,
+    pub skipped_non_audio: usize,
+    pub failed_files: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DroppedPlaybackTrack {
+    pub path: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub duration_seconds: i64,
+}
