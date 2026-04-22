@@ -30,6 +30,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 lofty = "0.21"
 walkdir = "2.5"
 dirs = "6"
+rodio = "0.19"
 
 [profile.dev]
 incremental = true # Compile your binary in smaller steps.
