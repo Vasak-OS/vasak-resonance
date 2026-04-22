@@ -49,3 +49,22 @@ pub struct PlaybackProgressEvent {
     pub volume: f32,
     pub now_playing: Option<NowPlayingMetadata>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Playlist {
+    pub id: i64,
+    pub name: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlaylistTrack {
+    pub playlist_id: i64,
+    pub track_id: i64,
+    pub position: i64,
+    pub path: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub duration_seconds: i64,
+}

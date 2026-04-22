@@ -12,6 +12,12 @@ use tauri::{AppHandle, Emitter};
 use crate::audio::extract_now_playing_metadata_with_cover_cache;
 use crate::structs::{NowPlayingMetadata, PlaybackProgressEvent};
 
+#[derive(Debug, Clone, Copy, Default)]
+struct RuntimeStatus {
+    has_track: bool,
+    is_paused: bool,
+}
+
 enum AudioCommand {
     PlayFile {
         file_path: String,
@@ -36,6 +42,7 @@ enum AudioCommand {
 #[derive(Clone)]
 pub struct AudioState {
     command_tx: Arc<Mutex<Sender<AudioCommand>>>,
+    runtime_status: Arc<Mutex<RuntimeStatus>>,
 }
 
 impl AudioState {
@@ -48,6 +55,7 @@ impl AudioState {
 
         Self {
             command_tx: Arc::new(Mutex::new(command_tx)),
+            runtime_status: Arc::new(Mutex::new(RuntimeStatus::default())),
         }
     }
 
@@ -57,22 +65,43 @@ impl AudioState {
             file_path,
             respond_to: tx,
         })?;
-        rx.recv()
-            .map_err(|_| "No se recibió respuesta del hilo de audio".to_string())?
+        let response = rx
+            .recv()
+            .map_err(|_| "No se recibió respuesta del hilo de audio".to_string())?;
+
+        if response.is_ok() {
+            self.update_runtime_status(true, false)?;
+        }
+
+        response
     }
 
     pub fn pause(&self) -> Result<(), String> {
         let (tx, rx) = mpsc::channel::<Result<(), String>>();
         self.send(AudioCommand::Pause { respond_to: tx })?;
-        rx.recv()
-            .map_err(|_| "No se recibió respuesta del hilo de audio".to_string())?
+        let response = rx
+            .recv()
+            .map_err(|_| "No se recibió respuesta del hilo de audio".to_string())?;
+
+        if response.is_ok() {
+            self.update_runtime_status(true, true)?;
+        }
+
+        response
     }
 
     pub fn resume(&self) -> Result<(), String> {
         let (tx, rx) = mpsc::channel::<Result<(), String>>();
         self.send(AudioCommand::Resume { respond_to: tx })?;
-        rx.recv()
-            .map_err(|_| "No se recibió respuesta del hilo de audio".to_string())?
+        let response = rx
+            .recv()
+            .map_err(|_| "No se recibió respuesta del hilo de audio".to_string())?;
+
+        if response.is_ok() {
+            self.update_runtime_status(true, false)?;
+        }
+
+        response
     }
 
     pub fn seek(&self, second: u64) -> Result<(), String> {
@@ -95,6 +124,40 @@ impl AudioState {
             .map_err(|_| "No se recibió respuesta del hilo de audio".to_string())?
     }
 
+    pub fn play_pause_toggle(&self) -> Result<(), String> {
+        let status = self
+            .runtime_status
+            .lock()
+            .map_err(|_| "No se pudo leer estado de reproducción".to_string())?
+            .to_owned();
+
+        if !status.has_track {
+            return Err("No hay ninguna canción cargada".to_string());
+        }
+
+        if status.is_paused {
+            self.resume()
+        } else {
+            self.pause()
+        }
+    }
+
+    pub fn playback_status(&self) -> Result<&'static str, String> {
+        let status = self
+            .runtime_status
+            .lock()
+            .map_err(|_| "No se pudo leer estado de reproducción".to_string())?
+            .to_owned();
+
+        if !status.has_track {
+            Ok("Stopped")
+        } else if status.is_paused {
+            Ok("Paused")
+        } else {
+            Ok("Playing")
+        }
+    }
+
     fn send(&self, command: AudioCommand) -> Result<(), String> {
         let command_tx = self
             .command_tx
@@ -104,6 +167,16 @@ impl AudioState {
         command_tx
             .send(command)
             .map_err(|_| "No se pudo enviar comando al hilo de audio".to_string())
+    }
+
+    fn update_runtime_status(&self, has_track: bool, is_paused: bool) -> Result<(), String> {
+        let mut status = self
+            .runtime_status
+            .lock()
+            .map_err(|_| "No se pudo actualizar estado de reproducción".to_string())?;
+        status.has_track = has_track;
+        status.is_paused = is_paused;
+        Ok(())
     }
 }
 
