@@ -47,6 +47,7 @@ const queueLabel = computed(() => {
 const queueItems = computed(() => playerStore.queue);
 
 const draggingQueueIndex = ref<number | null>(null);
+const dropTargetIndex = ref<number | null>(null);
 
 const extractTrackName = (path: string): string => {
 	const normalized = path.replace(/\\/g, '/');
@@ -60,6 +61,22 @@ const onQueueDragStart = (index: number) => {
 
 const onQueueDragEnd = () => {
 	draggingQueueIndex.value = null;
+	dropTargetIndex.value = null;
+};
+
+const onQueueDragEnter = (targetIndex: number) => {
+	if (draggingQueueIndex.value === null || draggingQueueIndex.value === targetIndex) {
+		dropTargetIndex.value = null;
+		return;
+	}
+
+	dropTargetIndex.value = targetIndex;
+};
+
+const onQueueDragLeave = (targetIndex: number) => {
+	if (dropTargetIndex.value === targetIndex) {
+		dropTargetIndex.value = null;
+	}
 };
 
 const onQueueDrop = (targetIndex: number) => {
@@ -69,6 +86,7 @@ const onQueueDrop = (targetIndex: number) => {
 
 	playerStore.moveQueueItem(draggingQueueIndex.value, targetIndex);
 	draggingQueueIndex.value = null;
+	dropTargetIndex.value = null;
 };
 
 const formatSeconds = (value: number): string => {
@@ -177,19 +195,40 @@ watch(
 					<button type="button" class="queue-clear-btn" @click="playerStore.clearQueue">Limpiar cola</button>
 				</div>
 
-				<ul class="queue-list">
+				<TransitionGroup
+					tag="ul"
+					class="queue-list"
+					move-class="queue-move"
+					enter-active-class="queue-enter-active"
+					leave-active-class="queue-leave-active"
+					enter-from-class="queue-enter-from"
+					leave-to-class="queue-leave-to"
+				>
 					<li
 						v-for="(path, index) in queueItems"
 						:key="`${path}-${index}`"
 						class="queue-list-item"
-						:class="{ 'queue-list-item-next': index === 0 }"
+						:class="{
+							'queue-list-item-next': index === 0,
+							'queue-list-item-drop-target': dropTargetIndex === index,
+							'queue-list-item-dragging': draggingQueueIndex === index,
+						}"
 						draggable="true"
 						@dragover.prevent
+						@dragenter.prevent="onQueueDragEnter(index)"
+						@dragleave="onQueueDragLeave(index)"
 						@drop="onQueueDrop(index)"
 						@dragstart="onQueueDragStart(index)"
 						@dragend="onQueueDragEnd"
 					>
 						<span class="queue-index">{{ index + 1 }}.</span>
+						<span
+							class="queue-drag-handle"
+							title="Arrastra para reordenar"
+							aria-label="Arrastrar para reordenar"
+						>
+							⋮⋮
+						</span>
 						<div class="queue-track-wrap">
 							<p v-if="index === 0" class="queue-tag">Siguiente</p>
 							<span class="queue-track-name">{{ extractTrackName(path) }}</span>
@@ -202,7 +241,7 @@ watch(
 							Quitar
 						</button>
 					</li>
-				</ul>
+				</TransitionGroup>
 			</section>
 
 			<p v-if="playerStore.error" class="error-line">{{ playerStore.error }}</p>
@@ -422,7 +461,7 @@ watch(
 
 .queue-list-item {
 	display: grid;
-	grid-template-columns: auto 1fr auto;
+	grid-template-columns: auto auto 1fr auto;
 	align-items: center;
 	gap: 0.45rem;
 	padding: 0.35rem 0.5rem;
@@ -430,16 +469,46 @@ watch(
 	background: #14192a;
 	border: 1px solid color-mix(in srgb, var(--secondary) 18%, #2a3043);
 	cursor: grab;
+	transition: border-color 120ms ease, background-color 120ms ease, box-shadow 140ms ease;
 }
 
 .queue-list-item:active {
 	cursor: grabbing;
 }
 
+.queue-list-item-dragging {
+	opacity: 0.62;
+	transform: scale(0.995);
+}
+
+.queue-list-item-drop-target {
+	border-color: color-mix(in srgb, var(--primary) 72%, #3f4860);
+	background: color-mix(in srgb, var(--primary) 18%, #151b2d);
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 40%, transparent);
+}
+
 .queue-index {
 	font-size: 0.72rem;
 	color: #99a2bc;
 	font-weight: 600;
+}
+
+.queue-drag-handle {
+	font-size: 0.78rem;
+	line-height: 1;
+	letter-spacing: -1px;
+	font-weight: 700;
+	color: #8f97b0;
+	user-select: none;
+	cursor: grab;
+	padding: 0.1rem 0.12rem;
+	border-radius: 4px;
+	border: 1px solid color-mix(in srgb, var(--secondary) 24%, #29314a);
+	background: #111626;
+}
+
+.queue-drag-handle:active {
+	cursor: grabbing;
 }
 
 .queue-track-name {
@@ -466,6 +535,21 @@ watch(
 	font-size: 0.68rem;
 	font-weight: 600;
 	cursor: pointer;
+}
+
+.queue-move {
+	transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.queue-enter-active,
+.queue-leave-active {
+	transition: all 160ms ease;
+}
+
+.queue-enter-from,
+.queue-leave-to {
+	opacity: 0;
+	transform: translateY(-6px) scale(0.985);
 }
 
 @media (max-width: 640px) {
