@@ -26,6 +26,17 @@ pub struct DroppedPlaybackTrack {
     pub artist: String,
     pub album: String,
     pub duration_seconds: i64,
+    pub cover_data_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NowPlayingMetadata {
+    pub path: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub duration_seconds: u64,
+    pub cover_data_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,4 +47,5 @@ pub struct PlaybackProgressEvent {
     pub is_playing: bool,
     pub is_paused: bool,
     pub volume: f32,
+    pub now_playing: Option<NowPlayingMetadata>,
 }

@@ -7,6 +7,8 @@ const playerStore = usePlayerStore();
 const seekModel = ref(0);
 const volumeModel = ref(1);
 
+const coverArt = computed(() => playerStore.currentTrack?.cover_data_url || '');
+
 const trackTitle = computed(() => {
 	if (playerStore.currentTrack?.title) {
 		return playerStore.currentTrack.title;
@@ -117,6 +119,11 @@ watch(
 	<section class="player-shell">
 		<div class="player-glow" />
 		<div class="player-content">
+			<div class="cover-wrap" :class="{ 'cover-wrap-empty': !coverArt }">
+				<img v-if="coverArt" :src="coverArt" alt="Carátula" class="cover-image" />
+				<div v-else class="cover-fallback">VR</div>
+			</div>
+
 			<header class="track-header">
 				<p class="track-title">{{ trackTitle }}</p>
 				<p class="track-subtitle">{{ trackSubtitle }}</p>
@@ -225,8 +232,46 @@ watch(
 .player-content {
 	position: relative;
 	display: grid;
+	grid-template-columns: 92px 1fr;
+	align-items: start;
 	gap: 1rem;
 	padding: 1.1rem 1rem 1rem;
+}
+
+.cover-wrap {
+	width: 92px;
+	height: 92px;
+	border-radius: calc(var(--corner-radius) + 2px);
+	overflow: hidden;
+	border: 1px solid color-mix(in srgb, var(--primary) 24%, #2f3344);
+	background: #131828;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.cover-wrap-empty {
+	display: grid;
+	place-items: center;
+}
+
+.cover-image {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.cover-fallback {
+	font-size: 1.05rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	color: color-mix(in srgb, var(--primary) 86%, #edf1ff);
+}
+
+.track-header,
+.timeline-wrap,
+.controls-row,
+.queue-panel,
+.error-line {
+	grid-column: 2;
 }
 
 .track-header {
@@ -424,6 +469,23 @@ watch(
 }
 
 @media (max-width: 640px) {
+	.player-content {
+		grid-template-columns: 1fr;
+	}
+
+	.cover-wrap {
+		width: 88px;
+		height: 88px;
+	}
+
+	.track-header,
+	.timeline-wrap,
+	.controls-row,
+	.queue-panel,
+	.error-line {
+		grid-column: 1;
+	}
+
 	.controls-row {
 		grid-template-columns: 1fr;
 	}

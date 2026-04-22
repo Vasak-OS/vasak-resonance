@@ -6,6 +6,16 @@ export interface DroppedPlaybackTrack {
 	artist: string;
 	album: string;
 	duration_seconds: number;
+	cover_data_url: string | null;
+}
+
+export interface NowPlayingMetadata {
+	path: string;
+	title: string;
+	artist: string;
+	album: string;
+	duration_seconds: number;
+	cover_data_url: string | null;
 }
 
 export interface PlaybackProgressEvent {
@@ -15,6 +25,7 @@ export interface PlaybackProgressEvent {
 	is_playing: boolean;
 	is_paused: boolean;
 	volume: number;
+	now_playing: NowPlayingMetadata | null;
 }
 
 export const playFile = (filePath: string): Promise<void> => {

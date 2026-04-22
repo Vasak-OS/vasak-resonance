@@ -8,7 +8,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
-use crate::structs::PlaybackProgressEvent;
+use crate::audio::extract_now_playing_metadata;
+use crate::structs::{NowPlayingMetadata, PlaybackProgressEvent};
 
 enum AudioCommand {
     PlayFile {
@@ -110,6 +111,7 @@ struct AudioManager {
     stream_handle: OutputStreamHandle,
     sink: Sink,
     current_path: Option<PathBuf>,
+    current_metadata: Option<NowPlayingMetadata>,
     current_duration: Option<Duration>,
     started_at: Option<Instant>,
     paused_position: Duration,
@@ -130,6 +132,7 @@ impl AudioManager {
             stream_handle,
             sink,
             current_path: None,
+            current_metadata: None,
             current_duration: None,
             started_at: None,
             paused_position: Duration::from_secs(0),
@@ -160,6 +163,10 @@ impl AudioManager {
         self.sink.stop();
         self.sink = new_sink;
         self.current_path = Some(canonical_path);
+        self.current_metadata = self
+            .current_path
+            .as_ref()
+            .and_then(|path| extract_now_playing_metadata(path).ok());
         self.current_duration = duration;
         self.started_at = Some(Instant::now());
         self.paused_position = Duration::from_secs(0);
@@ -284,6 +291,7 @@ impl AudioManager {
             is_playing,
             is_paused: self.is_paused,
             volume: self.volume,
+            now_playing: self.current_metadata.clone(),
         }
     }
 }
@@ -314,18 +322,23 @@ fn run_audio_loop(app_handle: AppHandle, command_rx: Receiver<AudioCommand>) {
                 respond_to,
             }) => {
                 let _ = respond_to.send(manager.play_file(file_path));
+                let _ = app_handle.emit("audio-playback-progress", manager.progress_snapshot());
             }
             Ok(AudioCommand::Pause { respond_to }) => {
                 let _ = respond_to.send(manager.pause());
+                let _ = app_handle.emit("audio-playback-progress", manager.progress_snapshot());
             }
             Ok(AudioCommand::Resume { respond_to }) => {
                 let _ = respond_to.send(manager.resume());
+                let _ = app_handle.emit("audio-playback-progress", manager.progress_snapshot());
             }
             Ok(AudioCommand::Seek { second, respond_to }) => {
                 let _ = respond_to.send(manager.seek(second));
+                let _ = app_handle.emit("audio-playback-progress", manager.progress_snapshot());
             }
             Ok(AudioCommand::SetVolume { volume, respond_to }) => {
                 let _ = respond_to.send(manager.set_volume(volume));
+                let _ = app_handle.emit("audio-playback-progress", manager.progress_snapshot());
             }
             Err(RecvTimeoutError::Timeout) => {
                 let _ = app_handle.emit("audio-playback-progress", manager.progress_snapshot());

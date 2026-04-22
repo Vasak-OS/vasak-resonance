@@ -3,6 +3,7 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import {
 	handleDroppedFile,
+	type NowPlayingMetadata,
 	pausePlayback,
 	playFile,
 	resumePlayback,
@@ -84,6 +85,18 @@ export const usePlayerStore = defineStore('player', () => {
 		isPlaying.value = payload.is_playing;
 		isPaused.value = payload.is_paused;
 		volume.value = payload.volume;
+
+		if (payload.now_playing) {
+			const nowPlaying: NowPlayingMetadata = payload.now_playing;
+			currentTrack.value = {
+				path: nowPlaying.path,
+				title: nowPlaying.title,
+				artist: nowPlaying.artist,
+				album: nowPlaying.album,
+				duration_seconds: nowPlaying.duration_seconds,
+				cover_data_url: nowPlaying.cover_data_url,
+			};
+		}
 
 		if (payload.is_playing) {
 			lastAutoAdvancedPath.value = null;
