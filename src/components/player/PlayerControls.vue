@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import PlayerPlaybackControls from '@/components/player/PlayerPlaybackControls.vue';
+import PlayerQueuePanel from '@/components/player/PlayerQueuePanel.vue';
+import PlayerSummaryCard from '@/components/player/PlayerSummaryCard.vue';
 import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
@@ -46,60 +49,6 @@ const queueLabel = computed(() => {
 
 const queueItems = computed(() => playerStore.queue);
 
-const draggingQueueIndex = ref<number | null>(null);
-const dropTargetIndex = ref<number | null>(null);
-
-const extractTrackName = (path: string): string => {
-	const normalized = path.replace(/\\/g, '/');
-	const parts = normalized.split('/');
-	return parts[parts.length - 1] || path;
-};
-
-const onQueueDragStart = (index: number) => {
-	draggingQueueIndex.value = index;
-};
-
-const onQueueDragEnd = () => {
-	draggingQueueIndex.value = null;
-	dropTargetIndex.value = null;
-};
-
-const onQueueDragEnter = (targetIndex: number) => {
-	if (draggingQueueIndex.value === null || draggingQueueIndex.value === targetIndex) {
-		dropTargetIndex.value = null;
-		return;
-	}
-
-	dropTargetIndex.value = targetIndex;
-};
-
-const onQueueDragLeave = (targetIndex: number) => {
-	if (dropTargetIndex.value === targetIndex) {
-		dropTargetIndex.value = null;
-	}
-};
-
-const onQueueDrop = (targetIndex: number) => {
-	if (draggingQueueIndex.value === null) {
-		return;
-	}
-
-	playerStore.moveQueueItem(draggingQueueIndex.value, targetIndex);
-	draggingQueueIndex.value = null;
-	dropTargetIndex.value = null;
-};
-
-const formatSeconds = (value: number): string => {
-	const safe = Math.max(0, Math.floor(value));
-	const minutes = Math.floor(safe / 60)
-		.toString()
-		.padStart(2, '0');
-	const seconds = Math.floor(safe % 60)
-		.toString()
-		.padStart(2, '0');
-	return `${minutes}:${seconds}`;
-};
-
 const onSeekCommit = async () => {
 	await playerStore.seekTo(seekModel.value);
 };
@@ -140,444 +89,45 @@ watch(
 </script>
 
 <template>
-	<section class="player-shell">
-		<div class="player-glow" />
-		<div class="player-content">
-			<div class="cover-wrap" :class="{ 'cover-wrap-empty': !coverArt }">
-				<img v-if="coverArt" :src="coverArt" alt="Carátula" class="cover-image" />
-				<div v-else class="cover-fallback">VR</div>
-			</div>
+	<section class="relative mx-auto flex w-full max-w-6xl flex-col gap-4 overflow-hidden rounded-[calc(var(--corner-radius)+10px)] border border-ui-border bg-ui-bg/80 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.28)] backdrop-blur-sm">
+		<div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(221,120,120,0.14)_0%,transparent_30%),radial-gradient(circle_at_85%_85%,rgba(136,57,239,0.12)_0%,transparent_28%)]" />
 
-			<header class="track-header">
-				<p class="track-title">{{ trackTitle }}</p>
-				<p class="track-subtitle">{{ trackSubtitle }}</p>
-				<p v-if="queueLabel" class="queue-line">{{ queueLabel }}</p>
-			</header>
+		<div class="relative grid gap-4 lg:grid-cols-[minmax(0,1.12fr)_minmax(0,0.88fr)]">
+			<PlayerSummaryCard
+				:cover-art="coverArt"
+				:title="trackTitle"
+				:subtitle="trackSubtitle"
+				:queue-label="queueLabel"
+			/>
 
-			<div class="timeline-wrap">
-				<input
-					v-model.number="seekModel"
-					type="range"
-					:min="0"
-					:max="playerStore.durationSeconds ?? 0"
-					step="1"
-					class="slider"
-					:disabled="!playerStore.hasTrack"
-					@change="onSeekCommit"
-				/>
-				<div class="time-row">
-					<span>{{ formatSeconds(playerStore.positionSeconds) }}</span>
-					<span>{{ formatSeconds(playerStore.durationSeconds ?? 0) }}</span>
-				</div>
-			</div>
-
-			<div class="controls-row">
-				<button
-					type="button"
-					class="btn-main"
-					:disabled="!playerStore.hasTrack || playerStore.busy"
-					@click="playerStore.togglePlayPause"
-				>
-					{{ playButtonLabel }}
-				</button>
-
-				<div class="volume-wrap">
-					<span>Vol</span>
-					<input
-						v-model.number="volumeModel"
-						type="range"
-						min="0"
-						max="2"
-						step="0.01"
-						class="slider"
-						@change="onVolumeCommit"
-					/>
-				</div>
-			</div>
-
-			<section v-if="playerStore.queuedCount > 0" class="queue-panel">
-				<div class="queue-panel-header">
-					<p class="queue-panel-title">Próximos temas</p>
-					<button type="button" class="queue-clear-btn" @click="playerStore.clearQueue">Limpiar cola</button>
-				</div>
-
-				<TransitionGroup
-					tag="ul"
-					class="queue-list"
-					move-class="queue-move"
-					enter-active-class="queue-enter-active"
-					leave-active-class="queue-leave-active"
-					enter-from-class="queue-enter-from"
-					leave-to-class="queue-leave-to"
-				>
-					<li
-						v-for="(path, index) in queueItems"
-						:key="`${path}-${index}`"
-						class="queue-list-item"
-						:class="{
-							'queue-list-item-next': index === 0,
-							'queue-list-item-drop-target': dropTargetIndex === index,
-							'queue-list-item-dragging': draggingQueueIndex === index,
-						}"
-						draggable="true"
-						@dragover.prevent
-						@dragenter.prevent="onQueueDragEnter(index)"
-						@dragleave="onQueueDragLeave(index)"
-						@drop="onQueueDrop(index)"
-						@dragstart="onQueueDragStart(index)"
-						@dragend="onQueueDragEnd"
-					>
-						<span class="queue-index">{{ index + 1 }}.</span>
-						<span
-							class="queue-drag-handle"
-							title="Arrastra para reordenar"
-							aria-label="Arrastrar para reordenar"
-						>
-							⋮⋮
-						</span>
-						<div class="queue-track-wrap">
-							<p v-if="index === 0" class="queue-tag">Siguiente</p>
-							<span class="queue-track-name">{{ extractTrackName(path) }}</span>
-						</div>
-						<button
-							type="button"
-							class="queue-remove-btn"
-							@click="playerStore.removeQueueItem(index)"
-						>
-							Quitar
-						</button>
-					</li>
-				</TransitionGroup>
-			</section>
-
-			<p v-if="playerStore.error" class="error-line">{{ playerStore.error }}</p>
+			<PlayerPlaybackControls
+				v-model:seek-value="seekModel"
+				v-model:volume-value="volumeModel"
+				:has-track="playerStore.hasTrack"
+				:busy="playerStore.busy"
+				:is-paused="playerStore.isPaused"
+				:play-label="playButtonLabel"
+				:position-seconds="playerStore.positionSeconds"
+				:duration-seconds="playerStore.durationSeconds"
+				@toggle-play-pause="playerStore.togglePlayPause"
+				@seek-commit="onSeekCommit"
+				@volume-commit="onVolumeCommit"
+			/>
 		</div>
+
+		<PlayerQueuePanel
+			v-if="queueItems.length > 0"
+			:queue-items="queueItems"
+			@clear="playerStore.clearQueue"
+			@remove="playerStore.removeQueueItem"
+			@reorder="playerStore.moveQueueItem"
+		/>
+
+		<p
+			v-if="playerStore.error"
+			class="relative rounded-[var(--corner-radius)] border border-status-danger/35 bg-status-danger/10 px-3 py-2 text-sm text-status-danger"
+		>
+			{{ playerStore.error }}
+		</p>
 	</section>
 </template>
-
-<style scoped>
-.player-shell {
-	position: relative;
-	width: min(920px, 100%);
-	border: 1px solid color-mix(in srgb, var(--primary) 32%, #000);
-	border-radius: calc(var(--corner-radius) + 8px);
-	background: linear-gradient(170deg, #151824 0%, #0f1220 100%);
-	overflow: hidden;
-}
-
-.player-glow {
-	position: absolute;
-	inset: -80px;
-	background:
-		radial-gradient(circle at 14% 10%, color-mix(in srgb, var(--primary) 28%, transparent) 0 22%, transparent 45%),
-		radial-gradient(circle at 85% 85%, color-mix(in srgb, var(--secondary) 20%, transparent) 0 26%, transparent 45%);
-	pointer-events: none;
-}
-
-.player-content {
-	position: relative;
-	display: grid;
-	grid-template-columns: 92px 1fr;
-	align-items: start;
-	gap: 1rem;
-	padding: 1.1rem 1rem 1rem;
-}
-
-.cover-wrap {
-	width: 92px;
-	height: 92px;
-	border-radius: calc(var(--corner-radius) + 2px);
-	overflow: hidden;
-	border: 1px solid color-mix(in srgb, var(--primary) 24%, #2f3344);
-	background: #131828;
-	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
-}
-
-.cover-wrap-empty {
-	display: grid;
-	place-items: center;
-}
-
-.cover-image {
-	width: 100%;
-	height: 100%;
-	object-fit: cover;
-}
-
-.cover-fallback {
-	font-size: 1.05rem;
-	font-weight: 700;
-	letter-spacing: 0.08em;
-	color: color-mix(in srgb, var(--primary) 86%, #edf1ff);
-}
-
-.track-header,
-.timeline-wrap,
-.controls-row,
-.queue-panel,
-.error-line {
-	grid-column: 2;
-}
-
-.track-header {
-	display: grid;
-	gap: 0.2rem;
-}
-
-.track-title {
-	margin: 0;
-	font-weight: 600;
-	font-size: 0.98rem;
-	color: #f2f4f8;
-	letter-spacing: 0.01em;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-
-.track-subtitle {
-	margin: 0;
-	font-size: 0.8rem;
-	color: #a8b0c6;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-
-.queue-line {
-	margin: 0;
-	font-size: 0.72rem;
-	color: color-mix(in srgb, var(--primary) 88%, #f2f4f8);
-	letter-spacing: 0.03em;
-	text-transform: uppercase;
-}
-
-.timeline-wrap {
-	display: grid;
-	gap: 0.5rem;
-}
-
-.time-row {
-	display: flex;
-	justify-content: space-between;
-	font-size: 0.75rem;
-	color: #9aa3ba;
-}
-
-.controls-row {
-	display: grid;
-	grid-template-columns: auto 1fr;
-	gap: 1rem;
-	align-items: center;
-}
-
-.btn-main {
-	padding: 0.52rem 1rem;
-	border-radius: var(--corner-radius);
-	border: 1px solid color-mix(in srgb, var(--primary) 52%, #000);
-	background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 85%, #171a27), color-mix(in srgb, var(--primary) 68%, #0f1220));
-	color: #11131c;
-	font-weight: 700;
-	font-size: 0.82rem;
-	cursor: pointer;
-}
-
-.btn-main:disabled {
-	opacity: 0.45;
-	cursor: not-allowed;
-}
-
-.volume-wrap {
-	display: grid;
-	grid-template-columns: auto 1fr;
-	align-items: center;
-	gap: 0.65rem;
-	color: #c5cbe0;
-	font-size: 0.78rem;
-}
-
-.slider {
-	width: 100%;
-	accent-color: var(--primary);
-}
-
-.error-line {
-	margin: 0;
-	font-size: 0.78rem;
-	color: #ff8f95;
-}
-
-.queue-panel {
-	display: grid;
-	gap: 0.45rem;
-	padding: 0.65rem;
-	border: 1px solid color-mix(in srgb, var(--primary) 20%, #2f3344);
-	border-radius: var(--corner-radius);
-	background: linear-gradient(180deg, #101423, #0e1220);
-}
-
-.queue-panel-header {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	gap: 0.5rem;
-}
-
-.queue-panel-title {
-	margin: 0;
-	font-size: 0.78rem;
-	font-weight: 600;
-	color: #cdd3e8;
-	letter-spacing: 0.04em;
-	text-transform: uppercase;
-}
-
-.queue-clear-btn {
-	padding: 0.32rem 0.58rem;
-	border-radius: calc(var(--corner-radius) - 2px);
-	border: 1px solid color-mix(in srgb, var(--secondary) 35%, #2b3044);
-	background: #161a2b;
-	color: #d7ddf2;
-	font-size: 0.72rem;
-	font-weight: 600;
-	cursor: pointer;
-}
-
-.queue-list-item-next {
-	background: color-mix(in srgb, var(--primary) 15%, #111726);
-	border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
-}
-
-.queue-tag {
-	margin: 0;
-	font-size: 0.68rem;
-	font-weight: 700;
-	text-transform: uppercase;
-	letter-spacing: 0.05em;
-	color: color-mix(in srgb, var(--primary) 88%, #edf1ff);
-}
-
-.queue-list {
-	list-style: none;
-	margin: 0;
-	padding: 0;
-	display: grid;
-	gap: 0.35rem;
-}
-
-.queue-list-item {
-	display: grid;
-	grid-template-columns: auto auto 1fr auto;
-	align-items: center;
-	gap: 0.45rem;
-	padding: 0.35rem 0.5rem;
-	border-radius: calc(var(--corner-radius) - 2px);
-	background: #14192a;
-	border: 1px solid color-mix(in srgb, var(--secondary) 18%, #2a3043);
-	cursor: grab;
-	transition: border-color 120ms ease, background-color 120ms ease, box-shadow 140ms ease;
-}
-
-.queue-list-item:active {
-	cursor: grabbing;
-}
-
-.queue-list-item-dragging {
-	opacity: 0.62;
-	transform: scale(0.995);
-}
-
-.queue-list-item-drop-target {
-	border-color: color-mix(in srgb, var(--primary) 72%, #3f4860);
-	background: color-mix(in srgb, var(--primary) 18%, #151b2d);
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 40%, transparent);
-}
-
-.queue-index {
-	font-size: 0.72rem;
-	color: #99a2bc;
-	font-weight: 600;
-}
-
-.queue-drag-handle {
-	font-size: 0.78rem;
-	line-height: 1;
-	letter-spacing: -1px;
-	font-weight: 700;
-	color: #8f97b0;
-	user-select: none;
-	cursor: grab;
-	padding: 0.1rem 0.12rem;
-	border-radius: 4px;
-	border: 1px solid color-mix(in srgb, var(--secondary) 24%, #29314a);
-	background: #111626;
-}
-
-.queue-drag-handle:active {
-	cursor: grabbing;
-}
-
-.queue-track-name {
-	margin: 0;
-	font-size: 0.76rem;
-	color: #dde3f6;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-
-.queue-track-wrap {
-	display: grid;
-	gap: 0.1rem;
-	min-width: 0;
-}
-
-.queue-remove-btn {
-	padding: 0.24rem 0.45rem;
-	border-radius: calc(var(--corner-radius) - 4px);
-	border: 1px solid color-mix(in srgb, var(--status-error, #d20f39) 40%, #263048);
-	background: #1c2133;
-	color: #f2b6bf;
-	font-size: 0.68rem;
-	font-weight: 600;
-	cursor: pointer;
-}
-
-.queue-move {
-	transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.queue-enter-active,
-.queue-leave-active {
-	transition: all 160ms ease;
-}
-
-.queue-enter-from,
-.queue-leave-to {
-	opacity: 0;
-	transform: translateY(-6px) scale(0.985);
-}
-
-@media (max-width: 640px) {
-	.player-content {
-		grid-template-columns: 1fr;
-	}
-
-	.cover-wrap {
-		width: 88px;
-		height: 88px;
-	}
-
-	.track-header,
-	.timeline-wrap,
-	.controls-row,
-	.queue-panel,
-	.error-line {
-		grid-column: 1;
-	}
-
-	.controls-row {
-		grid-template-columns: 1fr;
-	}
-}
-</style>
