@@ -15,12 +15,15 @@ import {
 export const usePlayerStore = defineStore('player', () => {
 	const currentTrack = ref<DroppedPlaybackTrack | null>(null);
 	const currentPath = ref<string | null>(null);
+	const queue = ref<string[]>([]);
 	const positionSeconds = ref(0);
 	const durationSeconds = ref<number | null>(null);
 	const isPlaying = ref(false);
 	const isPaused = ref(false);
 	const volume = ref(1);
 	const busy = ref(false);
+	const isAdvancingQueue = ref(false);
+	const lastAutoAdvancedPath = ref<string | null>(null);
 	const error = ref('');
 	const isDragOver = ref(false);
 	let unlistenProgress: UnlistenFn | null = null;
@@ -33,6 +36,46 @@ export const usePlayerStore = defineStore('player', () => {
 	});
 
 	const hasTrack = computed(() => Boolean(currentPath.value));
+	const queuedCount = computed(() => queue.value.length);
+
+	const shouldAutoAdvanceQueue = (payload: PlaybackProgressEvent): boolean => {
+		if (queue.value.length === 0 || isAdvancingQueue.value) {
+			return false;
+		}
+
+		if (!payload.path || payload.is_playing || payload.is_paused) {
+			return false;
+		}
+
+		if (payload.duration_seconds === null) {
+			return false;
+		}
+
+		if (payload.position_seconds < payload.duration_seconds) {
+			return false;
+		}
+
+		return lastAutoAdvancedPath.value !== payload.path;
+	};
+
+	const playNextInQueue = async () => {
+		const [nextPath, ...rest] = queue.value;
+		if (!nextPath) {
+			return;
+		}
+
+		queue.value = rest;
+		isAdvancingQueue.value = true;
+		try {
+			await playDropped(nextPath);
+		} catch {
+			if (queue.value.length > 0) {
+				await playNextInQueue();
+			}
+		} finally {
+			isAdvancingQueue.value = false;
+		}
+	};
 
 	const applyProgress = (payload: PlaybackProgressEvent) => {
 		currentPath.value = payload.path;
@@ -41,6 +84,16 @@ export const usePlayerStore = defineStore('player', () => {
 		isPlaying.value = payload.is_playing;
 		isPaused.value = payload.is_paused;
 		volume.value = payload.volume;
+
+		if (payload.is_playing) {
+			lastAutoAdvancedPath.value = null;
+			return;
+		}
+
+		if (shouldAutoAdvanceQueue(payload)) {
+			lastAutoAdvancedPath.value = payload.path;
+			void playNextInQueue();
+		}
 	};
 
 	const initProgressListener = async () => {
@@ -143,10 +196,13 @@ export const usePlayerStore = defineStore('player', () => {
 	};
 
 	const handleDroppedPaths = async (paths: string[]) => {
-		const [firstPath] = paths;
+		const normalized = Array.from(new Set(paths.map((path) => path.trim()).filter((path) => path.length > 0)));
+		const [firstPath, ...rest] = normalized;
 		if (!firstPath) {
 			return;
 		}
+
+		queue.value = rest;
 		await playDropped(firstPath);
 	};
 
@@ -159,6 +215,8 @@ export const usePlayerStore = defineStore('player', () => {
 		handleDroppedPaths,
 		hasTrack,
 		initProgressListener,
+		queue,
+		queuedCount,
 		isDragOver,
 		isPaused,
 		isPlaying,

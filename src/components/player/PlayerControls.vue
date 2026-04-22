@@ -34,6 +34,14 @@ const playButtonLabel = computed(() => {
 	return playerStore.isPaused ? 'Resume' : 'Pause';
 });
 
+const queueLabel = computed(() => {
+	const count = playerStore.queuedCount;
+	if (count <= 0) {
+		return '';
+	}
+	return count === 1 ? '1 en cola' : `${count} en cola`;
+});
+
 const formatSeconds = (value: number): string => {
 	const safe = Math.max(0, Math.floor(value));
 	const minutes = Math.floor(safe / 60)
@@ -85,6 +93,7 @@ watch(
 			<header class="track-header">
 				<p class="track-title">{{ trackTitle }}</p>
 				<p class="track-subtitle">{{ trackSubtitle }}</p>
+				<p v-if="queueLabel" class="queue-line">{{ queueLabel }}</p>
 			</header>
 
 			<div class="timeline-wrap">
@@ -182,6 +191,14 @@ watch(
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+}
+
+.queue-line {
+	margin: 0;
+	font-size: 0.72rem;
+	color: color-mix(in srgb, var(--primary) 88%, #f2f4f8);
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
 }
 
 .timeline-wrap {
