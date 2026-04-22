@@ -28,6 +28,7 @@ export const usePlayerStore = defineStore('player', () => {
 	const error = ref('');
 	const isDragOver = ref(false);
 	let unlistenProgress: UnlistenFn | null = null;
+	let unlistenMprisNext: UnlistenFn | null = null;
 
 	const progressPercent = computed(() => {
 		if (!durationSeconds.value || durationSeconds.value <= 0) {
@@ -60,6 +61,10 @@ export const usePlayerStore = defineStore('player', () => {
 	};
 
 	const playNextInQueue = async () => {
+		if (isAdvancingQueue.value) {
+			return;
+		}
+
 		const [nextPath, ...rest] = queue.value;
 		if (!nextPath) {
 			return;
@@ -119,10 +124,27 @@ export const usePlayerStore = defineStore('player', () => {
 		});
 	};
 
+	const initMprisNextListener = async () => {
+		if (unlistenMprisNext) {
+			return;
+		}
+
+		unlistenMprisNext = await listen('mpris-next-request', () => {
+			void playNextInQueue();
+		});
+	};
+
 	const disposeProgressListener = () => {
 		if (unlistenProgress) {
 			unlistenProgress();
 			unlistenProgress = null;
+		}
+	};
+
+	const disposeMprisNextListener = () => {
+		if (unlistenMprisNext) {
+			unlistenMprisNext();
+			unlistenMprisNext = null;
 		}
 	};
 
@@ -248,7 +270,12 @@ export const usePlayerStore = defineStore('player', () => {
 		await playDropped(firstPath);
 	};
 
+	const advanceQueue = async () => {
+		await playNextInQueue();
+	};
+
 	return {
+		advanceQueue,
 		busy,
 		clearQueue,
 		currentPath,
@@ -258,6 +285,7 @@ export const usePlayerStore = defineStore('player', () => {
 		handleDroppedPaths,
 		hasTrack,
 		initProgressListener,
+		initMprisNextListener,
 		queue,
 		queuedCount,
 		moveQueueItem,
@@ -276,6 +304,7 @@ export const usePlayerStore = defineStore('player', () => {
 		setVolume,
 		togglePlayPause,
 		disposeProgressListener,
+		disposeMprisNextListener,
 		volume,
 	};
 });
