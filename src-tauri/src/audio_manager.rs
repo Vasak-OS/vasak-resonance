@@ -1,4 +1,5 @@
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -8,7 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
-use crate::audio::extract_now_playing_metadata;
+use crate::audio::extract_now_playing_metadata_with_cover_cache;
 use crate::structs::{NowPlayingMetadata, PlaybackProgressEvent};
 
 enum AudioCommand {
@@ -112,6 +113,7 @@ struct AudioManager {
     sink: Sink,
     current_path: Option<PathBuf>,
     current_metadata: Option<NowPlayingMetadata>,
+    cover_cache_by_path: HashMap<String, Option<String>>,
     current_duration: Option<Duration>,
     started_at: Option<Instant>,
     paused_position: Duration,
@@ -133,6 +135,7 @@ impl AudioManager {
             sink,
             current_path: None,
             current_metadata: None,
+            cover_cache_by_path: HashMap::new(),
             current_duration: None,
             started_at: None,
             paused_position: Duration::from_secs(0),
@@ -163,10 +166,9 @@ impl AudioManager {
         self.sink.stop();
         self.sink = new_sink;
         self.current_path = Some(canonical_path);
-        self.current_metadata = self
-            .current_path
-            .as_ref()
-            .and_then(|path| extract_now_playing_metadata(path).ok());
+        self.current_metadata = self.current_path.as_ref().and_then(|path| {
+            extract_now_playing_metadata_with_cover_cache(path, &mut self.cover_cache_by_path).ok()
+        });
         self.current_duration = duration;
         self.started_at = Some(Instant::now());
         self.paused_position = Duration::from_secs(0);

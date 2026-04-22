@@ -3,6 +3,7 @@ use lofty::picture::PictureType;
 use lofty::prelude::{AudioFile, TaggedFileExt};
 use lofty::probe::Probe;
 use lofty::tag::Accessor;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -48,7 +49,16 @@ pub fn extract_track_from_file(path: &Path) -> Result<Track, String> {
 }
 
 pub fn extract_now_playing_metadata(path: &Path) -> Result<NowPlayingMetadata, String> {
+    let mut cover_cache = HashMap::<String, Option<String>>::new();
+    extract_now_playing_metadata_with_cover_cache(path, &mut cover_cache)
+}
+
+pub fn extract_now_playing_metadata_with_cover_cache(
+    path: &Path,
+    cover_cache: &mut HashMap<String, Option<String>>,
+) -> Result<NowPlayingMetadata, String> {
     let canonical_path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let canonical_path_str = canonical_path.to_string_lossy().to_string();
 
     let tagged_file = Probe::open(path)
         .map_err(|e| format!("No se pudo abrir archivo de audio {}: {e}", path.display()))?
@@ -76,21 +86,28 @@ pub fn extract_now_playing_metadata(path: &Path) -> Result<NowPlayingMetadata, S
 
     let duration_seconds = tagged_file.properties().duration().as_secs();
 
-    let cover_data_url = primary_tag.and_then(|tag| {
-        let picture = tag
-            .get_picture_type(PictureType::CoverFront)
-            .or_else(|| tag.pictures().first())?;
+    let cover_data_url = if let Some(cached) = cover_cache.get(&canonical_path_str) {
+        cached.clone()
+    } else {
+        let computed = primary_tag.and_then(|tag| {
+            let picture = tag
+                .get_picture_type(PictureType::CoverFront)
+                .or_else(|| tag.pictures().first())?;
 
-        let mime = picture
-            .mime_type()
-            .map(|m| m.as_str().to_string())
-            .unwrap_or_else(|| "image/jpeg".to_string());
-        let encoded = general_purpose::STANDARD.encode(picture.data());
-        Some(format!("data:{};base64,{}", mime, encoded))
-    });
+            let mime = picture
+                .mime_type()
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_else(|| "image/jpeg".to_string());
+            let encoded = general_purpose::STANDARD.encode(picture.data());
+            Some(format!("data:{};base64,{}", mime, encoded))
+        });
+
+        cover_cache.insert(canonical_path_str.clone(), computed.clone());
+        computed
+    };
 
     Ok(NowPlayingMetadata {
-        path: canonical_path.to_string_lossy().to_string(),
+        path: canonical_path_str,
         title,
         artist,
         album,
