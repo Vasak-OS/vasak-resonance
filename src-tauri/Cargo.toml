@@ -26,6 +26,10 @@ tauri-plugin-vicons = "2"
 tauri-plugin-config-manager = "2"
 gtk = "0.18"
 base64 = "0.22"
+rusqlite = { version = "0.32", features = ["bundled"] }
+lofty = "0.21"
+walkdir = "2.5"
+dirs = "6"
 
 [profile.dev]
 incremental = true # Compile your binary in smaller steps.
