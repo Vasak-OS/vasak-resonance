@@ -42,18 +42,31 @@ const queueLabel = computed(() => {
 	return count === 1 ? '1 en cola' : `${count} en cola`;
 });
 
-const queuePreview = computed(() => {
-	const [next, ...remaining] = playerStore.queue;
-	return {
-		next: next || null,
-		remaining,
-	};
-});
+const queueItems = computed(() => playerStore.queue);
+
+const draggingQueueIndex = ref<number | null>(null);
 
 const extractTrackName = (path: string): string => {
 	const normalized = path.replace(/\\/g, '/');
 	const parts = normalized.split('/');
 	return parts[parts.length - 1] || path;
+};
+
+const onQueueDragStart = (index: number) => {
+	draggingQueueIndex.value = index;
+};
+
+const onQueueDragEnd = () => {
+	draggingQueueIndex.value = null;
+};
+
+const onQueueDrop = (targetIndex: number) => {
+	if (draggingQueueIndex.value === null) {
+		return;
+	}
+
+	playerStore.moveQueueItem(draggingQueueIndex.value, targetIndex);
+	draggingQueueIndex.value = null;
 };
 
 const formatSeconds = (value: number): string => {
@@ -157,15 +170,30 @@ watch(
 					<button type="button" class="queue-clear-btn" @click="playerStore.clearQueue">Limpiar cola</button>
 				</div>
 
-				<div v-if="queuePreview.next" class="queue-next">
-					<p class="queue-tag">Siguiente</p>
-					<p class="queue-track-name">{{ extractTrackName(queuePreview.next) }}</p>
-				</div>
-
-				<ul v-if="queuePreview.remaining.length > 0" class="queue-list">
-					<li v-for="(path, index) in queuePreview.remaining" :key="`${path}-${index}`" class="queue-list-item">
-						<span class="queue-index">{{ index + 2 }}.</span>
-						<span class="queue-track-name">{{ extractTrackName(path) }}</span>
+				<ul class="queue-list">
+					<li
+						v-for="(path, index) in queueItems"
+						:key="`${path}-${index}`"
+						class="queue-list-item"
+						:class="{ 'queue-list-item-next': index === 0 }"
+						draggable="true"
+						@dragover.prevent
+						@drop="onQueueDrop(index)"
+						@dragstart="onQueueDragStart(index)"
+						@dragend="onQueueDragEnd"
+					>
+						<span class="queue-index">{{ index + 1 }}.</span>
+						<div class="queue-track-wrap">
+							<p v-if="index === 0" class="queue-tag">Siguiente</p>
+							<span class="queue-track-name">{{ extractTrackName(path) }}</span>
+						</div>
+						<button
+							type="button"
+							class="queue-remove-btn"
+							@click="playerStore.removeQueueItem(index)"
+						>
+							Quitar
+						</button>
 					</li>
 				</ul>
 			</section>
@@ -325,11 +353,7 @@ watch(
 	cursor: pointer;
 }
 
-.queue-next {
-	display: grid;
-	gap: 0.1rem;
-	padding: 0.5rem;
-	border-radius: calc(var(--corner-radius) - 2px);
+.queue-list-item-next {
 	background: color-mix(in srgb, var(--primary) 15%, #111726);
 	border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
 }
@@ -353,13 +377,18 @@ watch(
 
 .queue-list-item {
 	display: grid;
-	grid-template-columns: auto 1fr;
+	grid-template-columns: auto 1fr auto;
 	align-items: center;
 	gap: 0.45rem;
 	padding: 0.35rem 0.5rem;
 	border-radius: calc(var(--corner-radius) - 2px);
 	background: #14192a;
 	border: 1px solid color-mix(in srgb, var(--secondary) 18%, #2a3043);
+	cursor: grab;
+}
+
+.queue-list-item:active {
+	cursor: grabbing;
 }
 
 .queue-index {
@@ -375,6 +404,23 @@ watch(
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+}
+
+.queue-track-wrap {
+	display: grid;
+	gap: 0.1rem;
+	min-width: 0;
+}
+
+.queue-remove-btn {
+	padding: 0.24rem 0.45rem;
+	border-radius: calc(var(--corner-radius) - 4px);
+	border: 1px solid color-mix(in srgb, var(--status-error, #d20f39) 40%, #263048);
+	background: #1c2133;
+	color: #f2b6bf;
+	font-size: 0.68rem;
+	font-weight: 600;
+	cursor: pointer;
 }
 
 @media (max-width: 640px) {

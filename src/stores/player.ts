@@ -199,6 +199,31 @@ export const usePlayerStore = defineStore('player', () => {
 		queue.value = [];
 	};
 
+	const removeQueueItem = (index: number) => {
+		if (index < 0 || index >= queue.value.length) {
+			return;
+		}
+
+		queue.value = queue.value.filter((_, itemIndex) => itemIndex !== index);
+	};
+
+	const moveQueueItem = (fromIndex: number, toIndex: number) => {
+		if (
+			fromIndex < 0 ||
+			fromIndex >= queue.value.length ||
+			toIndex < 0 ||
+			toIndex >= queue.value.length ||
+			fromIndex === toIndex
+		) {
+			return;
+		}
+
+		const nextQueue = [...queue.value];
+		const [movedItem] = nextQueue.splice(fromIndex, 1);
+		nextQueue.splice(toIndex, 0, movedItem);
+		queue.value = nextQueue;
+	};
+
 	const handleDroppedPaths = async (paths: string[]) => {
 		const normalized = Array.from(new Set(paths.map((path) => path.trim()).filter((path) => path.length > 0)));
 		const [firstPath, ...rest] = normalized;
@@ -222,6 +247,8 @@ export const usePlayerStore = defineStore('player', () => {
 		initProgressListener,
 		queue,
 		queuedCount,
+		moveQueueItem,
+		removeQueueItem,
 		isDragOver,
 		isPaused,
 		isPlaying,
