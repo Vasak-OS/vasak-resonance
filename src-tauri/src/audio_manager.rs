@@ -26,6 +26,9 @@ enum AudioCommand {
     Pause {
         respond_to: Sender<Result<(), String>>,
     },
+    Stop {
+        respond_to: Sender<Result<(), String>>,
+    },
     Resume {
         respond_to: Sender<Result<(), String>>,
     },
@@ -43,19 +46,23 @@ enum AudioCommand {
 pub struct AudioState {
     command_tx: Arc<Mutex<Sender<AudioCommand>>>,
     runtime_status: Arc<Mutex<RuntimeStatus>>,
+    playback_snapshot: Arc<Mutex<PlaybackProgressEvent>>,
 }
 
 impl AudioState {
     pub fn new(app_handle: AppHandle) -> Self {
         let (command_tx, command_rx) = mpsc::channel::<AudioCommand>();
+        let playback_snapshot = Arc::new(Mutex::new(PlaybackProgressEvent::default()));
+        let playback_snapshot_for_thread = Arc::clone(&playback_snapshot);
 
         thread::spawn(move || {
-            run_audio_loop(app_handle, command_rx);
+            run_audio_loop(app_handle, command_rx, playback_snapshot_for_thread);
         });
 
         Self {
             command_tx: Arc::new(Mutex::new(command_tx)),
             runtime_status: Arc::new(Mutex::new(RuntimeStatus::default())),
+            playback_snapshot,
         }
     }
 
@@ -99,6 +106,20 @@ impl AudioState {
 
         if response.is_ok() {
             self.update_runtime_status(true, false)?;
+        }
+
+        response
+    }
+
+    pub fn stop(&self) -> Result<(), String> {
+        let (tx, rx) = mpsc::channel::<Result<(), String>>();
+        self.send(AudioCommand::Stop { respond_to: tx })?;
+        let response = rx
+            .recv()
+            .map_err(|_| "No se recibió respuesta del hilo de audio".to_string())?;
+
+        if response.is_ok() {
+            self.update_runtime_status(false, false)?;
         }
 
         response
@@ -156,6 +177,13 @@ impl AudioState {
         } else {
             Ok("Playing")
         }
+    }
+
+    pub fn playback_snapshot(&self) -> Result<PlaybackProgressEvent, String> {
+        self.playback_snapshot
+            .lock()
+            .map_err(|_| "No se pudo leer el snapshot de reproducción".to_string())
+            .map(|snapshot| snapshot.clone())
     }
 
     fn send(&self, command: AudioCommand) -> Result<(), String> {
@@ -281,6 +309,17 @@ impl AudioManager {
         Ok(())
     }
 
+    fn stop(&mut self) -> Result<(), String> {
+        self.sink.stop();
+        self.current_path = None;
+        self.current_metadata = None;
+        self.current_duration = None;
+        self.started_at = None;
+        self.paused_position = Duration::from_secs(0);
+        self.is_paused = false;
+        Ok(())
+    }
+
     fn seek(&mut self, second: u64) -> Result<(), String> {
         let path = self
             .current_path
@@ -371,7 +410,11 @@ impl AudioManager {
     }
 }
 
-fn run_audio_loop(app_handle: AppHandle, command_rx: Receiver<AudioCommand>) {
+fn run_audio_loop(
+    app_handle: AppHandle,
+    command_rx: Receiver<AudioCommand>,
+    playback_snapshot: Arc<Mutex<PlaybackProgressEvent>>,
+) {
     let mut manager = match AudioManager::new() {
         Ok(manager) => manager,
         Err(error) => {
@@ -379,6 +422,7 @@ fn run_audio_loop(app_handle: AppHandle, command_rx: Receiver<AudioCommand>) {
                 match command_rx.recv() {
                     Ok(AudioCommand::PlayFile { respond_to, .. })
                     | Ok(AudioCommand::Pause { respond_to })
+                    | Ok(AudioCommand::Stop { respond_to })
                     | Ok(AudioCommand::Resume { respond_to })
                     | Ok(AudioCommand::Seek { respond_to, .. })
                     | Ok(AudioCommand::SetVolume { respond_to, .. }) => {
@@ -397,28 +441,44 @@ fn run_audio_loop(app_handle: AppHandle, command_rx: Receiver<AudioCommand>) {
                 respond_to,
             }) => {
                 let _ = respond_to.send(manager.play_file(file_path));
-                let _ = app_handle.emit("audio-playback-progress", manager.progress_snapshot());
+                publish_snapshot(&app_handle, &playback_snapshot, manager.progress_snapshot());
             }
             Ok(AudioCommand::Pause { respond_to }) => {
                 let _ = respond_to.send(manager.pause());
-                let _ = app_handle.emit("audio-playback-progress", manager.progress_snapshot());
+                publish_snapshot(&app_handle, &playback_snapshot, manager.progress_snapshot());
+            }
+            Ok(AudioCommand::Stop { respond_to }) => {
+                let _ = respond_to.send(manager.stop());
+                publish_snapshot(&app_handle, &playback_snapshot, manager.progress_snapshot());
             }
             Ok(AudioCommand::Resume { respond_to }) => {
                 let _ = respond_to.send(manager.resume());
-                let _ = app_handle.emit("audio-playback-progress", manager.progress_snapshot());
+                publish_snapshot(&app_handle, &playback_snapshot, manager.progress_snapshot());
             }
             Ok(AudioCommand::Seek { second, respond_to }) => {
                 let _ = respond_to.send(manager.seek(second));
-                let _ = app_handle.emit("audio-playback-progress", manager.progress_snapshot());
+                publish_snapshot(&app_handle, &playback_snapshot, manager.progress_snapshot());
             }
             Ok(AudioCommand::SetVolume { volume, respond_to }) => {
                 let _ = respond_to.send(manager.set_volume(volume));
-                let _ = app_handle.emit("audio-playback-progress", manager.progress_snapshot());
+                publish_snapshot(&app_handle, &playback_snapshot, manager.progress_snapshot());
             }
             Err(RecvTimeoutError::Timeout) => {
-                let _ = app_handle.emit("audio-playback-progress", manager.progress_snapshot());
+                publish_snapshot(&app_handle, &playback_snapshot, manager.progress_snapshot());
             }
             Err(RecvTimeoutError::Disconnected) => break,
         }
     }
+}
+
+fn publish_snapshot(
+    app_handle: &AppHandle,
+    playback_snapshot: &Arc<Mutex<PlaybackProgressEvent>>,
+    snapshot: PlaybackProgressEvent,
+) {
+    if let Ok(mut shared_snapshot) = playback_snapshot.lock() {
+        *shared_snapshot = snapshot.clone();
+    }
+
+    let _ = app_handle.emit("audio-playback-progress", snapshot);
 }

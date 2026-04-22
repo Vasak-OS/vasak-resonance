@@ -8,6 +8,7 @@ import {
 	playFile,
 	resumePlayback,
 	seekPlayback,
+	stopPlayback as stopPlaybackCommand,
 	setPlaybackVolume,
 	type DroppedPlaybackTrack,
 	type PlaybackProgressEvent,
@@ -17,6 +18,7 @@ export const usePlayerStore = defineStore('player', () => {
 	const currentTrack = ref<DroppedPlaybackTrack | null>(null);
 	const currentPath = ref<string | null>(null);
 	const queue = ref<string[]>([]);
+	const history = ref<string[]>([]);
 	const positionSeconds = ref(0);
 	const durationSeconds = ref<number | null>(null);
 	const isPlaying = ref(false);
@@ -29,6 +31,8 @@ export const usePlayerStore = defineStore('player', () => {
 	const isDragOver = ref(false);
 	let unlistenProgress: UnlistenFn | null = null;
 	let unlistenMprisNext: UnlistenFn | null = null;
+	let unlistenMprisPrevious: UnlistenFn | null = null;
+	let unlistenMprisStop: UnlistenFn | null = null;
 
 	const progressPercent = computed(() => {
 		if (!durationSeconds.value || durationSeconds.value <= 0) {
@@ -101,6 +105,8 @@ export const usePlayerStore = defineStore('player', () => {
 				duration_seconds: nowPlaying.duration_seconds,
 				cover_data_url: nowPlaying.cover_data_url,
 			};
+		} else if (!payload.path) {
+			currentTrack.value = null;
 		}
 
 		if (payload.is_playing) {
@@ -134,6 +140,26 @@ export const usePlayerStore = defineStore('player', () => {
 		});
 	};
 
+	const initMprisPreviousListener = async () => {
+		if (unlistenMprisPrevious) {
+			return;
+		}
+
+		unlistenMprisPrevious = await listen('mpris-previous-request', () => {
+			void playPreviousTrack();
+		});
+	};
+
+	const initMprisStopListener = async () => {
+		if (unlistenMprisStop) {
+			return;
+		}
+
+		unlistenMprisStop = await listen('mpris-stop-request', () => {
+			void stopPlayback();
+		});
+	};
+
 	const disposeProgressListener = () => {
 		if (unlistenProgress) {
 			unlistenProgress();
@@ -145,6 +171,20 @@ export const usePlayerStore = defineStore('player', () => {
 		if (unlistenMprisNext) {
 			unlistenMprisNext();
 			unlistenMprisNext = null;
+		}
+	};
+
+	const disposeMprisPreviousListener = () => {
+		if (unlistenMprisPrevious) {
+			unlistenMprisPrevious();
+			unlistenMprisPrevious = null;
+		}
+	};
+
+	const disposeMprisStopListener = () => {
+		if (unlistenMprisStop) {
+			unlistenMprisStop();
+			unlistenMprisStop = null;
 		}
 	};
 
@@ -161,11 +201,14 @@ export const usePlayerStore = defineStore('player', () => {
 		}
 	};
 
-	const playDropped = async (filePath: string) => {
+	const playDropped = async (filePath: string, recordHistory = true) => {
 		busy.value = true;
 		error.value = '';
 		try {
 			const track = await handleDroppedFile(filePath);
+			if (recordHistory && currentPath.value && currentPath.value !== track.path) {
+				history.value.push(currentPath.value);
+			}
 			currentTrack.value = track;
 			currentPath.value = track.path;
 			durationSeconds.value = track.duration_seconds;
@@ -224,6 +267,30 @@ export const usePlayerStore = defineStore('player', () => {
 		} catch (volumeError: unknown) {
 			error.value = `No se pudo ajustar el volumen: ${String(volumeError)}`;
 		}
+	};
+
+	const stopPlayback = async () => {
+		try {
+			error.value = '';
+			await stopPlaybackCommand();
+		} catch (stopError: unknown) {
+			error.value = `No se pudo detener la reproducción: ${String(stopError)}`;
+		}
+	};
+
+	const playPreviousTrack = async () => {
+		if (hasTrack.value && positionSeconds.value > 5) {
+			await seekTo(0);
+			return;
+		}
+
+		const previousPath = history.value.pop();
+		if (!previousPath) {
+			await seekTo(0);
+			return;
+		}
+
+		await playDropped(previousPath, false);
 	};
 
 	const setDragOver = (value: boolean) => {
@@ -286,6 +353,9 @@ export const usePlayerStore = defineStore('player', () => {
 		hasTrack,
 		initProgressListener,
 		initMprisNextListener,
+		initMprisPreviousListener,
+		initMprisStopListener,
+		history,
 		queue,
 		queuedCount,
 		moveQueueItem,
@@ -305,6 +375,9 @@ export const usePlayerStore = defineStore('player', () => {
 		togglePlayPause,
 		disposeProgressListener,
 		disposeMprisNextListener,
+		disposeMprisPreviousListener,
+		disposeMprisStopListener,
+		stopPlayback,
 		volume,
 	};
 });

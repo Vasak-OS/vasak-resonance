@@ -111,11 +111,15 @@ const onVolumeCommit = async () => {
 onMounted(async () => {
 	await playerStore.initProgressListener();
 	await playerStore.initMprisNextListener();
+	await playerStore.initMprisPreviousListener();
+	await playerStore.initMprisStopListener();
 });
 
 onUnmounted(() => {
 	playerStore.disposeProgressListener();
 	playerStore.disposeMprisNextListener();
+	playerStore.disposeMprisPreviousListener();
+	playerStore.disposeMprisStopListener();
 });
 
 watch(

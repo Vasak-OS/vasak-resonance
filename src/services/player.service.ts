@@ -48,6 +48,10 @@ export const setPlaybackVolume = (volume: number): Promise<void> => {
 	return invoke<void>('set_volume', { volume });
 };
 
+export const stopPlayback = (): Promise<void> => {
+	return invoke<void>('stop');
+};
+
 export const handleDroppedFile = (filePath: string): Promise<DroppedPlaybackTrack> => {
 	return invoke<DroppedPlaybackTrack>('handle_dropped_file', { file_path: filePath });
 };

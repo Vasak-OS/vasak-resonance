@@ -1,6 +1,9 @@
+use std::collections::HashMap;
+
 use tauri::{AppHandle, Emitter};
 use zbus::fdo;
 use zbus::ConnectionBuilder;
+use zbus::zvariant::{OwnedValue, Value};
 
 use crate::audio_manager::AudioState;
 
@@ -121,12 +124,67 @@ impl MprisPlayerInterface {
             .map_err(|e| fdo::Error::Failed(format!("No se pudo emitir evento next: {e}")))
     }
 
+    fn previous(&self) -> fdo::Result<()> {
+        self.app_handle
+            .emit("mpris-previous-request", ())
+            .map_err(|e| fdo::Error::Failed(format!("No se pudo emitir evento previous: {e}")))
+    }
+
+    fn stop(&self) -> fdo::Result<()> {
+        self.audio_state
+            .stop()
+            .map_err(|e| fdo::Error::Failed(e.to_string()))
+    }
+
     #[zbus(property)]
     fn playback_status(&self) -> fdo::Result<String> {
         self.audio_state
             .playback_status()
             .map(|s| s.to_string())
             .map_err(fdo::Error::Failed)
+    }
+
+    #[zbus(property)]
+    fn metadata(&self) -> HashMap<String, OwnedValue> {
+        let snapshot = self.audio_state.playback_snapshot().unwrap_or_default();
+        build_metadata(&snapshot)
+    }
+
+    #[zbus(property)]
+    fn loop_status(&self) -> String {
+        "None".to_string()
+    }
+
+    #[zbus(property)]
+    fn rate(&self) -> f64 {
+        1.0
+    }
+
+    #[zbus(property)]
+    fn minimum_rate(&self) -> f64 {
+        1.0
+    }
+
+    #[zbus(property)]
+    fn maximum_rate(&self) -> f64 {
+        1.0
+    }
+
+    #[zbus(property)]
+    fn position(&self) -> i64 {
+        let snapshot = self.audio_state.playback_snapshot().unwrap_or_default();
+        (snapshot.position_seconds as i64).saturating_mul(1_000_000)
+    }
+
+    #[zbus(property)]
+    fn volume(&self) -> f64 {
+        let snapshot = self.audio_state.playback_snapshot().unwrap_or_default();
+        snapshot.volume as f64
+    }
+
+    #[zbus(property)]
+    fn shuffle(&self) -> bool {
+        false
     }
 
     #[zbus(property)]
@@ -140,17 +198,70 @@ impl MprisPlayerInterface {
     }
 
     #[zbus(property)]
+    fn can_stop(&self) -> bool {
+        true
+    }
+
+    #[zbus(property)]
     fn can_go_next(&self) -> bool {
         true
     }
 
     #[zbus(property)]
     fn can_go_previous(&self) -> bool {
-        false
+        true
+    }
+
+    #[zbus(property)]
+    fn can_seek(&self) -> bool {
+        self.audio_state
+            .playback_snapshot()
+            .map(|snapshot| snapshot.path.is_some())
+            .unwrap_or(false)
     }
 
     #[zbus(property)]
     fn can_control(&self) -> bool {
         true
     }
+}
+
+fn build_metadata(snapshot: &crate::structs::PlaybackProgressEvent) -> HashMap<String, OwnedValue> {
+    let mut metadata = HashMap::new();
+
+    let insert_value = |map: &mut HashMap<String, OwnedValue>, key: &str, value: Value<'static>| {
+        if let Ok(owned_value) = OwnedValue::try_from(value) {
+            map.insert(key.to_string(), owned_value);
+        }
+    };
+
+    if let Some(path) = &snapshot.path {
+        insert_value(&mut metadata, "xesam:url", Value::new(format!("file://{}", path)));
+        insert_value(
+            &mut metadata,
+            "mpris:trackid",
+            Value::new("/org/mpris/MediaPlayer2/TrackList/NoTrack"),
+        );
+    }
+
+    if let Some(now_playing) = &snapshot.now_playing {
+        insert_value(&mut metadata, "xesam:title", Value::new(now_playing.title.clone()));
+        insert_value(
+            &mut metadata,
+            "xesam:artist",
+            Value::new(vec![now_playing.artist.clone()]),
+        );
+        insert_value(&mut metadata, "xesam:album", Value::new(now_playing.album.clone()));
+        insert_value(
+            &mut metadata,
+            "mpris:length",
+            Value::new((now_playing.duration_seconds as i64) * 1_000_000),
+        );
+
+        if let Some(cover_data_url) = &now_playing.cover_data_url {
+            insert_value(&mut metadata, "mpris:artUrl", Value::new(cover_data_url.clone()));
+        }
+    }
+
+    metadata
 }

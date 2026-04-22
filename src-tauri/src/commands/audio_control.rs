@@ -13,6 +13,11 @@ pub fn pause(state: State<AudioState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn stop(state: State<AudioState>) -> Result<(), String> {
+    state.stop()
+}
+
+#[tauri::command]
 pub fn resume(state: State<AudioState>) -> Result<(), String> {
     state.resume()
 }

@@ -39,7 +39,7 @@ pub struct NowPlayingMetadata {
     pub cover_data_url: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PlaybackProgressEvent {
     pub path: Option<String>,
     pub position_seconds: u64,
