@@ -42,6 +42,20 @@ const queueLabel = computed(() => {
 	return count === 1 ? '1 en cola' : `${count} en cola`;
 });
 
+const queuePreview = computed(() => {
+	const [next, ...remaining] = playerStore.queue;
+	return {
+		next: next || null,
+		remaining,
+	};
+});
+
+const extractTrackName = (path: string): string => {
+	const normalized = path.replace(/\\/g, '/');
+	const parts = normalized.split('/');
+	return parts[parts.length - 1] || path;
+};
+
 const formatSeconds = (value: number): string => {
 	const safe = Math.max(0, Math.floor(value));
 	const minutes = Math.floor(safe / 60)
@@ -136,6 +150,25 @@ watch(
 					/>
 				</div>
 			</div>
+
+			<section v-if="playerStore.queuedCount > 0" class="queue-panel">
+				<div class="queue-panel-header">
+					<p class="queue-panel-title">Próximos temas</p>
+					<button type="button" class="queue-clear-btn" @click="playerStore.clearQueue">Limpiar cola</button>
+				</div>
+
+				<div v-if="queuePreview.next" class="queue-next">
+					<p class="queue-tag">Siguiente</p>
+					<p class="queue-track-name">{{ extractTrackName(queuePreview.next) }}</p>
+				</div>
+
+				<ul v-if="queuePreview.remaining.length > 0" class="queue-list">
+					<li v-for="(path, index) in queuePreview.remaining" :key="`${path}-${index}`" class="queue-list-item">
+						<span class="queue-index">{{ index + 2 }}.</span>
+						<span class="queue-track-name">{{ extractTrackName(path) }}</span>
+					</li>
+				</ul>
+			</section>
 
 			<p v-if="playerStore.error" class="error-line">{{ playerStore.error }}</p>
 		</div>
@@ -254,6 +287,94 @@ watch(
 	margin: 0;
 	font-size: 0.78rem;
 	color: #ff8f95;
+}
+
+.queue-panel {
+	display: grid;
+	gap: 0.45rem;
+	padding: 0.65rem;
+	border: 1px solid color-mix(in srgb, var(--primary) 20%, #2f3344);
+	border-radius: var(--corner-radius);
+	background: linear-gradient(180deg, #101423, #0e1220);
+}
+
+.queue-panel-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.queue-panel-title {
+	margin: 0;
+	font-size: 0.78rem;
+	font-weight: 600;
+	color: #cdd3e8;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.queue-clear-btn {
+	padding: 0.32rem 0.58rem;
+	border-radius: calc(var(--corner-radius) - 2px);
+	border: 1px solid color-mix(in srgb, var(--secondary) 35%, #2b3044);
+	background: #161a2b;
+	color: #d7ddf2;
+	font-size: 0.72rem;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.queue-next {
+	display: grid;
+	gap: 0.1rem;
+	padding: 0.5rem;
+	border-radius: calc(var(--corner-radius) - 2px);
+	background: color-mix(in srgb, var(--primary) 15%, #111726);
+	border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+}
+
+.queue-tag {
+	margin: 0;
+	font-size: 0.68rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: color-mix(in srgb, var(--primary) 88%, #edf1ff);
+}
+
+.queue-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: 0.35rem;
+}
+
+.queue-list-item {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	align-items: center;
+	gap: 0.45rem;
+	padding: 0.35rem 0.5rem;
+	border-radius: calc(var(--corner-radius) - 2px);
+	background: #14192a;
+	border: 1px solid color-mix(in srgb, var(--secondary) 18%, #2a3043);
+}
+
+.queue-index {
+	font-size: 0.72rem;
+	color: #99a2bc;
+	font-weight: 600;
+}
+
+.queue-track-name {
+	margin: 0;
+	font-size: 0.76rem;
+	color: #dde3f6;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 @media (max-width: 640px) {

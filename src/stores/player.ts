@@ -195,6 +195,10 @@ export const usePlayerStore = defineStore('player', () => {
 		isDragOver.value = value;
 	};
 
+	const clearQueue = () => {
+		queue.value = [];
+	};
+
 	const handleDroppedPaths = async (paths: string[]) => {
 		const normalized = Array.from(new Set(paths.map((path) => path.trim()).filter((path) => path.length > 0)));
 		const [firstPath, ...rest] = normalized;
@@ -208,6 +212,7 @@ export const usePlayerStore = defineStore('player', () => {
 
 	return {
 		busy,
+		clearQueue,
 		currentPath,
 		currentTrack,
 		durationSeconds,
