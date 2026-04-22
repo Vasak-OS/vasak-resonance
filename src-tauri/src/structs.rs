@@ -27,3 +27,13 @@ pub struct DroppedPlaybackTrack {
     pub album: String,
     pub duration_seconds: i64,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlaybackProgressEvent {
+    pub path: Option<String>,
+    pub position_seconds: u64,
+    pub duration_seconds: Option<u64>,
+    pub is_playing: bool,
+    pub is_paused: bool,
+    pub volume: f32,
+}
