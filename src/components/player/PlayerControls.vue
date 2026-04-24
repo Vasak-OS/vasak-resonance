@@ -89,8 +89,7 @@ watch(
 </script>
 
 <template>
-	<section class="relative mx-auto flex w-full max-w-6xl flex-col gap-4 overflow-hidden rounded-[calc(var(--corner-radius)+10px)] border border-ui-border bg-ui-bg/80 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.28)] backdrop-blur-sm">
-		<div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(221,120,120,0.14)_0%,transparent_30%),radial-gradient(circle_at_85%_85%,rgba(136,57,239,0.12)_0%,transparent_28%)]" />
+	<section class="relative mx-auto flex w-full max-w-6xl flex-col gap-4 overflow-hidden p-4">
 
 		<div class="relative grid gap-4 lg:grid-cols-[minmax(0,1.12fr)_minmax(0,0.88fr)]">
 			<PlayerSummaryCard
@@ -125,7 +124,7 @@ watch(
 
 		<p
 			v-if="playerStore.error"
-			class="relative rounded-[var(--corner-radius)] border border-status-danger/35 bg-status-danger/10 px-3 py-2 text-sm text-status-danger"
+			class="relative rounded-corner border border-status-danger/35 bg-status-danger/10 px-3 py-2 text-sm text-status-danger"
 		>
 			{{ playerStore.error }}
 		</p>

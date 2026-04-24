@@ -14,7 +14,7 @@ defineProps<{
 	>
 		<div
 			v-if="isActive"
-			class="pointer-events-none absolute inset-3 z-20 flex items-center justify-center rounded-[calc(var(--corner-radius)+10px)] border-2 border-dashed border-primary/60 bg-primary/10 backdrop-blur-[2px]"
+			class="pointer-events-none absolute inset-3 z-20 flex items-center justify-center rounded-corner border-2 border-dashed border-primary/60 bg-primary/10"
 		>
 			<p class="px-4 text-center text-sm font-medium tracking-wide text-tx-main sm:text-base">
 				{{ message || 'Suelta un archivo de audio para reproducir' }}

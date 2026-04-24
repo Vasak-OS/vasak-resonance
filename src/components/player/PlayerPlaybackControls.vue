@@ -71,7 +71,7 @@ const onVolumeInput = (event: Event) => {
 		<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 			<button
 				type="button"
-				class="inline-flex items-center justify-center rounded-[var(--corner-radius)] border border-primary/45 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--primary)_84%,#1c2130),color-mix(in_srgb,var(--primary)_72%,#0f1220))] px-4 py-2 text-sm font-semibold text-[#10131a] transition-transform duration-200 hover:scale-[1.01] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+				class="inline-flex items-center justify-center rounded-corner border border-primary/45 bg-primary px-4 py-2 text-sm font-semibold text-tx-on-primary transition-colors duration-200 hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
 				:disabled="!hasTrack || busy"
 				@click="emit('toggle-play-pause')"
 			>

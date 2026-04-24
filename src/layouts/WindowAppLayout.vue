@@ -22,7 +22,7 @@ const vAudioDrop = audioDropDirective;
 
 		<main
 			v-audio-drop="dropBinding"
-			class="relative flex-1 overflow-hidden bg-[radial-gradient(circle_at_top_left,#1a1e2a_0%,#0f121d_55%,#0c0f19_100%)] p-3 sm:p-4 lg:p-6"
+			class="relative flex-1 overflow-hidden p-4"
 		>
 			<AudioDropOverlay :is-active="playerStore.isDragOver" />
 
