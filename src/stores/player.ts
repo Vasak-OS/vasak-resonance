@@ -19,6 +19,7 @@ export const usePlayerStore = defineStore('player', () => {
 	const currentPath = ref<string | null>(null);
 	const queue = ref<string[]>([]);
 	const history = ref<string[]>([]);
+	const favoritePaths = ref<string[]>([]);
 	const positionSeconds = ref(0);
 	const durationSeconds = ref<number | null>(null);
 	const isPlaying = ref(false);
@@ -43,9 +44,58 @@ export const usePlayerStore = defineStore('player', () => {
 
 	const hasTrack = computed(() => Boolean(currentPath.value));
 	const queuedCount = computed(() => queue.value.length);
+	const nextSuggestionPath = computed(() => {
+		const current = currentPath.value;
+		for (let index = history.value.length - 1; index >= 0; index -= 1) {
+			const candidate = history.value[index];
+			if (candidate && candidate !== current) {
+				return candidate;
+			}
+		}
+		return null;
+	});
+	const hasNextTrack = computed(() => queuedCount.value > 0 || Boolean(nextSuggestionPath.value));
+	const nextActionLabel = computed(() =>
+		queuedCount.value > 0 ? 'Next' : nextSuggestionPath.value ? 'Sugerido' : 'Next'
+	);
+	const isCurrentFavorite = computed(() => {
+		if (!currentPath.value) {
+			return false;
+		}
+		return favoritePaths.value.includes(currentPath.value);
+	});
 
-	const shouldAutoAdvanceQueue = (payload: PlaybackProgressEvent): boolean => {
-		if (queue.value.length === 0 || isAdvancingQueue.value) {
+	const syncFavoritesFromStorage = () => {
+		if (typeof window === 'undefined') {
+			return;
+		}
+
+		const raw = window.localStorage.getItem('resonance.favorites');
+		if (!raw) {
+			favoritePaths.value = [];
+			return;
+		}
+
+		try {
+			const parsed = JSON.parse(raw);
+			favoritePaths.value = Array.isArray(parsed)
+				? parsed.filter((value): value is string => typeof value === 'string' && value.length > 0)
+				: [];
+		} catch {
+			favoritePaths.value = [];
+		}
+	};
+
+	const persistFavorites = () => {
+		if (typeof window === 'undefined') {
+			return;
+		}
+
+		window.localStorage.setItem('resonance.favorites', JSON.stringify(favoritePaths.value));
+	};
+
+	const shouldAutoAdvancePlayback = (payload: PlaybackProgressEvent): boolean => {
+		if (isAdvancingQueue.value) {
 			return false;
 		}
 
@@ -58,6 +108,10 @@ export const usePlayerStore = defineStore('player', () => {
 		}
 
 		if (payload.position_seconds < payload.duration_seconds) {
+			return false;
+		}
+
+		if (!hasNextTrack.value) {
 			return false;
 		}
 
@@ -87,6 +141,25 @@ export const usePlayerStore = defineStore('player', () => {
 		}
 	};
 
+	const playSuggestedTrack = async () => {
+		const suggestedPath = nextSuggestionPath.value;
+		if (!suggestedPath) {
+			return false;
+		}
+
+		await playDropped(suggestedPath, false);
+		return true;
+	};
+
+	const advancePlayback = async () => {
+		if (queue.value.length > 0) {
+			await playNextInQueue();
+			return;
+		}
+
+		await playSuggestedTrack();
+	};
+
 	const applyProgress = (payload: PlaybackProgressEvent) => {
 		currentPath.value = payload.path;
 		positionSeconds.value = payload.position_seconds;
@@ -114,9 +187,9 @@ export const usePlayerStore = defineStore('player', () => {
 			return;
 		}
 
-		if (shouldAutoAdvanceQueue(payload)) {
+		if (shouldAutoAdvancePlayback(payload)) {
 			lastAutoAdvancedPath.value = payload.path;
-			void playNextInQueue();
+			void advancePlayback();
 		}
 	};
 
@@ -136,7 +209,7 @@ export const usePlayerStore = defineStore('player', () => {
 		}
 
 		unlistenMprisNext = await listen('mpris-next-request', () => {
-			void playNextInQueue();
+			void advancePlayback();
 		});
 	};
 
@@ -301,6 +374,32 @@ export const usePlayerStore = defineStore('player', () => {
 		queue.value = [];
 	};
 
+	const isFavoritePath = (path: string) => {
+		return favoritePaths.value.includes(path);
+	};
+
+	const toggleFavoritePath = (path: string) => {
+		if (!path) {
+			return;
+		}
+
+		if (isFavoritePath(path)) {
+			favoritePaths.value = favoritePaths.value.filter((entry) => entry !== path);
+		} else {
+			favoritePaths.value = [...favoritePaths.value, path];
+		}
+
+		persistFavorites();
+	};
+
+	const toggleCurrentFavorite = () => {
+		if (!currentPath.value) {
+			return;
+		}
+
+		toggleFavoritePath(currentPath.value);
+	};
+
 	const removeQueueItem = (index: number) => {
 		if (index < 0 || index >= queue.value.length) {
 			return;
@@ -340,8 +439,10 @@ export const usePlayerStore = defineStore('player', () => {
 	};
 
 	const advanceQueue = async () => {
-		await playNextInQueue();
+		await advancePlayback();
 	};
+
+	syncFavoritesFromStorage();
 
 	return {
 		advanceQueue,
@@ -353,13 +454,19 @@ export const usePlayerStore = defineStore('player', () => {
 		error,
 		handleDroppedPaths,
 		hasTrack,
+		hasNextTrack,
 		initProgressListener,
 		initMprisNextListener,
 		initMprisPreviousListener,
 		initMprisStopListener,
 		history,
+		favoritePaths,
+		isCurrentFavorite,
+		isFavoritePath,
 		queue,
 		queuedCount,
+		nextActionLabel,
+		nextSuggestionPath,
 		moveQueueItem,
 		removeQueueItem,
 		isDragOver,
@@ -375,6 +482,8 @@ export const usePlayerStore = defineStore('player', () => {
 		seekTo,
 		setDragOver,
 		setVolume,
+		toggleCurrentFavorite,
+		toggleFavoritePath,
 		togglePlayPause,
 		disposeProgressListener,
 		disposeMprisNextListener,
