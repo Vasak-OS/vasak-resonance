@@ -1,23 +1,12 @@
 <script setup lang="ts">
 import { getSymbolSource } from '@vasakgroup/plugin-vicons';
 import { computed, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
-
-const props = withDefaults(
-	defineProps<{
-		modelValue?: string;
-	}>(),
-	{
-		modelValue: 'home',
-	}
-);
-
-const emit = defineEmits<{
-	'update:modelValue': [value: string];
-	change: [value: string];
-}>();
+const router = useRouter();
+const route = useRoute();
 
 const sections = [
 	{ id: 'home', label: 'Inicio', icon: 'go-home-symbolic' },
@@ -28,7 +17,7 @@ const sections = [
 
 const iconSources = ref<Record<string, string>>({});
 
-const selectedSection = computed(() => props.modelValue || 'home');
+const selectedSection = computed(() => (typeof route.name === 'string' ? route.name : 'home'));
 
 const coverArt = computed(() => playerStore.currentTrack?.cover_data_url || '');
 
@@ -59,9 +48,12 @@ const playButtonLabel = computed(() => {
 	return playerStore.isPaused ? 'Play' : 'Pause';
 });
 
-const onSelectSection = (id: string) => {
-	emit('update:modelValue', id);
-	emit('change', id);
+const onSelectSection = async (id: string) => {
+	if (selectedSection.value === id) {
+		return;
+	}
+
+	await router.push({ name: id });
 };
 
 onMounted(async () => {

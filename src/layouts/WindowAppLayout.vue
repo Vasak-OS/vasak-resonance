@@ -1,20 +1,16 @@
 <script lang="ts" setup>
 import { getIconSource } from '@vasakgroup/plugin-vicons';
+import { RouterView } from 'vue-router';
 import { onMounted, onUnmounted, ref } from 'vue';
 import AppWindowShell from '@/components/layout/AppWindowShell.vue';
 import AudioDropOverlay from '@/components/layout/AudioDropOverlay.vue';
 import ResonanceSidebar from '@/components/layout/ResonanceSidebar.vue';
 import NowPlayingTopBar from '@/components/player/NowPlayingTopBar.vue';
-import PlayerControls from '@/components/player/PlayerControls.vue';
 import TopBarComponent from '@/components/topbar/TopBarComponent.vue';
-import AlbumsView from '@/components/views/AlbumsView.vue';
-import FavoritesView from '@/components/views/FavoritesView.vue';
-import PlaylistsView from '@/components/views/PlaylistsView.vue';
 import { useAudioDrop } from '@/composables/useAudioDrop';
 import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
-const selectedSection = ref('home');
 const appIcon = ref('');
 
 useAudioDrop({
@@ -63,18 +59,15 @@ onUnmounted(() => {
 			</Transition>
 
 			<div class="relative flex h-full w-full flex-col gap-3 md:flex-row">
-				<ResonanceSidebar v-model="selectedSection" />
+				<ResonanceSidebar />
 
-				<div class="min-h-0 min-w-0 flex-1 flex h-full flex-col gap-2 overflow-hidden">
-
-						<div class="min-h-0 flex-1 overflow-hidden rounded-corner border border-ui-border bg-ui-bg/80">
-							<PlayerControls v-if="selectedSection === 'home'" class="h-full w-full" />
-							<AlbumsView v-else-if="selectedSection === 'albums'" />
-							<FavoritesView v-else-if="selectedSection === 'favorites'" />
-							<PlaylistsView v-else-if="selectedSection === 'playlists'" />
-							<PlayerControls v-else class="h-full w-full" />
-						</div>
-						<NowPlayingTopBar class="shrink-0" />
+				<div class="min-h-0 min-w-0 flex h-full flex-1 flex-col gap-2 overflow-hidden">
+					<div class="min-h-0 flex-1 overflow-hidden rounded-corner border border-ui-border bg-ui-bg/80">
+						<RouterView v-slot="{ Component }">
+							<component :is="Component" class="h-full w-full" />
+						</RouterView>
+					</div>
+					<NowPlayingTopBar class="shrink-0" />
 				</div>
 			</div>
 		</main>
