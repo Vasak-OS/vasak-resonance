@@ -65,6 +65,10 @@ const onPlayTrack = async (path: string) => {
 const onQueueAlbum = (paths: string[]) => {
 	playerStore.enqueuePaths(paths);
 };
+
+const onPlayAlbum = async (paths: string[]) => {
+	await playerStore.playAlbum(paths);
+};
 </script>
 
 <template>
@@ -94,7 +98,14 @@ const onQueueAlbum = (paths: string[]) => {
 					{{ album.tracks.length }} {{ album.tracks.length === 1 ? 'pista' : 'pistas' }}
 				</p>
 
-				<div class="mt-3">
+				<div class="mt-3 grid grid-cols-2 gap-2">
+					<button
+						type="button"
+						class="w-full rounded-corner border border-primary/45 bg-primary px-3 py-2 text-xs font-semibold text-tx-on-primary transition-colors duration-200 hover:bg-primary/90"
+						@click="onPlayAlbum(album.tracks.map((track) => track.path))"
+					>
+						Reproducir album
+					</button>
 					<button
 						type="button"
 						class="w-full rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-xs font-semibold text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
