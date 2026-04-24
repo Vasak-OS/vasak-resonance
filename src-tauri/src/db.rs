@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::structs::{Playlist, PlaylistTrack, Track};
+use crate::structs::{LibraryTrack, Playlist, PlaylistTrack, Track};
 
 pub fn get_database_path() -> Result<PathBuf, String> {
     let home = std::env::var("HOME")
@@ -83,6 +83,63 @@ pub fn insert_track_if_not_exists(conn: &Connection, track: &Track) -> Result<bo
         .map_err(|e| format!("No se pudo insertar track en SQLite: {e}"))?;
 
     Ok(affected > 0)
+}
+
+pub fn upsert_track(conn: &Connection, track: &Track) -> Result<(), String> {
+    conn.execute(
+        "
+        INSERT INTO tracks (path, title, artist, album, duration_seconds)
+        VALUES (?1, ?2, ?3, ?4, ?5)
+        ON CONFLICT(path) DO UPDATE SET
+            title = excluded.title,
+            artist = excluded.artist,
+            album = excluded.album,
+            duration_seconds = excluded.duration_seconds
+        ",
+        params![
+            track.path,
+            track.title,
+            track.artist,
+            track.album,
+            track.duration_seconds
+        ],
+    )
+    .map_err(|e| format!("No se pudo sincronizar track en SQLite: {e}"))?;
+
+    Ok(())
+}
+
+pub fn list_tracks(conn: &Connection) -> Result<Vec<LibraryTrack>, String> {
+    let mut stmt = conn
+        .prepare(
+            "
+            SELECT id, path, title, artist, album, duration_seconds, created_at
+            FROM tracks
+            ORDER BY created_at DESC, title COLLATE NOCASE ASC
+            ",
+        )
+        .map_err(|e| format!("No se pudo preparar query de tracks: {e}"))?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(LibraryTrack {
+                id: row.get(0)?,
+                path: row.get(1)?,
+                title: row.get(2)?,
+                artist: row.get(3)?,
+                album: row.get(4)?,
+                duration_seconds: row.get(5)?,
+                created_at: row.get(6)?,
+            })
+        })
+        .map_err(|e| format!("No se pudo consultar tracks: {e}"))?;
+
+    let mut tracks = Vec::new();
+    for row in rows {
+        tracks.push(row.map_err(|e| format!("No se pudo leer track: {e}"))?);
+    }
+
+    Ok(tracks)
 }
 
 pub fn create_playlist(conn: &Connection, name: &str) -> Result<Playlist, String> {

@@ -11,6 +11,17 @@ pub struct Track {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LibraryTrack {
+    pub id: i64,
+    pub path: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub duration_seconds: i64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanSummary {
     pub scanned_files: usize,
     pub inserted_tracks: usize,

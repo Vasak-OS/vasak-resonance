@@ -11,6 +11,7 @@ import {
 	resumePlayback,
 	seekPlayback,
 	setPlaybackVolume,
+	saveLibraryTrack,
 	stopPlayback as stopPlaybackCommand,
 } from '@/services/player.service';
 
@@ -412,6 +413,8 @@ export const usePlayerStore = defineStore('player', () => {
 			console.log('[playDropped] Llamando handleDroppedFile...');
 			const track = await handleDroppedFile(filePath);
 			console.log('[playDropped] Track obtenido:', track);
+			await saveLibraryTrack(track);
+			console.log('[playDropped] Track sincronizado en SQLite');
 			if (recordHistory && currentPath.value && currentPath.value !== track.path) {
 				history.value.push(currentPath.value);
 			}

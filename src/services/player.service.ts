@@ -28,6 +28,16 @@ export interface PlaybackProgressEvent {
 	now_playing: NowPlayingMetadata | null;
 }
 
+export interface LibraryTrack {
+	id: number;
+	path: string;
+	title: string;
+	artist: string;
+	album: string;
+	duration_seconds: number;
+	created_at: string;
+}
+
 export const playFile = (filePath: string): Promise<void> => {
 	console.log('[player.service] playFile invoke:', filePath);
 	return invoke<void>('play_file', { filePath, file_path: filePath });
@@ -64,4 +74,14 @@ export const handleDroppedFile = (filePath: string): Promise<DroppedPlaybackTrac
 		filePath,
 		file_path: filePath,
 	});
+};
+
+export const listLibraryTracks = (): Promise<LibraryTrack[]> => {
+	console.log('[player.service] listLibraryTracks invoke');
+	return invoke<LibraryTrack[]>('list_library_tracks');
+};
+
+export const saveLibraryTrack = (track: DroppedPlaybackTrack): Promise<void> => {
+	console.log('[player.service] saveLibraryTrack invoke:', track.path);
+	return invoke<void>('save_library_track', { track });
 };
