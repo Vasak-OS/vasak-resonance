@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import PlayerPlaybackControls from '@/components/player/PlayerPlaybackControls.vue';
 import PlayerQueuePanel from '@/components/player/PlayerQueuePanel.vue';
 import { usePlayerStore } from '@/stores/player';
@@ -25,20 +25,6 @@ const onSeekCommit = async () => {
 const onVolumeCommit = async () => {
 	await playerStore.setVolume(volumeModel.value);
 };
-
-onMounted(async () => {
-	await playerStore.initProgressListener();
-	await playerStore.initMprisNextListener();
-	await playerStore.initMprisPreviousListener();
-	await playerStore.initMprisStopListener();
-});
-
-onUnmounted(() => {
-	playerStore.disposeProgressListener();
-	playerStore.disposeMprisNextListener();
-	playerStore.disposeMprisPreviousListener();
-	playerStore.disposeMprisStopListener();
-});
 
 watch(
 	() => playerStore.positionSeconds,
