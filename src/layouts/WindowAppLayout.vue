@@ -1,11 +1,12 @@
 <script lang="ts" setup>
 import { computed } from 'vue';
-import AudioDropOverlay from '@/components/layout/AudioDropOverlay.vue';
 import AppWindowShell from '@/components/layout/AppWindowShell.vue';
+import AudioDropOverlay from '@/components/layout/AudioDropOverlay.vue';
+import ResonanceSidebar from '@/components/layout/ResonanceSidebar.vue';
 import PlayerControls from '@/components/player/PlayerControls.vue';
+import TopBarComponent from '@/components/topbar/TopBarComponent.vue';
 import { audioDropDirective } from '@/directives/audioDrop';
 import { usePlayerStore } from '@/stores/player';
-import TopBarComponent from '@/components/topbar/TopBarComponent.vue';
 
 const playerStore = usePlayerStore();
 
@@ -22,12 +23,16 @@ const vAudioDrop = audioDropDirective;
 
 		<main
 			v-audio-drop="dropBinding"
-			class="relative flex-1 overflow-hidden p-4"
+			class="relative flex-1 overflow-hidden p-1 pt-0"
 		>
 			<AudioDropOverlay :is-active="playerStore.isDragOver" />
 
-			<div class="relative flex h-full w-full items-center justify-center">
-				<PlayerControls class="w-full" />
+			<div class="relative flex h-full w-full flex-col gap-3 md:flex-row">
+				<ResonanceSidebar />
+
+				<div class="min-h-0 min-w-0 flex-1 overflow-hidden rounded-corner border border-ui-border bg-ui-bg/70">
+					<PlayerControls class="h-full w-full" />
+				</div>
 			</div>
 		</main>
 	</AppWindowShell>

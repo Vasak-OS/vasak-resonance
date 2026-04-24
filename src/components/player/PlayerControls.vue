@@ -2,7 +2,6 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import PlayerPlaybackControls from '@/components/player/PlayerPlaybackControls.vue';
 import PlayerQueuePanel from '@/components/player/PlayerQueuePanel.vue';
-import PlayerSummaryCard from '@/components/player/PlayerSummaryCard.vue';
 import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
@@ -10,41 +9,11 @@ const playerStore = usePlayerStore();
 const seekModel = ref(0);
 const volumeModel = ref(1);
 
-const coverArt = computed(() => playerStore.currentTrack?.cover_data_url || '');
-
-const trackTitle = computed(() => {
-	if (playerStore.currentTrack?.title) {
-		return playerStore.currentTrack.title;
-	}
-	if (playerStore.currentPath) {
-		const parts = playerStore.currentPath.split('/');
-		return parts[parts.length - 1] || 'Unknown track';
-	}
-	return 'Arrastra una canción para reproducir';
-});
-
-const trackSubtitle = computed(() => {
-	if (!playerStore.currentTrack) {
-		return 'Vasak Resonance';
-	}
-	const artist = playerStore.currentTrack.artist || 'Unknown Artist';
-	const album = playerStore.currentTrack.album || 'Unknown Album';
-	return `${artist} • ${album}`;
-});
-
 const playButtonLabel = computed(() => {
 	if (!playerStore.hasTrack) {
 		return 'Play';
 	}
 	return playerStore.isPaused ? 'Resume' : 'Pause';
-});
-
-const queueLabel = computed(() => {
-	const count = playerStore.queuedCount;
-	if (count <= 0) {
-		return '';
-	}
-	return count === 1 ? '1 en cola' : `${count} en cola`;
 });
 
 const queueItems = computed(() => playerStore.queue);
@@ -89,16 +58,9 @@ watch(
 </script>
 
 <template>
-	<section class="relative mx-auto flex w-full max-w-6xl flex-col gap-4 overflow-hidden p-4">
+	<section class="relative mx-auto flex h-full w-full max-w-6xl flex-col gap-4 overflow-hidden p-4">
 
-		<div class="relative grid gap-4 lg:grid-cols-[minmax(0,1.12fr)_minmax(0,0.88fr)]">
-			<PlayerSummaryCard
-				:cover-art="coverArt"
-				:title="trackTitle"
-				:subtitle="trackSubtitle"
-				:queue-label="queueLabel"
-			/>
-
+		<div class="relative">
 			<PlayerPlaybackControls
 				v-model:seek-value="seekModel"
 				v-model:volume-value="volumeModel"

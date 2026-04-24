@@ -9,10 +9,10 @@ defineProps<{
 
 <template>
 	<section
-		class="flex min-w-0 flex-col gap-4 rounded-[calc(var(--corner-radius)+8px)] border border-ui-border bg-ui-bg/80 p-4 shadow-[0_18px_40px_rgba(0,0,0,0.25)] backdrop-blur-sm sm:flex-row sm:items-center"
+		class="flex min-w-0 flex-col gap-4 rounded-corner border border-ui-border bg-ui-bg/80 p-4 sm:flex-row sm:items-center"
 	>
 		<div
-			class="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-[calc(var(--corner-radius)+4px)] border border-ui-border bg-ui-surface/55 ring-1 ring-white/5 sm:h-28 sm:w-28"
+			class="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-corner border border-ui-border bg-ui-surface/55 ring-1 ring-white/5 sm:h-28 sm:w-28"
 		>
 			<img
 				v-if="coverArt"

@@ -2,16 +2,16 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import {
+	type DroppedPlaybackTrack,
 	handleDroppedFile,
 	type NowPlayingMetadata,
+	type PlaybackProgressEvent,
 	pausePlayback,
 	playFile,
 	resumePlayback,
 	seekPlayback,
-	stopPlayback as stopPlaybackCommand,
 	setPlaybackVolume,
-	type DroppedPlaybackTrack,
-	type PlaybackProgressEvent,
+	stopPlayback as stopPlaybackCommand,
 } from '@/services/player.service';
 
 export const usePlayerStore = defineStore('player', () => {
@@ -327,7 +327,9 @@ export const usePlayerStore = defineStore('player', () => {
 	};
 
 	const handleDroppedPaths = async (paths: string[]) => {
-		const normalized = Array.from(new Set(paths.map((path) => path.trim()).filter((path) => path.length > 0)));
+		const normalized = Array.from(
+			new Set(paths.map((path) => path.trim()).filter((path) => path.length > 0))
+		);
 		const [firstPath, ...rest] = normalized;
 		if (!firstPath) {
 			return;
@@ -366,6 +368,7 @@ export const usePlayerStore = defineStore('player', () => {
 		pause,
 		play,
 		playDropped,
+		playPreviousTrack,
 		positionSeconds,
 		progressPercent,
 		resume,

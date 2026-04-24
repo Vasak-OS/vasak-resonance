@@ -39,7 +39,7 @@ const onVolumeInput = (event: Event) => {
 </script>
 
 <template>
-	<section class="grid gap-4 rounded-[calc(var(--corner-radius)+8px)] border border-ui-border bg-ui-bg/80 p-4 shadow-[0_18px_40px_rgba(0,0,0,0.22)] backdrop-blur-sm">
+	<section class="grid gap-4 rounded-corner border border-ui-border bg-ui-bg/80 p-4">
 		<div class="grid gap-3">
 			<div class="flex items-center justify-between gap-3">
 				<div class="min-w-0">
@@ -62,7 +62,7 @@ const onVolumeInput = (event: Event) => {
 				step="1"
 				:value="seekValue"
 				:disabled="!hasTrack"
-				class="h-2 w-full cursor-pointer appearance-none rounded-full accent-[var(--primary)] disabled:cursor-not-allowed"
+				class="h-2 w-full cursor-pointer appearance-none rounded-full accent-primary disabled:cursor-not-allowed"
 				@input="onSeekInput"
 				@change="emit('seek-commit')"
 			/>
@@ -89,7 +89,7 @@ const onVolumeInput = (event: Event) => {
 					max="2"
 					step="0.01"
 					:value="volumeValue"
-					class="h-2 w-full cursor-pointer appearance-none rounded-full accent-[var(--primary)]"
+					class="h-2 w-full cursor-pointer appearance-none rounded-full accent-primary"
 					@input="onVolumeInput"
 					@change="emit('volume-commit')"
 				/>
