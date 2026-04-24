@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import PlayerControls from '@/components/player/PlayerControls.vue';
 import { usePlayerStore } from '@/stores/player';
-import { listLibraryTracks, type LibraryTrack } from '@/services/player.service';
+import {
+	listLibraryTracks,
+	saveLibraryTrack,
+	type LibraryTrack,
+	type DroppedPlaybackTrack,
+} from '@/services/player.service';
 
 const playerStore = usePlayerStore();
 const libraryTracks = ref<LibraryTrack[]>([]);
@@ -33,6 +37,26 @@ const extractName = (path: string) => {
 	return parts[parts.length - 1] || path;
 };
 
+const toLibraryTrack = (
+	track: DroppedPlaybackTrack,
+	createdAt = new Date().toISOString()
+): LibraryTrack => ({
+	id: -1,
+	path: track.path,
+	title: track.title,
+	artist: track.artist,
+	album: track.album,
+	duration_seconds: track.duration_seconds,
+	created_at: createdAt,
+});
+
+const sanitizeTrack = (track: LibraryTrack): LibraryTrack => ({
+	...track,
+	title: track.title?.trim() || extractName(track.path),
+	artist: track.artist?.trim() || 'Unknown Artist',
+	album: track.album?.trim() || 'Unknown Album',
+});
+
 const loadLibrary = async () => {
 	isLoading.value = true;
 	errorMessage.value = '';
@@ -45,9 +69,31 @@ const loadLibrary = async () => {
 	}
 };
 
+const syncCachedTracksToDatabase = async () => {
+	await Promise.allSettled(
+		playerStore.trackCacheList.map((track) => saveLibraryTrack(track))
+	);
+};
+
+const librarySourceTracks = computed(() => {
+	const merged = new Map<string, LibraryTrack>();
+
+	for (const track of libraryTracks.value) {
+		merged.set(track.path, sanitizeTrack(track));
+	}
+
+	for (const track of playerStore.trackCacheList) {
+		if (!merged.has(track.path)) {
+			merged.set(track.path, sanitizeTrack(toLibraryTrack(track)));
+		}
+	}
+
+	return Array.from(merged.values());
+});
+
 const artistOptions = computed(() => {
 	const values = new Set(
-		libraryTracks.value
+		librarySourceTracks.value
 			.map((track) => track.artist?.trim())
 			.filter((value): value is string => Boolean(value))
 	);
@@ -56,7 +102,7 @@ const artistOptions = computed(() => {
 
 const albumOptions = computed(() => {
 	const values = new Set(
-		libraryTracks.value
+		librarySourceTracks.value
 			.map((track) => track.album?.trim())
 			.filter((value): value is string => Boolean(value))
 	);
@@ -65,7 +111,7 @@ const albumOptions = computed(() => {
 
 const sortedTracks = computed(() => {
 	const query = normalize(searchQuery.value);
-	const filtered = libraryTracks.value.filter((track) => {
+	const filtered = librarySourceTracks.value.filter((track) => {
 		if (artistFilter.value !== 'all' && track.artist !== artistFilter.value) {
 			return false;
 		}
@@ -83,7 +129,7 @@ const sortedTracks = computed(() => {
 			.some((value) => value.includes(query));
 	});
 
-	return filtered.sort((left, right) => {
+	return [...filtered].sort((left, right) => {
 		switch (sortBy.value) {
 			case 'title-asc':
 				return left.title.localeCompare(right.title);
@@ -115,6 +161,7 @@ const toggleFavorite = (path: string) => {
 };
 
 onMounted(async () => {
+	await syncCachedTracksToDatabase();
 	await loadLibrary();
 	await playerStore.ensureMetadataForFavorites();
 });
@@ -129,7 +176,7 @@ onMounted(async () => {
 					<h2 class="text-lg font-semibold text-tx-main">Todas las canciones de la base de datos</h2>
 				</div>
 				<div class="text-xs text-tx-muted">
-					{{ sortedTracks.length }} pistas visibles de {{ libraryTracks.length }} totales
+					{{ sortedTracks.length }} pistas visibles de {{ librarySourceTracks.length }} totales
 				</div>
 			</div>
 
@@ -198,13 +245,13 @@ onMounted(async () => {
 					>
 						<div class="min-w-0 flex-1">
 							<div class="flex flex-wrap items-center gap-2">
-								<p class="truncate text-sm font-medium text-tx-main">{{ track.title }}</p>
+								<p class="text-sm font-medium text-tx-main break-words">{{ track.title }}</p>
 								<span class="rounded-full border border-ui-border bg-ui-bg/60 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-tx-muted">
 									{{ formatDuration(track.duration_seconds) }}
 								</span>
 							</div>
-							<p class="truncate text-xs text-tx-muted">{{ track.artist }} • {{ track.album }}</p>
-							<p class="truncate text-[11px] text-tx-muted/80">{{ track.path }}</p>
+							<p class="text-xs text-tx-muted break-words">{{ track.artist }} • {{ track.album }}</p>
+							<p class="text-[11px] text-tx-muted/80 break-all">{{ track.path }}</p>
 						</div>
 
 						<div class="flex items-center gap-2">
@@ -228,6 +275,5 @@ onMounted(async () => {
 			</div>
 		</div>
 
-		<PlayerControls class="shrink-0" />
 	</section>
 </template>

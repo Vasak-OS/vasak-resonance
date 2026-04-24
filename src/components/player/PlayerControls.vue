@@ -43,7 +43,7 @@ watch(
 </script>
 
 <template>
-	<section class="relative mx-auto flex h-full w-full max-w-6xl flex-col gap-4 overflow-hidden p-4">
+	<section class="relative mx-auto flex w-full max-w-6xl flex-col gap-4 overflow-hidden p-4">
 
 		<PlayerQueuePanel
 			v-if="queueItems.length > 0"
