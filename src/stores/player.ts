@@ -31,6 +31,8 @@ export const usePlayerStore = defineStore('player', () => {
 	const lastAutoAdvancedPath = ref<string | null>(null);
 	const error = ref('');
 	const isDragOver = ref(false);
+	const globalBadgeMessage = ref('');
+	let globalBadgeTimeout: number | null = null;
 	let unlistenProgress: UnlistenFn | null = null;
 	let unlistenMprisNext: UnlistenFn | null = null;
 	let unlistenMprisPrevious: UnlistenFn | null = null;
@@ -203,6 +205,22 @@ export const usePlayerStore = defineStore('player', () => {
 
 	const ensureMetadataForFavorites = async () => {
 		await ensureMetadataForPaths(favoritePaths.value);
+	};
+
+	const showGlobalBadge = (message: string, durationMs = 2600) => {
+		globalBadgeMessage.value = message;
+		if (typeof window === 'undefined') {
+			return;
+		}
+
+		if (globalBadgeTimeout !== null) {
+			window.clearTimeout(globalBadgeTimeout);
+		}
+
+		globalBadgeTimeout = window.setTimeout(() => {
+			globalBadgeMessage.value = '';
+			globalBadgeTimeout = null;
+		}, durationMs);
 	};
 
 	const shouldAutoAdvancePlayback = (payload: PlaybackProgressEvent): boolean => {
@@ -612,8 +630,10 @@ export const usePlayerStore = defineStore('player', () => {
 		history,
 		favoritePaths,
 		favoriteEntries,
+		globalBadgeMessage,
 		getTrackMetadata,
 		enqueuePaths,
+		showGlobalBadge,
 		playAlbum,
 		isCurrentFavorite,
 		isFavoritePath,

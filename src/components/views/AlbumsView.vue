@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onMounted } from 'vue';
 import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
-const playingAlbumBadge = ref('');
-let badgeTimeout: number | null = null;
 
 const groupedAlbums = computed(() => {
 	const albumsMap = new Map<
@@ -73,44 +71,15 @@ const onPlayAlbum = async (paths: string[]) => {
 	if (firstPath) {
 		const metadata = playerStore.getTrackMetadata(firstPath);
 		const albumName = metadata?.album || 'Unknown Album';
-		playingAlbumBadge.value = `Reproduciendo album: ${albumName}`;
-
-		if (badgeTimeout !== null) {
-			window.clearTimeout(badgeTimeout);
-		}
-
-		badgeTimeout = window.setTimeout(() => {
-			playingAlbumBadge.value = '';
-			badgeTimeout = null;
-		}, 2600);
+		playerStore.showGlobalBadge(`Reproduciendo album: ${albumName}`);
 	}
 
 	await playerStore.playAlbum(paths);
 };
-
-onBeforeUnmount(() => {
-	if (badgeTimeout !== null) {
-		window.clearTimeout(badgeTimeout);
-	}
-});
 </script>
 
 <template>
 	<section class="h-full overflow-y-auto p-4">
-		<Transition
-			enter-active-class="transition-all duration-200 ease-out"
-			enter-from-class="opacity-0 -translate-y-2"
-			leave-active-class="transition-all duration-150 ease-in"
-			leave-to-class="opacity-0 -translate-y-2"
-		>
-			<div
-				v-if="playingAlbumBadge"
-				class="sticky top-2 z-20 mb-3 rounded-corner border border-primary/35 bg-primary/12 px-3 py-2 text-xs font-medium text-primary backdrop-blur-sm"
-			>
-				{{ playingAlbumBadge }}
-			</div>
-		</Transition>
-
 		<div class="mb-4">
 			<p class="text-xs uppercase tracking-[0.16em] text-tx-muted">Albums</p>
 			<h2 class="text-lg font-semibold text-tx-main">Biblioteca por album</h2>

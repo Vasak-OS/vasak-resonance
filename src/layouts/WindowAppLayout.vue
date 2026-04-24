@@ -41,6 +41,20 @@ onMounted(async () => {
 		>
 			<AudioDropOverlay :is-active="playerStore.isDragOver" />
 
+			<Transition
+				enter-active-class="transition-all duration-200 ease-out"
+				enter-from-class="opacity-0 -translate-y-2"
+				leave-active-class="transition-all duration-150 ease-in"
+				leave-to-class="opacity-0 -translate-y-2"
+			>
+				<div
+					v-if="playerStore.globalBadgeMessage"
+					class="pointer-events-none absolute left-1/2 top-2 z-30 -translate-x-1/2 rounded-corner border border-primary/35 bg-primary/12 px-3 py-2 text-xs font-medium text-primary backdrop-blur-sm"
+				>
+					{{ playerStore.globalBadgeMessage }}
+				</div>
+			</Transition>
+
 			<div class="relative flex h-full w-full flex-col gap-3 md:flex-row">
 				<ResonanceSidebar v-model="selectedSection" />
 
