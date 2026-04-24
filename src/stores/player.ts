@@ -514,10 +514,15 @@ export const usePlayerStore = defineStore('player', () => {
 			return;
 		}
 
+		const metadata = getTrackMetadata(path);
+		const trackLabel = metadata?.title || extractTrackName(path);
+
 		if (isFavoritePath(path)) {
 			favoritePaths.value = favoritePaths.value.filter((entry) => entry !== path);
+			showGlobalBadge(`Quitado de favoritos: ${trackLabel}`);
 		} else {
 			favoritePaths.value = [...favoritePaths.value, path];
+			showGlobalBadge(`Añadido a favoritos: ${trackLabel}`);
 		}
 
 		persistFavorites();

@@ -63,6 +63,13 @@ const onPlayTrack = async (path: string) => {
 };
 
 const onQueueAlbum = (paths: string[]) => {
+	const [firstPath] = paths;
+	if (firstPath) {
+		const metadata = playerStore.getTrackMetadata(firstPath);
+		const albumName = metadata?.album || 'Unknown Album';
+		playerStore.showGlobalBadge(`Encolado album: ${albumName}`);
+	}
+
 	playerStore.enqueuePaths(paths);
 };
 
