@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import { getIconSource } from '@vasakgroup/plugin-vicons';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import AppWindowShell from '@/components/layout/AppWindowShell.vue';
 import AudioDropOverlay from '@/components/layout/AudioDropOverlay.vue';
 import ResonanceSidebar from '@/components/layout/ResonanceSidebar.vue';
@@ -10,19 +10,17 @@ import TopBarComponent from '@/components/topbar/TopBarComponent.vue';
 import AlbumsView from '@/components/views/AlbumsView.vue';
 import FavoritesView from '@/components/views/FavoritesView.vue';
 import PlaylistsView from '@/components/views/PlaylistsView.vue';
-import { audioDropDirective } from '@/directives/audioDrop';
+import { useAudioDrop } from '@/composables/useAudioDrop';
 import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
 const selectedSection = ref('home');
 const appIcon = ref('');
 
-const dropBinding = computed(() => ({
+useAudioDrop({
 	onFilesDropped: (paths: string[]) => playerStore.handleDroppedPaths(paths),
 	onDragStateChange: (dragging: boolean) => playerStore.setDragOver(dragging),
-}));
-
-const vAudioDrop = audioDropDirective;
+});
 
 onMounted(async () => {
 	appIcon.value = await getIconSource('applications-multimedia');
@@ -47,10 +45,7 @@ onUnmounted(() => {
 			<div></div>
 		</TopBarComponent>
 
-		<main
-			v-audio-drop="dropBinding"
-			class="relative flex-1 overflow-hidden p-1 pt-0"
-		>
+		<main class="relative flex-1 overflow-hidden p-1 pt-0">
 			<AudioDropOverlay :is-active="playerStore.isDragOver" />
 
 			<Transition

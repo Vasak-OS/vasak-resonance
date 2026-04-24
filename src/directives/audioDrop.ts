@@ -68,14 +68,18 @@ export const audioDropDirective: ObjectDirective<DropElement, AudioDropBindingVa
 
 			const transfer = event.dataTransfer;
 			if (!transfer) {
+				console.warn('[audioDrop] DataTransfer no está disponible');
 				return;
 			}
 
 			const paths = getPathsFromDataTransfer(transfer);
+			console.log('[audioDrop] Rutas extraídas:', paths);
 			if (paths.length === 0) {
+				console.warn('[audioDrop] No se extrajeron rutas válidas del drop');
 				return;
 			}
 
+			console.log('[audioDrop] Llamando onFilesDropped con:', paths);
 			void binding.value?.onFilesDropped(paths);
 		};
 

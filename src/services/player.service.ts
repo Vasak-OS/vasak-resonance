@@ -29,29 +29,39 @@ export interface PlaybackProgressEvent {
 }
 
 export const playFile = (filePath: string): Promise<void> => {
-	return invoke<void>('play_file', { file_path: filePath });
+	console.log('[player.service] playFile invoke:', filePath);
+	return invoke<void>('play_file', { filePath, file_path: filePath });
 };
 
 export const pausePlayback = (): Promise<void> => {
+	console.log('[player.service] pausePlayback invoke');
 	return invoke<void>('pause');
 };
 
 export const resumePlayback = (): Promise<void> => {
+	console.log('[player.service] resumePlayback invoke');
 	return invoke<void>('resume');
 };
 
 export const seekPlayback = (second: number): Promise<void> => {
+	console.log('[player.service] seekPlayback invoke:', second);
 	return invoke<void>('seek', { second: Math.max(0, Math.floor(second)) });
 };
 
 export const setPlaybackVolume = (volume: number): Promise<void> => {
+	console.log('[player.service] setPlaybackVolume invoke:', volume);
 	return invoke<void>('set_volume', { volume });
 };
 
 export const stopPlayback = (): Promise<void> => {
+	console.log('[player.service] stopPlayback invoke');
 	return invoke<void>('stop');
 };
 
 export const handleDroppedFile = (filePath: string): Promise<DroppedPlaybackTrack> => {
-	return invoke<DroppedPlaybackTrack>('handle_dropped_file', { file_path: filePath });
+	console.log('[player.service] handleDroppedFile invoke:', filePath);
+	return invoke<DroppedPlaybackTrack>('handle_dropped_file', {
+		filePath,
+		file_path: filePath,
+	});
 };

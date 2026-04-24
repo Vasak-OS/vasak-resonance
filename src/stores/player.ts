@@ -405,10 +405,13 @@ export const usePlayerStore = defineStore('player', () => {
 	};
 
 	const playDropped = async (filePath: string, recordHistory = true) => {
+		console.log('[playDropped] Iniciando reproducción de:', filePath);
 		busy.value = true;
 		error.value = '';
 		try {
+			console.log('[playDropped] Llamando handleDroppedFile...');
 			const track = await handleDroppedFile(filePath);
+			console.log('[playDropped] Track obtenido:', track);
 			if (recordHistory && currentPath.value && currentPath.value !== track.path) {
 				history.value.push(currentPath.value);
 			}
@@ -416,8 +419,11 @@ export const usePlayerStore = defineStore('player', () => {
 			cacheTrackMetadata(track);
 			currentPath.value = track.path;
 			durationSeconds.value = track.duration_seconds;
+			console.log('[playDropped] Llamando playFile con:', track.path);
 			await playFile(track.path);
+			console.log('[playDropped] playFile completado exitosamente');
 		} catch (dropError: unknown) {
+			console.error('[playDropped] Error:', dropError);
 			error.value = `No se pudo cargar el archivo arrastrado: ${String(dropError)}`;
 		} finally {
 			busy.value = false;
@@ -562,16 +568,20 @@ export const usePlayerStore = defineStore('player', () => {
 	};
 
 	const handleDroppedPaths = async (paths: string[]) => {
+		console.log('[handleDroppedPaths] Paths recibidos:', paths);
 		const normalized = Array.from(
 			new Set(paths.map((path) => path.trim()).filter((path) => path.length > 0))
 		);
+		console.log('[handleDroppedPaths] Paths normalizados:', normalized);
 		const [firstPath, ...rest] = normalized;
 		if (!firstPath) {
+			console.warn('[handleDroppedPaths] No hay primera ruta para reproducir');
 			return;
 		}
 
 		queue.value = rest;
 		void ensureMetadataForPaths(normalized);
+		console.log('[handleDroppedPaths] Llamando playDropped con:', firstPath);
 		await playDropped(firstPath);
 	};
 
