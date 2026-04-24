@@ -57,6 +57,14 @@ const extractTrackName = (path: string): string => {
 onMounted(async () => {
 	await playerStore.ensureMetadataForFavorites();
 });
+
+const onPlayTrack = async (path: string) => {
+	await playerStore.playDropped(path);
+};
+
+const onQueueAlbum = (paths: string[]) => {
+	playerStore.enqueuePaths(paths);
+};
 </script>
 
 <template>
@@ -86,9 +94,32 @@ onMounted(async () => {
 					{{ album.tracks.length }} {{ album.tracks.length === 1 ? 'pista' : 'pistas' }}
 				</p>
 
-				<ul class="mt-3 grid gap-1">
-					<li v-for="track in album.tracks.slice(0, 4)" :key="track.path" class="truncate text-xs text-tx-muted">
-						{{ track.title || extractTrackName(track.path) }}
+				<div class="mt-3">
+					<button
+						type="button"
+						class="w-full rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-xs font-semibold text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
+						@click="onQueueAlbum(album.tracks.map((track) => track.path))"
+					>
+						Encolar album
+					</button>
+				</div>
+
+				<ul class="mt-3 grid gap-1.5">
+					<li
+						v-for="track in album.tracks.slice(0, 4)"
+						:key="track.path"
+						class="flex items-center justify-between gap-2 rounded-corner border border-transparent px-2 py-1 hover:border-ui-border hover:bg-ui-surface/45"
+					>
+						<span class="min-w-0 flex-1 truncate text-xs text-tx-muted">
+							{{ track.title || extractTrackName(track.path) }}
+						</span>
+						<button
+							type="button"
+							class="shrink-0 rounded-corner border border-primary/45 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary transition-colors duration-200 hover:bg-primary/20"
+							@click="onPlayTrack(track.path)"
+						>
+							Reproducir
+						</button>
 					</li>
 				</ul>
 			</article>

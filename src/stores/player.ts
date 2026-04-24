@@ -552,6 +552,25 @@ export const usePlayerStore = defineStore('player', () => {
 		await playDropped(firstPath);
 	};
 
+	const enqueuePaths = (paths: string[]) => {
+		const normalized = Array.from(
+			new Set(paths.map((path) => path.trim()).filter((path) => path.length > 0))
+		);
+
+		if (normalized.length === 0) {
+			return;
+		}
+
+		const existing = new Set(queue.value);
+		const nextItems = normalized.filter((path) => !existing.has(path));
+		if (nextItems.length === 0) {
+			return;
+		}
+
+		queue.value = [...queue.value, ...nextItems];
+		void ensureMetadataForPaths(nextItems);
+	};
+
 	const advanceQueue = async () => {
 		await advancePlayback();
 	};
@@ -579,6 +598,7 @@ export const usePlayerStore = defineStore('player', () => {
 		favoritePaths,
 		favoriteEntries,
 		getTrackMetadata,
+		enqueuePaths,
 		isCurrentFavorite,
 		isFavoritePath,
 		queue,
