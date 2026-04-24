@@ -4,7 +4,7 @@ import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
 
-const spectrumSteps = Array.from({ length: 28 }, (_, index) => index);
+const spectrumSteps = Array.from({ length: 110 }, (_, index) => index);
 
 const trackTitle = computed(() => {
 	if (playerStore.currentTrack?.title) {
@@ -48,34 +48,29 @@ const isActiveBar = (index: number): boolean => {
 
 <template>
 	<section class="min-h-14 rounded-corner border border-primary/25 bg-ui-bg/90 px-3 py-2 shadow-sm">
-		<div class="mb-1 flex items-center justify-between gap-2">
-			<p class="text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">Reproduccion</p>
-			<p class="text-[11px] text-tx-muted">
-				{{ formatSeconds(playerStore.positionSeconds) }} / {{ formatSeconds(playerStore.durationSeconds) }}
-			</p>
-		</div>
-
 		<div class="flex items-center gap-3">
-			<p class="min-w-0 w-44 shrink-0 truncate text-xs font-semibold text-tx-main">{{ trackTitle }}</p>
 
 			<div class="min-w-0 flex-1">
-				<div class="mb-1.5 flex h-4 items-end gap-0.5 overflow-hidden">
+				<div class="mb-1.5 flex h-4 w-full items-end gap-0.5 overflow-hidden">
 					<span
 						v-for="step in spectrumSteps"
 						:key="step"
-						class="w-1 rounded-sm transition-all duration-200"
-						:class="isActiveBar(step) ? 'bg-primary/90' : 'bg-primary/30'"
+						class="flex-1 rounded-sm transition-all duration-200"
+						:class="isActiveBar(step) ? 'bg-secondary' : 'bg-primary/30'"
 						:style="{ height: `${barHeight(step)}px` }"
-					/>
-				</div>
-
-				<div class="h-1.5 overflow-hidden rounded-full bg-ui-surface/70 ring-1 ring-primary/20">
-					<div
-						class="h-full rounded-full bg-primary transition-all duration-200"
-						:style="{ width: `${progressPercent}%` }"
 					/>
 				</div>
 			</div>
 		</div>
+
+    <div class="mt-1 flex items-center justify-between gap-2">
+      <p class="min-w-0 truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">
+        {{ trackTitle }}
+      </p>
+      <p class="text-[11px] text-tx-muted">
+        {{ formatSeconds(playerStore.positionSeconds) }} / {{ formatSeconds(playerStore.durationSeconds) }}
+      </p>
+    </div>
+
 	</section>
 </template>
