@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted } from 'vue';
 import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
@@ -11,6 +11,10 @@ const extractTrackName = (path: string): string => {
 	const parts = normalized.split('/');
 	return parts[parts.length - 1] || path;
 };
+
+onMounted(async () => {
+	await playerStore.ensureMetadataForFavorites();
+});
 </script>
 
 <template>
@@ -36,25 +40,40 @@ const extractTrackName = (path: string): string => {
 
 		<ul v-else class="grid gap-2">
 			<li
-				v-for="path in playerStore.favoritePaths"
-				:key="path"
+				v-for="entry in playerStore.favoriteEntries"
+				:key="entry.path"
 				class="flex items-center gap-3 rounded-corner border border-ui-border bg-ui-bg/70 px-3 py-2"
 			>
+				<div class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-corner border border-ui-border bg-ui-surface/45">
+					<img
+						v-if="entry.metadata?.cover_data_url"
+						:src="entry.metadata.cover_data_url"
+						:alt="entry.metadata.title || extractTrackName(entry.path)"
+						class="h-full w-full object-cover"
+					/>
+					<div v-else class="text-[10px] font-semibold uppercase tracking-[0.14em] text-tx-muted">Fav</div>
+				</div>
+
 				<div class="min-w-0 flex-1">
-					<p class="truncate text-sm font-medium text-tx-main">{{ extractTrackName(path) }}</p>
-					<p class="truncate text-xs text-tx-muted">{{ path }}</p>
+					<p class="truncate text-sm font-medium text-tx-main">
+						{{ entry.metadata?.title || extractTrackName(entry.path) }}
+					</p>
+					<p class="truncate text-xs text-tx-muted">
+						{{ entry.metadata?.artist || 'Unknown Artist' }} • {{ entry.metadata?.album || 'Unknown Album' }}
+					</p>
+					<p class="truncate text-[11px] text-tx-muted/80">{{ entry.path }}</p>
 				</div>
 				<button
 					type="button"
 					class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-1.5 text-xs font-medium text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
-					@click="playerStore.playDropped(path)"
+					@click="playerStore.playDropped(entry.path)"
 				>
 					Reproducir
 				</button>
 				<button
 					type="button"
 					class="rounded-corner border border-status-error/35 bg-status-error/10 px-3 py-1.5 text-xs font-medium text-status-error transition-colors duration-200 hover:bg-status-error/20"
-					@click="playerStore.toggleFavoritePath(path)"
+					@click="playerStore.toggleFavoritePath(entry.path)"
 				>
 					Quitar
 				</button>

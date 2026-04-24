@@ -20,6 +20,7 @@ export const usePlayerStore = defineStore('player', () => {
 	const queue = ref<string[]>([]);
 	const history = ref<string[]>([]);
 	const favoritePaths = ref<string[]>([]);
+	const trackCacheByPath = ref<Record<string, DroppedPlaybackTrack>>({});
 	const positionSeconds = ref(0);
 	const durationSeconds = ref<number | null>(null);
 	const isPlaying = ref(false);
@@ -44,6 +45,13 @@ export const usePlayerStore = defineStore('player', () => {
 
 	const hasTrack = computed(() => Boolean(currentPath.value));
 	const queuedCount = computed(() => queue.value.length);
+	const trackCacheList = computed(() => Object.values(trackCacheByPath.value));
+	const favoriteEntries = computed(() =>
+		favoritePaths.value.map((path) => ({
+			path,
+			metadata: trackCacheByPath.value[path] ?? null,
+		}))
+	);
 	const nextSuggestionPath = computed(() => {
 		const current = currentPath.value;
 		for (let index = history.value.length - 1; index >= 0; index -= 1) {
@@ -64,6 +72,12 @@ export const usePlayerStore = defineStore('player', () => {
 		}
 		return favoritePaths.value.includes(currentPath.value);
 	});
+
+	const extractTrackName = (path: string): string => {
+		const normalized = path.replace(/\\/g, '/');
+		const parts = normalized.split('/');
+		return parts[parts.length - 1] || path;
+	};
 
 	const syncFavoritesFromStorage = () => {
 		if (typeof window === 'undefined') {
@@ -92,6 +106,103 @@ export const usePlayerStore = defineStore('player', () => {
 		}
 
 		window.localStorage.setItem('resonance.favorites', JSON.stringify(favoritePaths.value));
+	};
+
+	const syncTrackCacheFromStorage = () => {
+		if (typeof window === 'undefined') {
+			return;
+		}
+
+		const raw = window.localStorage.getItem('resonance.track-cache');
+		if (!raw) {
+			trackCacheByPath.value = {};
+			return;
+		}
+
+		try {
+			const parsed = JSON.parse(raw) as Record<string, DroppedPlaybackTrack>;
+			if (!parsed || typeof parsed !== 'object') {
+				trackCacheByPath.value = {};
+				return;
+			}
+
+			const sanitized: Record<string, DroppedPlaybackTrack> = {};
+			for (const [path, track] of Object.entries(parsed)) {
+				if (!path || !track || typeof track !== 'object') {
+					continue;
+				}
+				sanitized[path] = {
+					path,
+					title:
+						typeof track.title === 'string' && track.title ? track.title : extractTrackName(path),
+					artist:
+						typeof track.artist === 'string' && track.artist ? track.artist : 'Unknown Artist',
+					album: typeof track.album === 'string' && track.album ? track.album : 'Unknown Album',
+					duration_seconds: typeof track.duration_seconds === 'number' ? track.duration_seconds : 0,
+					cover_data_url:
+						typeof track.cover_data_url === 'string' || track.cover_data_url === null
+							? track.cover_data_url
+							: null,
+				};
+			}
+
+			trackCacheByPath.value = sanitized;
+		} catch {
+			trackCacheByPath.value = {};
+		}
+	};
+
+	const persistTrackCache = () => {
+		if (typeof window === 'undefined') {
+			return;
+		}
+
+		window.localStorage.setItem('resonance.track-cache', JSON.stringify(trackCacheByPath.value));
+	};
+
+	const cacheTrackMetadata = (track: DroppedPlaybackTrack) => {
+		if (!track.path) {
+			return;
+		}
+
+		trackCacheByPath.value = {
+			...trackCacheByPath.value,
+			[track.path]: track,
+		};
+		persistTrackCache();
+	};
+
+	const getTrackMetadata = (path: string) => {
+		return trackCacheByPath.value[path] ?? null;
+	};
+
+	const ensureMetadataForPath = async (path: string) => {
+		if (!path || trackCacheByPath.value[path]) {
+			return trackCacheByPath.value[path] ?? null;
+		}
+
+		try {
+			const track = await handleDroppedFile(path);
+			cacheTrackMetadata(track);
+			return track;
+		} catch {
+			return null;
+		}
+	};
+
+	const ensureMetadataForPaths = async (paths: string[]) => {
+		const uniquePaths = Array.from(
+			new Set(paths.filter((path) => path && !trackCacheByPath.value[path]))
+		);
+		if (uniquePaths.length === 0) {
+			return;
+		}
+
+		await Promise.allSettled(uniquePaths.map((path) => ensureMetadataForPath(path)));
+	};
+
+	const ensureMetadataForFavorites = async () => {
+		await ensureMetadataForPaths(favoritePaths.value);
 	};
 
 	const shouldAutoAdvancePlayback = (payload: PlaybackProgressEvent): boolean => {
@@ -178,6 +289,7 @@ export const usePlayerStore = defineStore('player', () => {
 				duration_seconds: nowPlaying.duration_seconds,
 				cover_data_url: nowPlaying.cover_data_url,
 			};
+			cacheTrackMetadata(currentTrack.value);
 		} else if (!payload.path) {
 			currentTrack.value = null;
 		}
@@ -283,6 +395,7 @@ export const usePlayerStore = defineStore('player', () => {
 				history.value.push(currentPath.value);
 			}
 			currentTrack.value = track;
+			cacheTrackMetadata(track);
 			currentPath.value = track.path;
 			durationSeconds.value = track.duration_seconds;
 			await playFile(track.path);
@@ -435,6 +548,7 @@ export const usePlayerStore = defineStore('player', () => {
 		}
 
 		queue.value = rest;
+		void ensureMetadataForPaths(normalized);
 		await playDropped(firstPath);
 	};
 
@@ -442,7 +556,9 @@ export const usePlayerStore = defineStore('player', () => {
 		await advancePlayback();
 	};
 
+	syncTrackCacheFromStorage();
 	syncFavoritesFromStorage();
+	void ensureMetadataForFavorites();
 
 	return {
 		advanceQueue,
@@ -461,12 +577,17 @@ export const usePlayerStore = defineStore('player', () => {
 		initMprisStopListener,
 		history,
 		favoritePaths,
+		favoriteEntries,
+		getTrackMetadata,
 		isCurrentFavorite,
 		isFavoritePath,
 		queue,
 		queuedCount,
 		nextActionLabel,
 		nextSuggestionPath,
+		trackCacheList,
+		ensureMetadataForFavorites,
+		ensureMetadataForPath,
 		moveQueueItem,
 		removeQueueItem,
 		isDragOver,
