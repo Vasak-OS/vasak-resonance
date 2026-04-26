@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import { getIconSource } from '@vasakgroup/plugin-vicons';
-import { RouterView } from 'vue-router';
 import { onMounted, onUnmounted, ref } from 'vue';
+import { RouterView } from 'vue-router';
 import AppWindowShell from '@/components/layout/AppWindowShell.vue';
 import AudioDropOverlay from '@/components/layout/AudioDropOverlay.vue';
 import ResonanceSidebar from '@/components/layout/ResonanceSidebar.vue';

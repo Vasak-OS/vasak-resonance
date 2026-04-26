@@ -81,6 +81,11 @@ export const listLibraryTracks = (): Promise<LibraryTrack[]> => {
 	return invoke<LibraryTrack[]>('list_library_tracks');
 };
 
+export const searchLibraryTracks = (query: string, limit?: number): Promise<LibraryTrack[]> => {
+	console.log('[player.service] searchLibraryTracks invoke:', query);
+	return invoke<LibraryTrack[]>('search_library_tracks', { query, limit });
+};
+
 export const saveLibraryTrack = (track: DroppedPlaybackTrack): Promise<void> => {
 	console.log('[player.service] saveLibraryTrack invoke:', track.path);
 	return invoke<void>('save_library_track', { track });

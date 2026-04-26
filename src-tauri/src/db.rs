@@ -58,9 +58,38 @@ pub fn open_database(db_path: &Path) -> Result<Connection, String> {
 
         CREATE INDEX IF NOT EXISTS idx_playlist_tracks_playlist_position
             ON playlist_tracks(playlist_id, position);
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS tracks_fts USING fts5(
+            title,
+            artist,
+            album,
+            path UNINDEXED,
+            content='tracks',
+            content_rowid='id'
+        );
+
+        CREATE TRIGGER IF NOT EXISTS tracks_ai AFTER INSERT ON tracks BEGIN
+            INSERT INTO tracks_fts(rowid, title, artist, album, path)
+            VALUES (new.id, new.title, new.artist, new.album, new.path);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS tracks_ad AFTER DELETE ON tracks BEGIN
+            INSERT INTO tracks_fts(tracks_fts, rowid, title, artist, album, path)
+            VALUES ('delete', old.id, old.title, old.artist, old.album, old.path);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS tracks_au AFTER UPDATE ON tracks BEGIN
+            INSERT INTO tracks_fts(tracks_fts, rowid, title, artist, album, path)
+            VALUES ('delete', old.id, old.title, old.artist, old.album, old.path);
+            INSERT INTO tracks_fts(rowid, title, artist, album, path)
+            VALUES (new.id, new.title, new.artist, new.album, new.path);
+        END;
         ",
     )
     .map_err(|e| format!("No se pudo inicializar el esquema SQLite: {e}"))?;
+
+    conn.execute("INSERT INTO tracks_fts(tracks_fts) VALUES ('rebuild')", [])
+        .map_err(|e| format!("No se pudo reconstruir índice FTS5: {e}"))?;
 
     Ok(conn)
 }
@@ -140,6 +169,69 @@ pub fn list_tracks(conn: &Connection) -> Result<Vec<LibraryTrack>, String> {
     }
 
     Ok(tracks)
+}
+
+pub fn search_tracks_fts(
+    conn: &Connection,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<LibraryTrack>, String> {
+    let fts_query = build_fts_query(query);
+    if fts_query.is_empty() {
+        return list_tracks(conn);
+    }
+
+    let clamped_limit = limit.clamp(1, 10_000) as i64;
+
+    let mut stmt = conn
+        .prepare(
+            "
+            SELECT
+                t.id,
+                t.path,
+                t.title,
+                t.artist,
+                t.album,
+                t.duration_seconds,
+                t.created_at
+            FROM tracks_fts f
+            JOIN tracks t ON t.id = f.rowid
+            WHERE tracks_fts MATCH ?1
+            ORDER BY bm25(tracks_fts, 1.2, 1.0, 0.9), t.created_at DESC
+            LIMIT ?2
+            ",
+        )
+        .map_err(|e| format!("No se pudo preparar búsqueda FTS5: {e}"))?;
+
+    let rows = stmt
+        .query_map(params![fts_query, clamped_limit], |row| {
+            Ok(LibraryTrack {
+                id: row.get(0)?,
+                path: row.get(1)?,
+                title: row.get(2)?,
+                artist: row.get(3)?,
+                album: row.get(4)?,
+                duration_seconds: row.get(5)?,
+                created_at: row.get(6)?,
+            })
+        })
+        .map_err(|e| format!("No se pudo ejecutar búsqueda FTS5: {e}"))?;
+
+    let mut tracks = Vec::new();
+    for row in rows {
+        tracks.push(row.map_err(|e| format!("No se pudo leer resultado FTS5: {e}"))?);
+    }
+
+    Ok(tracks)
+}
+
+fn build_fts_query(raw: &str) -> String {
+    raw.split_whitespace()
+        .map(|token| token.trim_matches(|c: char| !c.is_alphanumeric() && c != '_'))
+        .filter(|token| !token.is_empty())
+        .map(|token| format!("\"{}\"*", token.replace('"', "")))
+        .collect::<Vec<_>>()
+        .join(" AND ")
 }
 
 pub fn create_playlist(conn: &Connection, name: &str) -> Result<Playlist, String> {

@@ -9,9 +9,9 @@ import {
 	pausePlayback,
 	playFile,
 	resumePlayback,
+	saveLibraryTrack,
 	seekPlayback,
 	setPlaybackVolume,
-	saveLibraryTrack,
 	stopPlayback as stopPlaybackCommand,
 } from '@/services/player.service';
 

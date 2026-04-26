@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { usePlayerStore } from '@/stores/player';
+import { RecycleScroller } from 'vue-virtual-scroller';
+import 'vue-virtual-scroller/dist/vue-virtual-scroller.css';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
+	type DroppedPlaybackTrack,
+	type LibraryTrack,
 	listLibraryTracks,
 	saveLibraryTrack,
-	type LibraryTrack,
-	type DroppedPlaybackTrack,
+	searchLibraryTracks,
 } from '@/services/player.service';
+import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
 const libraryTracks = ref<LibraryTrack[]>([]);
@@ -16,6 +19,8 @@ const searchQuery = ref('');
 const artistFilter = ref('all');
 const albumFilter = ref('all');
 const sortBy = ref('recent-desc');
+const ftsSearchResults = ref<LibraryTrack[] | null>(null);
+let searchDebounceTimer: number | null = null;
 
 const normalize = (value: string) => value.trim().toLowerCase();
 
@@ -70,9 +75,23 @@ const loadLibrary = async () => {
 };
 
 const syncCachedTracksToDatabase = async () => {
-	await Promise.allSettled(
-		playerStore.trackCacheList.map((track) => saveLibraryTrack(track))
-	);
+	await Promise.allSettled(playerStore.trackCacheList.map((track) => saveLibraryTrack(track)));
+};
+
+const runFtsSearch = async () => {
+	const query = normalize(searchQuery.value);
+	if (!query) {
+		ftsSearchResults.value = null;
+		return;
+	}
+
+	try {
+		const results = await searchLibraryTracks(query, 5000);
+		ftsSearchResults.value = results.map(sanitizeTrack);
+	} catch (error) {
+		console.error('[HomeView] FTS search error:', error);
+		ftsSearchResults.value = [];
+	}
 };
 
 const librarySourceTracks = computed(() => {
@@ -110,8 +129,8 @@ const albumOptions = computed(() => {
 });
 
 const sortedTracks = computed(() => {
-	const query = normalize(searchQuery.value);
-	const filtered = librarySourceTracks.value.filter((track) => {
+	const sourceTracks = ftsSearchResults.value ?? librarySourceTracks.value;
+	const filtered = sourceTracks.filter((track) => {
 		if (artistFilter.value !== 'all' && track.artist !== artistFilter.value) {
 			return false;
 		}
@@ -120,13 +139,7 @@ const sortedTracks = computed(() => {
 			return false;
 		}
 
-		if (!query) {
-			return true;
-		}
-
-		return [track.title, track.artist, track.album, track.path]
-			.map((value) => normalize(value))
-			.some((value) => value.includes(query));
+		return true;
 	});
 
 	return [...filtered].sort((left, right) => {
@@ -147,7 +160,9 @@ const sortedTracks = computed(() => {
 				return right.duration_seconds - left.duration_seconds;
 			case 'recent-desc':
 			default:
-				return right.created_at.localeCompare(left.created_at) || left.title.localeCompare(right.title);
+				return (
+					right.created_at.localeCompare(left.created_at) || left.title.localeCompare(right.title)
+				);
 		}
 	});
 });
@@ -164,6 +179,23 @@ onMounted(async () => {
 	await syncCachedTracksToDatabase();
 	await loadLibrary();
 	await playerStore.ensureMetadataForFavorites();
+});
+
+watch(searchQuery, () => {
+	if (searchDebounceTimer !== null) {
+		window.clearTimeout(searchDebounceTimer);
+	}
+
+	searchDebounceTimer = window.setTimeout(() => {
+		void runFtsSearch();
+	}, 180);
+});
+
+onUnmounted(() => {
+	if (searchDebounceTimer !== null) {
+		window.clearTimeout(searchDebounceTimer);
+		searchDebounceTimer = null;
+	}
 });
 </script>
 
@@ -236,43 +268,45 @@ onMounted(async () => {
 		</div>
 
 		<div v-else class="min-h-0 flex-1 overflow-hidden rounded-corner border border-ui-border bg-ui-bg/80">
-			<div class="h-full overflow-y-auto p-3">
-				<div class="grid gap-2">
-					<article
-						v-for="track in sortedTracks"
-						:key="track.path"
-						class="flex flex-wrap items-center gap-3 rounded-corner border border-ui-border bg-ui-surface/45 px-3 py-2.5 transition-colors duration-200 hover:border-primary/35 hover:bg-ui-surface/70"
-					>
-						<div class="min-w-0 flex-1">
-							<div class="flex flex-wrap items-center gap-2">
-								<p class="text-sm font-medium text-tx-main break-words">{{ track.title }}</p>
-								<span class="rounded-full border border-ui-border bg-ui-bg/60 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-tx-muted">
-									{{ formatDuration(track.duration_seconds) }}
-								</span>
-							</div>
-							<p class="text-xs text-tx-muted break-words">{{ track.artist }} • {{ track.album }}</p>
-							<p class="text-[11px] text-tx-muted/80 break-all">{{ track.path }}</p>
-						</div>
-
+			<RecycleScroller
+				:items="sortedTracks"
+				:key-field="'path'"
+				:item-size="92"
+				class="h-full overflow-y-auto p-3"
+				v-slot="{ item: track }"
+			>
+				<article
+					class="mb-2 flex h-[84px] items-center gap-3 rounded-corner border border-ui-border bg-ui-surface/45 px-3 py-2.5 transition-colors duration-200 hover:border-primary/35 hover:bg-ui-surface/70"
+				>
+					<div class="min-w-0 flex-1">
 						<div class="flex items-center gap-2">
-							<button
-								type="button"
-								class="rounded-corner border border-primary/45 bg-primary px-3 py-2 text-xs font-semibold text-tx-on-primary transition-colors duration-200 hover:bg-primary/90"
-								@click="playTrack(track.path)"
-							>
-								Reproducir
-							</button>
-							<button
-								type="button"
-								class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-xs font-semibold text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
-								@click="toggleFavorite(track.path)"
-							>
-								{{ playerStore.isFavoritePath(track.path) ? 'Quitar favorito' : 'Favorito' }}
-							</button>
+							<p class="truncate text-sm font-medium text-tx-main">{{ track.title }}</p>
+							<span class="rounded-full border border-ui-border bg-ui-bg/60 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-tx-muted">
+								{{ formatDuration(track.duration_seconds) }}
+							</span>
 						</div>
-					</article>
-				</div>
-			</div>
+						<p class="truncate text-xs text-tx-muted">{{ track.artist }} • {{ track.album }}</p>
+						<p class="truncate text-[11px] text-tx-muted/80">{{ track.path }}</p>
+					</div>
+
+					<div class="flex items-center gap-2">
+						<button
+							type="button"
+							class="rounded-corner border border-primary/45 bg-primary px-3 py-2 text-xs font-semibold text-tx-on-primary transition-colors duration-200 hover:bg-primary/90"
+							@click="playTrack(track.path)"
+						>
+							Reproducir
+						</button>
+						<button
+							type="button"
+							class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-xs font-semibold text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
+							@click="toggleFavorite(track.path)"
+						>
+							{{ playerStore.isFavoritePath(track.path) ? 'Quitar favorito' : 'Favorito' }}
+						</button>
+					</div>
+				</article>
+			</RecycleScroller>
 		</div>
 
 	</section>
