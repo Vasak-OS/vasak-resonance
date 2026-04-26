@@ -2,6 +2,7 @@
 import { getSymbolSource } from '@vasakgroup/plugin-vicons';
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import MainTransportControls from '@/components/player/transport/MainTransportControls.vue';
 import TrackMetaCard from '@/components/player/TrackMetaCard.vue';
 import { useTrackSubtitle } from '@/composables/useTrackSubtitle';
 import { useTrackTitle } from '@/composables/useTrackTitle';
@@ -32,13 +33,6 @@ const trackTitle = useTrackTitle({
 
 const trackSubtitle = useTrackSubtitle({
 	currentTrack: () => playerStore.currentTrack,
-});
-
-const playButtonLabel = computed(() => {
-	if (!playerStore.hasTrack) {
-		return 'Play';
-	}
-	return playerStore.isPaused ? 'Play' : 'Pause';
 });
 
 const onSelectSection = async (id: string) => {
@@ -108,32 +102,16 @@ onMounted(async () => {
 				placeholder-text="VR"
 			/>
 
-			<div class="grid grid-cols-3 gap-2">
-				<button
-					type="button"
-					class="rounded-corner border border-ui-border bg-ui-bg/50 px-2 py-2 text-xs font-semibold text-tx-main transition-colors duration-200 hover:bg-ui-surface/80 disabled:cursor-not-allowed disabled:opacity-50"
-					:disabled="!playerStore.hasTrack || playerStore.busy"
-					@click="playerStore.playPreviousTrack"
-				>
-					Prev
-				</button>
-				<button
-					type="button"
-					class="rounded-corner border border-primary/45 bg-primary px-2 py-2 text-xs font-semibold text-tx-on-primary transition-colors duration-200 hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-					:disabled="!playerStore.hasTrack || playerStore.busy"
-					@click="playerStore.togglePlayPause"
-				>
-					{{ playButtonLabel }}
-				</button>
-				<button
-					type="button"
-					class="rounded-corner border border-ui-border bg-ui-bg/50 px-2 py-2 text-xs font-semibold text-tx-main transition-colors duration-200 hover:bg-ui-surface/80 disabled:cursor-not-allowed disabled:opacity-50"
-					:disabled="!playerStore.hasNextTrack || playerStore.busy"
-					@click="playerStore.advanceQueue"
-				>
-					{{ playerStore.nextActionLabel }}
-				</button>
-			</div>
+			<MainTransportControls
+				:has-track="playerStore.hasTrack"
+				:has-next-track="playerStore.hasNextTrack"
+				:busy="playerStore.busy"
+				:is-paused="playerStore.isPaused"
+				:next-action-label="playerStore.nextActionLabel"
+				@prev="playerStore.playPreviousTrack"
+				@toggle="playerStore.togglePlayPause"
+				@next="playerStore.advanceQueue"
+			/>
 		</section>
 	</aside>
 </template>

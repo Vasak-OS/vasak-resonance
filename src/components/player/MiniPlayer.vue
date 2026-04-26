@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue';
 import PlaybackWaves from '@/components/player/PlaybackWaves.vue';
+import MiniTransportControls from '@/components/player/transport/MiniTransportControls.vue';
 import TrackMetaCard from '@/components/player/TrackMetaCard.vue';
 import { useConfigSync } from '@/composables/useConfigSync';
 import { useTrackSubtitle } from '@/composables/useTrackSubtitle';
@@ -53,20 +54,18 @@ onUnmounted(() => {
 					title-class="text-primary"
 				/>
 
-				<div class="flex shrink-0 items-center gap-2">
-					<button
-						class="rounded-corner border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/20"
-						@click="togglePlayback"
-					>
-						{{ playerStore.isPaused || !playerStore.isPlaying ? 'Play' : 'Pause' }}
-					</button>
-					<button
-						class="rounded-corner border border-ui-border bg-ui-bg/80 px-3 py-1.5 text-xs font-semibold text-tx-main transition-colors hover:bg-ui-bg"
-						@click="openMainWindow"
-					>
-						Abrir
-					</button>
-				</div>
+				<MiniTransportControls
+					:has-track="playerStore.hasTrack"
+					:has-next-track="playerStore.hasNextTrack"
+					:is-playing="playerStore.isPlaying"
+					:is-paused="playerStore.isPaused"
+					:busy="playerStore.busy"
+					:next-label="playerStore.nextActionLabel"
+					open-label="Volver"
+					@toggle="togglePlayback"
+					@next="playerStore.advanceQueue"
+					@open="openMainWindow"
+				/>
 			</div>
 
 			<PlaybackWaves class="mt-2" :steps="72" bar-height="h-3" :floor-paused="2" :floor-playing="4" :amplitude="7" />
