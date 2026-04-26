@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { getSymbolSource } from '@vasakgroup/plugin-vicons';
 import { ref } from 'vue';
+import { onMounted } from 'vue';
 
 const props = defineProps<{
 	queueItems: string[];
@@ -13,6 +15,7 @@ const emit = defineEmits<{
 
 const draggingQueueIndex = ref<number | null>(null);
 const dropTargetIndex = ref<number | null>(null);
+const clearAllIcon = ref('');
 
 const extractTrackName = (path: string): string => {
 	const normalized = path.replace(/\\/g, '/');
@@ -53,6 +56,11 @@ const onQueueDrop = (targetIndex: number) => {
 	draggingQueueIndex.value = null;
 	dropTargetIndex.value = null;
 };
+
+onMounted(async () => {
+	const getSymbolic = getSymbolSource;
+	clearAllIcon.value = await getSymbolic('edit-clear-all-symbolic').catch(() => '');
+});
 </script>
 
 <template>
@@ -64,9 +72,12 @@ const onQueueDrop = (targetIndex: number) => {
 			</div>
 			<button
 				type="button"
-				class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-1.5 text-xs font-medium text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
+				class="inline-flex items-center gap-1 rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-1.5 text-xs font-medium text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
+				title="Limpiar cola"
+				aria-label="Limpiar cola"
 				@click="emit('clear')"
 			>
+				<img v-if="clearAllIcon" :src="clearAllIcon" alt="Limpiar cola" class="h-4 w-4">
 				Limpiar cola
 			</button>
 		</div>

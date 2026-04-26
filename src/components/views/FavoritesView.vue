@@ -1,8 +1,13 @@
-<script setup lang="ts">
+	<script setup lang="ts">
+import { getSymbolSource } from '@vasakgroup/plugin-vicons';
 import { computed, onMounted } from 'vue';
+import { ref } from 'vue';
 import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
+const playIcon = ref('');
+const addFavoriteIcon = ref('');
+const removeIcon = ref('');
 
 const currentPath = computed(() => playerStore.currentPath || '');
 
@@ -13,6 +18,17 @@ const extractTrackName = (path: string): string => {
 };
 
 onMounted(async () => {
+	const getSymbolic = getSymbolSource;
+	const [playSrc, addFavSrc, removeSrc] = await Promise.all([
+		getSymbolic('media-playback-start').catch(() => ''),
+		getSymbolic('new-star').catch(() => ''),
+		getSymbolic('remove').catch(() => ''),
+	]);
+
+	playIcon.value = playSrc;
+	addFavoriteIcon.value = addFavSrc;
+	removeIcon.value = removeSrc;
+
 	await playerStore.ensureMetadataForFavorites();
 });
 </script>
@@ -26,10 +42,18 @@ onMounted(async () => {
 			</div>
 			<button
 				type="button"
-				class="rounded-corner border border-primary/45 bg-primary px-3 py-2 text-xs font-semibold text-tx-on-primary transition-colors duration-200 hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+				class="inline-flex items-center gap-1 rounded-corner border border-primary/45 bg-primary px-3 py-2 text-xs font-semibold text-tx-on-primary transition-colors duration-200 hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
 				:disabled="!playerStore.hasTrack"
+				:title="playerStore.isCurrentFavorite ? 'Quitar actual' : 'Agregar a favorito'"
+				:aria-label="playerStore.isCurrentFavorite ? 'Quitar actual' : 'Agregar a favorito'"
 				@click="playerStore.toggleCurrentFavorite"
 			>
+				<img
+					v-if="playerStore.isCurrentFavorite ? removeIcon : addFavoriteIcon"
+					:src="playerStore.isCurrentFavorite ? removeIcon : addFavoriteIcon"
+					:alt="playerStore.isCurrentFavorite ? 'Quitar actual' : 'Agregar a favorito'"
+					class="h-4 w-4"
+				>
 				{{ playerStore.isCurrentFavorite ? 'Quitar actual' : 'Guardar actual' }}
 			</button>
 		</div>
@@ -65,16 +89,22 @@ onMounted(async () => {
 				</div>
 				<button
 					type="button"
-					class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-1.5 text-xs font-medium text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
+					class="inline-flex items-center gap-1 rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-1.5 text-xs font-medium text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
+					title="Reproducir"
+					aria-label="Reproducir"
 					@click="playerStore.playDropped(entry.path)"
 				>
+					<img v-if="playIcon" :src="playIcon" alt="Reproducir" class="h-4 w-4">
 					Reproducir
 				</button>
 				<button
 					type="button"
-					class="rounded-corner border border-status-error/35 bg-status-error/10 px-3 py-1.5 text-xs font-medium text-status-error transition-colors duration-200 hover:bg-status-error/20"
+					class="inline-flex items-center gap-1 rounded-corner border border-status-error/35 bg-status-error/10 px-3 py-1.5 text-xs font-medium text-status-error transition-colors duration-200 hover:bg-status-error/20"
+					title="Quitar"
+					aria-label="Quitar"
 					@click="playerStore.toggleFavoritePath(entry.path)"
 				>
+					<img v-if="removeIcon" :src="removeIcon" alt="Quitar" class="h-4 w-4">
 					Quitar
 				</button>
 			</li>

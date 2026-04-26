@@ -1,8 +1,12 @@
 <script setup lang="ts">
+import { getSymbolSource } from '@vasakgroup/plugin-vicons';
 import { computed, onMounted } from 'vue';
+import { ref } from 'vue';
 import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
+const playIcon = ref('');
+const addAlbumIcon = ref('');
 
 const groupedAlbums = computed(() => {
 	const albumsMap = new Map<
@@ -55,6 +59,15 @@ const extractTrackName = (path: string): string => {
 };
 
 onMounted(async () => {
+	const getSymbolic = getSymbolSource;
+	const [playSrc, addAlbumSrc] = await Promise.all([
+		getSymbolic('media-playback-start').catch(() => ''),
+		getSymbolic('media-track-add-amarok').catch(() => ''),
+	]);
+
+	playIcon.value = playSrc;
+	addAlbumIcon.value = addAlbumSrc;
+
 	await playerStore.ensureMetadataForFavorites();
 });
 
@@ -115,16 +128,22 @@ const onPlayAlbum = async (paths: string[]) => {
 				<div class="mt-3 grid grid-cols-2 gap-2">
 					<button
 						type="button"
-						class="w-full rounded-corner border border-primary/45 bg-primary px-3 py-2 text-xs font-semibold text-tx-on-primary transition-colors duration-200 hover:bg-primary/90"
+						class="inline-flex w-full items-center justify-center gap-1 rounded-corner border border-primary/45 bg-primary px-3 py-2 text-xs font-semibold text-tx-on-primary transition-colors duration-200 hover:bg-primary/90"
+						title="Reproducir album"
+						aria-label="Reproducir album"
 						@click="onPlayAlbum(album.tracks.map((track) => track.path))"
 					>
+						<img v-if="playIcon" :src="playIcon" alt="Reproducir" class="h-4 w-4">
 						Reproducir album
 					</button>
 					<button
 						type="button"
-						class="w-full rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-xs font-semibold text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
+						class="inline-flex w-full items-center justify-center gap-1 rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-xs font-semibold text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
+						title="Agregar album"
+						aria-label="Agregar album"
 						@click="onQueueAlbum(album.tracks.map((track) => track.path))"
 					>
+						<img v-if="addAlbumIcon" :src="addAlbumIcon" alt="Agregar album" class="h-4 w-4">
 						Encolar album
 					</button>
 				</div>
@@ -133,17 +152,20 @@ const onPlayAlbum = async (paths: string[]) => {
 					<li
 						v-for="track in album.tracks.slice(0, 4)"
 						:key="track.path"
-						class="flex items-center justify-between gap-2 rounded-corner border border-transparent px-2 py-1 hover:border-ui-border hover:bg-ui-surface/45"
+						class="flex min-w-0 items-center gap-2 rounded-corner border border-transparent px-2 py-1 hover:border-ui-border hover:bg-ui-surface/45"
 					>
-						<span class="min-w-0 flex-1 truncate text-xs text-tx-muted">
+						<p class="min-w-0 flex-1 truncate text-xs text-tx-muted">
 							{{ track.title || extractTrackName(track.path) }}
-						</span>
+						</p>
 						<button
 							type="button"
-							class="shrink-0 rounded-corner border border-primary/45 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary transition-colors duration-200 hover:bg-primary/20"
+							class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-corner border border-primary/45 bg-primary/10 text-[11px] font-medium text-primary transition-colors duration-200 hover:bg-primary/20"
+							title="Reproducir"
+							aria-label="Reproducir"
 							@click="onPlayTrack(track.path)"
 						>
-							Reproducir
+							<img v-if="playIcon" :src="playIcon" alt="Reproducir" class="h-3.5 w-3.5">
+							<span class="sr-only">Reproducir</span>
 						</button>
 					</li>
 				</ul>

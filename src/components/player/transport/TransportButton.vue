@@ -5,11 +5,17 @@ const props = withDefaults(
 		disabled?: boolean;
 		variant?: 'primary' | 'secondary';
 		size?: 'sm' | 'md';
+		iconSrc?: string;
+		iconAlt?: string;
+		showLabel?: boolean;
 	}>(),
 	{
 		disabled: false,
 		variant: 'secondary',
 		size: 'md',
+		iconSrc: '',
+		iconAlt: '',
+		showLabel: false,
 	}
 );
 
@@ -29,6 +35,8 @@ const onClick = () => {
 	<button
 		type="button"
 		:disabled="disabled"
+		:title="label"
+		:aria-label="label"
 		class="rounded-corner border font-semibold transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-50"
 		:class="[
 			size === 'sm' ? 'px-2 py-1.5 text-[11px]' : 'px-2 py-2 text-xs',
@@ -38,6 +46,9 @@ const onClick = () => {
 		]"
 		@click="onClick"
 	>
-		{{ label }}
+		<span class="flex items-center justify-center gap-1">
+			<img v-if="iconSrc" :src="iconSrc" :alt="iconAlt || label" class="h-4 w-4 object-contain">
+			<span v-if="showLabel || !iconSrc">{{ label }}</span>
+		</span>
 	</button>
 </template>

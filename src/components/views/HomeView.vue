@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { getSymbolSource } from '@vasakgroup/plugin-vicons';
 import { RecycleScroller } from 'vue-virtual-scroller';
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
@@ -20,6 +21,9 @@ const artistFilter = ref('all');
 const albumFilter = ref('all');
 const sortBy = ref('recent-desc');
 const ftsSearchResults = ref<LibraryTrack[] | null>(null);
+const playIcon = ref('');
+const addFavoriteIcon = ref('');
+const removeIcon = ref('');
 let searchDebounceTimer: number | null = null;
 
 const normalize = (value: string) => value.trim().toLowerCase();
@@ -176,6 +180,17 @@ const toggleFavorite = (path: string) => {
 };
 
 onMounted(async () => {
+	const getSymbolic = getSymbolSource;
+	const [playSrc, addFavSrc, removeSrc] = await Promise.all([
+		getSymbolic('media-playback-start').catch(() => ''),
+		getSymbolic('new-star').catch(() => ''),
+		getSymbolic('remove').catch(() => ''),
+	]);
+
+	playIcon.value = playSrc;
+	addFavoriteIcon.value = addFavSrc;
+	removeIcon.value = removeSrc;
+
 	await syncCachedTracksToDatabase();
 	await loadLibrary();
 	await playerStore.ensureMetadataForFavorites();
@@ -292,16 +307,27 @@ onUnmounted(() => {
 					<div class="flex items-center gap-2">
 						<button
 							type="button"
-							class="rounded-corner border border-primary/45 bg-primary px-3 py-2 text-xs font-semibold text-tx-on-primary transition-colors duration-200 hover:bg-primary/90"
+							class="inline-flex items-center gap-1 rounded-corner border border-primary/45 bg-primary px-3 py-2 text-xs font-semibold text-tx-on-primary transition-colors duration-200 hover:bg-primary/90"
+							title="Reproducir"
+							aria-label="Reproducir"
 							@click="playTrack(track.path)"
 						>
+							<img v-if="playIcon" :src="playIcon" alt="Reproducir" class="h-4 w-4">
 							Reproducir
 						</button>
 						<button
 							type="button"
-							class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-xs font-semibold text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
+							class="inline-flex items-center gap-1 rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-xs font-semibold text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
+							:title="playerStore.isFavoritePath(track.path) ? 'Quitar favorito' : 'Agregar a favorito'"
+							:aria-label="playerStore.isFavoritePath(track.path) ? 'Quitar favorito' : 'Agregar a favorito'"
 							@click="toggleFavorite(track.path)"
 						>
+							<img
+								v-if="playerStore.isFavoritePath(track.path) ? removeIcon : addFavoriteIcon"
+								:src="playerStore.isFavoritePath(track.path) ? removeIcon : addFavoriteIcon"
+								:alt="playerStore.isFavoritePath(track.path) ? 'Quitar favorito' : 'Agregar a favorito'"
+								class="h-4 w-4"
+							>
 							{{ playerStore.isFavoritePath(track.path) ? 'Quitar favorito' : 'Favorito' }}
 						</button>
 					</div>
