@@ -215,6 +215,7 @@ struct AudioManager {
     current_path: Option<PathBuf>,
     current_metadata: Option<NowPlayingMetadata>,
     cover_cache_by_path: HashMap<String, Option<String>>,
+    dominant_color_cache_by_path: HashMap<String, Option<String>>,
     current_duration: Option<Duration>,
     started_at: Option<Instant>,
     paused_position: Duration,
@@ -237,6 +238,7 @@ impl AudioManager {
             current_path: None,
             current_metadata: None,
             cover_cache_by_path: HashMap::new(),
+            dominant_color_cache_by_path: HashMap::new(),
             current_duration: None,
             started_at: None,
             paused_position: Duration::from_secs(0),
@@ -268,7 +270,12 @@ impl AudioManager {
         self.sink = new_sink;
         self.current_path = Some(canonical_path);
         self.current_metadata = self.current_path.as_ref().and_then(|path| {
-            extract_now_playing_metadata_with_cover_cache(path, &mut self.cover_cache_by_path).ok()
+            extract_now_playing_metadata_with_cover_cache(
+                path,
+                &mut self.cover_cache_by_path,
+                &mut self.dominant_color_cache_by_path,
+            )
+            .ok()
         });
         self.current_duration = duration;
         self.started_at = Some(Instant::now());

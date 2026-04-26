@@ -7,6 +7,7 @@ export interface DroppedPlaybackTrack {
 	album: string;
 	duration_seconds: number;
 	cover_data_url: string | null;
+	dominant_color: string | null;
 }
 
 export interface NowPlayingMetadata {
@@ -16,6 +17,7 @@ export interface NowPlayingMetadata {
 	album: string;
 	duration_seconds: number;
 	cover_data_url: string | null;
+	dominant_color: string | null;
 }
 
 export interface PlaybackProgressEvent {

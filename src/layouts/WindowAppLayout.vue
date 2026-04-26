@@ -5,6 +5,7 @@ import { RouterView } from 'vue-router';
 import AppWindowShell from '@/components/layout/AppWindowShell.vue';
 import AudioDropOverlay from '@/components/layout/AudioDropOverlay.vue';
 import ResonanceSidebar from '@/components/layout/ResonanceSidebar.vue';
+import PlayerBackground from '@/components/player/PlayerBackground.vue';
 import NowPlayingTopBar from '@/components/player/NowPlayingTopBar.vue';
 import TopBarComponent from '@/components/topbar/TopBarComponent.vue';
 import { useAudioDrop } from '@/composables/useAudioDrop';
@@ -42,6 +43,8 @@ onUnmounted(() => {
 		</TopBarComponent>
 
 		<main class="relative flex-1 overflow-hidden p-1 pt-0">
+			<PlayerBackground />
+
 			<AudioDropOverlay :is-active="playerStore.isDragOver" />
 
 			<Transition
@@ -58,7 +61,7 @@ onUnmounted(() => {
 				</div>
 			</Transition>
 
-			<div class="relative flex h-full w-full flex-col gap-3 md:flex-row">
+			<div class="relative z-10 flex h-full w-full flex-col gap-3 md:flex-row">
 				<ResonanceSidebar />
 
 				<div class="min-h-0 min-w-0 flex h-full flex-1 flex-col gap-2 overflow-hidden">

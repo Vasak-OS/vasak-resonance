@@ -146,6 +146,10 @@ export const usePlayerStore = defineStore('player', () => {
 						typeof track.cover_data_url === 'string' || track.cover_data_url === null
 							? track.cover_data_url
 							: null,
+					dominant_color:
+						typeof track.dominant_color === 'string' || track.dominant_color === null
+							? track.dominant_color
+							: null,
 				};
 			}
 
@@ -307,6 +311,7 @@ export const usePlayerStore = defineStore('player', () => {
 				album: nowPlaying.album,
 				duration_seconds: nowPlaying.duration_seconds,
 				cover_data_url: nowPlaying.cover_data_url,
+				dominant_color: nowPlaying.dominant_color,
 			};
 			cacheTrackMetadata(currentTrack.value);
 		} else if (!payload.path) {

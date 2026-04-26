@@ -38,6 +38,7 @@ pub struct DroppedPlaybackTrack {
     pub album: String,
     pub duration_seconds: i64,
     pub cover_data_url: Option<String>,
+    pub dominant_color: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +49,7 @@ pub struct NowPlayingMetadata {
     pub album: String,
     pub duration_seconds: u64,
     pub cover_data_url: Option<String>,
+    pub dominant_color: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
