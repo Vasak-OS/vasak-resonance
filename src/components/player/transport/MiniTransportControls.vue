@@ -24,7 +24,7 @@ const toggleLabel = computed(() => {
 </script>
 
 <template>
-	<div class="flex shrink-0 items-center gap-2">
+	<div class="flex shrink-0 items-center gap-1">
 		<TransportButton
 			:label="nextLabel || 'Next'"
 			size="sm"

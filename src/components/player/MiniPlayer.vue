@@ -45,8 +45,9 @@ onUnmounted(() => {
 <template>
 	<div class="h-screen w-screen overflow-hidden rounded-corner-window border border-ui-border bg-ui-bg/90 p-3">
 		<div class="flex h-full flex-col">
-			<div class="flex min-h-0 flex-1 items-center gap-3">
+			<div class="flex min-h-0 flex-1 items-center gap-2">
 				<TrackMetaCard
+					class="min-w-0 flex-1"
 					:title="trackTitle"
 					:subtitle="trackSubtitle"
 					:cover-src="coverSrc"
@@ -60,7 +61,7 @@ onUnmounted(() => {
 					:is-playing="playerStore.isPlaying"
 					:is-paused="playerStore.isPaused"
 					:busy="playerStore.busy"
-					:next-label="playerStore.nextActionLabel"
+					next-label="Next"
 					open-label="Volver"
 					@toggle="togglePlayback"
 					@next="playerStore.advanceQueue"

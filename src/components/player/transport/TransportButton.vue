@@ -31,7 +31,7 @@ const onClick = () => {
 		:disabled="disabled"
 		class="rounded-corner border font-semibold transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-50"
 		:class="[
-			size === 'sm' ? 'px-3 py-1.5 text-xs' : 'px-2 py-2 text-xs',
+			size === 'sm' ? 'px-2 py-1.5 text-[11px]' : 'px-2 py-2 text-xs',
 			variant === 'primary'
 				? 'border-primary/45 bg-primary text-tx-on-primary hover:bg-primary/90'
 				: 'border-ui-border bg-ui-bg/50 text-tx-main hover:bg-ui-surface/80',
