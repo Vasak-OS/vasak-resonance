@@ -2,6 +2,7 @@
 import { getSymbolSource } from '@vasakgroup/plugin-vicons';
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useTrackTitle } from '@/composables/useTrackTitle';
 import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
@@ -21,15 +22,10 @@ const selectedSection = computed(() => (typeof route.name === 'string' ? route.n
 
 const coverArt = computed(() => playerStore.currentTrack?.cover_data_url || '');
 
-const trackTitle = computed(() => {
-	if (playerStore.currentTrack?.title) {
-		return playerStore.currentTrack.title;
-	}
-	if (playerStore.currentPath) {
-		const parts = playerStore.currentPath.split('/');
-		return parts[parts.length - 1] || 'Unknown track';
-	}
-	return 'Sin reproducción';
+const trackTitle = useTrackTitle({
+	currentTrack: () => playerStore.currentTrack,
+	currentPath: () => playerStore.currentPath,
+	fallback: 'Sin reproduccion',
 });
 
 const trackSubtitle = computed(() => {

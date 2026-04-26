@@ -1,25 +1,13 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import PlaybackWaves from '@/components/player/PlaybackWaves.vue';
+import { useTrackTitle } from '@/composables/useTrackTitle';
 import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
 
-const spectrumSteps = Array.from({ length: 110 }, (_, index) => index);
-
-const trackTitle = computed(() => {
-	if (playerStore.currentTrack?.title) {
-		return playerStore.currentTrack.title;
-	}
-	if (playerStore.currentPath) {
-		const normalized = playerStore.currentPath.replace(/\\/g, '/');
-		const parts = normalized.split('/');
-		return parts[parts.length - 1] || 'Sin reproduccion';
-	}
-	return 'Sin reproduccion';
-});
-
-const progressPercent = computed(() => {
-	return Math.min(100, Math.max(0, playerStore.progressPercent));
+const trackTitle = useTrackTitle({
+	currentTrack: () => playerStore.currentTrack,
+	currentPath: () => playerStore.currentPath,
 });
 
 const formatSeconds = (value: number | null): string => {
@@ -32,34 +20,13 @@ const formatSeconds = (value: number | null): string => {
 		.padStart(2, '0');
 	return `${minutes}:${seconds}`;
 };
-
-const barHeight = (index: number): number => {
-	const phase = (index + 1) * 0.65 + playerStore.positionSeconds * 0.38;
-	const wave = Math.sin(phase) * 0.5 + 0.5;
-	const floor = playerStore.isPaused || !playerStore.hasTrack ? 3 : 5;
-	return Math.round(floor + wave * 11);
-};
-
-const isActiveBar = (index: number): boolean => {
-	const stepPercent = ((index + 1) / spectrumSteps.length) * 100;
-	return stepPercent <= progressPercent.value;
-};
 </script>
 
 <template>
 	<section class="min-h-14 rounded-corner border border-primary/25 bg-ui-bg/90 px-3 py-2 shadow-sm">
 		<div class="flex items-center gap-3">
-
 			<div class="min-w-0 flex-1">
-				<div class="mb-1.5 flex h-4 w-full items-end gap-0.5 overflow-hidden">
-					<span
-						v-for="step in spectrumSteps"
-						:key="step"
-						class="flex-1 rounded-sm transition-all duration-200"
-						:class="isActiveBar(step) ? 'bg-secondary' : 'bg-primary/30'"
-						:style="{ height: `${barHeight(step)}px` }"
-					/>
-				</div>
+				<PlaybackWaves class="mb-1.5" />
 			</div>
 		</div>
 

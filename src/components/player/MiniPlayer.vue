@@ -3,43 +3,20 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useConfigStore } from '@vasakgroup/plugin-config-manager';
 import type { Store } from 'pinia';
 import { computed, onMounted, onUnmounted } from 'vue';
+import PlaybackWaves from '@/components/player/PlaybackWaves.vue';
+import { useTrackTitle } from '@/composables/useTrackTitle';
 import { usePlayerStore } from '@/stores/player';
 import { toggleMainAndMiniPlayer } from '@/services/window.service';
 
 const playerStore = usePlayerStore();
 let unlistenConfig: UnlistenFn | null = null;
 
-const spectrumSteps = Array.from({ length: 72 }, (_, index) => index);
-
-const trackTitle = computed(() => {
-	if (playerStore.currentTrack?.title) {
-		return playerStore.currentTrack.title;
-	}
-	if (playerStore.currentPath) {
-		const normalized = playerStore.currentPath.replace(/\\/g, '/');
-		const parts = normalized.split('/');
-		return parts[parts.length - 1] || 'Sin reproduccion';
-	}
-	return 'Sin reproduccion';
+const trackTitle = useTrackTitle({
+	currentTrack: () => playerStore.currentTrack,
+	currentPath: () => playerStore.currentPath,
 });
 
 const coverSrc = computed(() => playerStore.currentTrack?.cover_data_url || '');
-
-const progressPercent = computed(() => {
-	return Math.min(100, Math.max(0, playerStore.progressPercent));
-});
-
-const barHeight = (index: number): number => {
-	const phase = (index + 1) * 0.65 + playerStore.positionSeconds * 0.38;
-	const wave = Math.sin(phase) * 0.5 + 0.5;
-	const floor = playerStore.isPaused || !playerStore.hasTrack ? 2 : 4;
-	return Math.round(floor + wave * 7);
-};
-
-const isActiveBar = (index: number): boolean => {
-	const stepPercent = ((index + 1) / spectrumSteps.length) * 100;
-	return stepPercent <= progressPercent.value;
-};
 
 const togglePlayback = async () => {
 	await playerStore.togglePlayPause();
@@ -110,15 +87,7 @@ onUnmounted(() => {
 				</div>
 			</div>
 
-			<div class="mt-2 flex h-3 w-full items-end gap-0.5 overflow-hidden">
-				<span
-					v-for="step in spectrumSteps"
-					:key="step"
-					class="flex-1 rounded-sm transition-all duration-200"
-					:class="isActiveBar(step) ? 'bg-secondary' : 'bg-primary/30'"
-					:style="{ height: `${barHeight(step)}px` }"
-				/>
-			</div>
+			<PlaybackWaves class="mt-2" :steps="72" bar-height="h-3" :floor-paused="2" :floor-playing="4" :amplitude="7" />
 		</div>
 	</div>
 </template>
