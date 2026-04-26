@@ -1,15 +1,14 @@
 <script setup lang="ts">
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { useConfigStore } from '@vasakgroup/plugin-config-manager';
-import type { Store } from 'pinia';
 import { computed, onMounted, onUnmounted } from 'vue';
 import PlaybackWaves from '@/components/player/PlaybackWaves.vue';
+import { useConfigSync } from '@/composables/useConfigSync';
 import { useTrackTitle } from '@/composables/useTrackTitle';
 import { usePlayerStore } from '@/stores/player';
 import { toggleMainAndMiniPlayer } from '@/services/window.service';
 
 const playerStore = usePlayerStore();
-let unlistenConfig: UnlistenFn | null = null;
+
+useConfigSync();
 
 const trackTitle = useTrackTitle({
 	currentTrack: () => playerStore.currentTrack,
@@ -27,27 +26,11 @@ const openMainWindow = async () => {
 };
 
 onMounted(async () => {
-	const configStore = useConfigStore() as Store<
-		'config',
-		{ config: any; loadConfig: () => Promise<void> }
-	>;
-
-	await configStore.loadConfig();
-
-	unlistenConfig = await listen('config-changed', async () => {
-		await configStore.loadConfig();
-	});
-
 	await playerStore.initProgressListener();
 	await playerStore.syncPlaybackSnapshot();
 });
 
 onUnmounted(() => {
-	if (unlistenConfig) {
-		unlistenConfig();
-		unlistenConfig = null;
-	}
-
 	playerStore.disposeProgressListener();
 });
 </script>

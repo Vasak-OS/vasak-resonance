@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import PlaybackWaves from '@/components/player/PlaybackWaves.vue';
+import { formatSeconds } from '@/composables/useTimeFormat';
 import { useTrackTitle } from '@/composables/useTrackTitle';
 import { usePlayerStore } from '@/stores/player';
 
@@ -9,17 +10,6 @@ const trackTitle = useTrackTitle({
 	currentTrack: () => playerStore.currentTrack,
 	currentPath: () => playerStore.currentPath,
 });
-
-const formatSeconds = (value: number | null): string => {
-	const safe = Math.max(0, Math.floor(value || 0));
-	const minutes = Math.floor(safe / 60)
-		.toString()
-		.padStart(2, '0');
-	const seconds = Math.floor(safe % 60)
-		.toString()
-		.padStart(2, '0');
-	return `${minutes}:${seconds}`;
-};
 </script>
 
 <template>
