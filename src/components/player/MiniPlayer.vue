@@ -9,6 +9,8 @@ import { toggleMainAndMiniPlayer } from '@/services/window.service';
 const playerStore = usePlayerStore();
 let unlistenConfig: UnlistenFn | null = null;
 
+const spectrumSteps = Array.from({ length: 72 }, (_, index) => index);
+
 const trackTitle = computed(() => {
 	if (playerStore.currentTrack?.title) {
 		return playerStore.currentTrack.title;
@@ -22,6 +24,22 @@ const trackTitle = computed(() => {
 });
 
 const coverSrc = computed(() => playerStore.currentTrack?.cover_data_url || '');
+
+const progressPercent = computed(() => {
+	return Math.min(100, Math.max(0, playerStore.progressPercent));
+});
+
+const barHeight = (index: number): number => {
+	const phase = (index + 1) * 0.65 + playerStore.positionSeconds * 0.38;
+	const wave = Math.sin(phase) * 0.5 + 0.5;
+	const floor = playerStore.isPaused || !playerStore.hasTrack ? 2 : 4;
+	return Math.round(floor + wave * 7);
+};
+
+const isActiveBar = (index: number): boolean => {
+	const stepPercent = ((index + 1) / spectrumSteps.length) * 100;
+	return stepPercent <= progressPercent.value;
+};
 
 const togglePlayback = async () => {
 	await playerStore.togglePlayPause();
@@ -59,35 +77,47 @@ onUnmounted(() => {
 
 <template>
 	<div class="h-screen w-screen overflow-hidden rounded-corner-window border border-ui-border bg-ui-bg/90 p-3">
-		<div class="flex h-full items-center gap-3">
-			<div class="h-16 w-16 shrink-0 overflow-hidden rounded-corner border border-primary/25 bg-ui-bg/70">
-				<img v-if="coverSrc" :src="coverSrc" alt="Caratula" class="h-full w-full object-cover">
-				<div v-else class="flex h-full w-full items-center justify-center text-[10px] text-tx-muted">
-					Sin portada
+		<div class="flex h-full flex-col">
+			<div class="flex min-h-0 flex-1 items-center gap-3">
+				<div class="h-16 w-16 shrink-0 overflow-hidden rounded-corner border border-primary/25 bg-ui-bg/70">
+					<img v-if="coverSrc" :src="coverSrc" alt="Caratula" class="h-full w-full object-cover">
+					<div v-else class="flex h-full w-full items-center justify-center text-[10px] text-tx-muted">
+						Sin portada
+					</div>
+				</div>
+
+				<div class="min-w-0 flex-1">
+					<p class="truncate text-xs uppercase tracking-[0.14em] text-tx-muted">MiniPlayer</p>
+					<p class="truncate text-sm font-semibold text-primary">{{ trackTitle }}</p>
+					<p class="truncate text-xs text-tx-muted">
+						{{ playerStore.currentTrack?.artist || 'Unknown Artist' }}
+					</p>
+				</div>
+
+				<div class="flex shrink-0 items-center gap-2">
+					<button
+						class="rounded-corner border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/20"
+						@click="togglePlayback"
+					>
+						{{ playerStore.isPaused || !playerStore.isPlaying ? 'Play' : 'Pause' }}
+					</button>
+					<button
+						class="rounded-corner border border-ui-border bg-ui-bg/80 px-3 py-1.5 text-xs font-semibold text-tx-main transition-colors hover:bg-ui-bg"
+						@click="openMainWindow"
+					>
+						Abrir
+					</button>
 				</div>
 			</div>
 
-			<div class="min-w-0 flex-1">
-				<p class="truncate text-xs uppercase tracking-[0.14em] text-tx-muted">MiniPlayer</p>
-				<p class="truncate text-sm font-semibold text-primary">{{ trackTitle }}</p>
-				<p class="truncate text-xs text-tx-muted">
-					{{ playerStore.currentTrack?.artist || 'Unknown Artist' }}
-				</p>
-			</div>
-
-			<div class="flex shrink-0 items-center gap-2">
-				<button
-					class="rounded-corner border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/20"
-					@click="togglePlayback"
-				>
-					{{ playerStore.isPaused || !playerStore.isPlaying ? 'Play' : 'Pause' }}
-				</button>
-				<button
-					class="rounded-corner border border-ui-border bg-ui-bg/80 px-3 py-1.5 text-xs font-semibold text-tx-main transition-colors hover:bg-ui-bg"
-					@click="openMainWindow"
-				>
-					Abrir
-				</button>
+			<div class="mt-2 flex h-3 w-full items-end gap-0.5 overflow-hidden">
+				<span
+					v-for="step in spectrumSteps"
+					:key="step"
+					class="flex-1 rounded-sm transition-all duration-200"
+					:class="isActiveBar(step) ? 'bg-secondary' : 'bg-primary/30'"
+					:style="{ height: `${barHeight(step)}px` }"
+				/>
 			</div>
 		</div>
 	</div>
