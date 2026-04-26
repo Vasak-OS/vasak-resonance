@@ -3,3 +3,4 @@ pub mod library;
 pub mod indexing;
 pub mod playlists;
 pub mod playback;
+pub mod window;

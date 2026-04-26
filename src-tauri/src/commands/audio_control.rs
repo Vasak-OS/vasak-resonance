@@ -1,6 +1,7 @@
 use tauri::State;
 
 use crate::audio_manager::AudioState;
+use crate::structs::PlaybackProgressEvent;
 
 #[tauri::command]
 pub fn play_file(file_path: String, state: State<AudioState>) -> Result<(), String> {
@@ -30,4 +31,9 @@ pub fn seek(second: u64, state: State<AudioState>) -> Result<(), String> {
 #[tauri::command]
 pub fn set_volume(volume: f32, state: State<AudioState>) -> Result<(), String> {
     state.set_volume(volume)
+}
+
+#[tauri::command]
+pub fn get_playback_snapshot(state: State<AudioState>) -> Result<PlaybackProgressEvent, String> {
+    state.playback_snapshot()
 }

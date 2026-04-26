@@ -2,6 +2,7 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getSymbolSource } from '@vasakgroup/plugin-vicons';
 import { onMounted, Ref, ref } from 'vue';
+import { toggleMainAndMiniPlayer } from '@/services/window.service';
 
 const appWindow = getCurrentWindow();
 const closeIcon: Ref<string> = ref('');
@@ -13,9 +14,20 @@ onMounted(async () => {
 	minimizeIcon.value = await getSymbolSource('window-minimize');
 	maximizeIcon.value = await getSymbolSource('window-maximize');
 });
+
+const toggleMiniPlayer = async () => {
+	await toggleMainAndMiniPlayer();
+};
 </script>
 <template>
   <div class="flex gap-1" data-tauri-drag-region>
+    <button
+      type="button"
+      class="px-2 py-1 bg-ui-bg/80 rounded-corner hover:bg-primary/20 border border-ui-border text-xs font-medium text-primary"
+      @click="toggleMiniPlayer"
+    >
+      Mini
+    </button>
     <span class="p-1 bg-ui-bg/80 rounded-corner hover:bg-status-success border border-ui-border" @click="appWindow.minimize()">
       <img :src="minimizeIcon" class="h-6 w-6 inline-block" alt="Minimize">
     </span>

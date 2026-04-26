@@ -65,6 +65,11 @@ export const setPlaybackVolume = (volume: number): Promise<void> => {
 	return invoke<void>('set_volume', { volume });
 };
 
+export const getPlaybackSnapshot = (): Promise<PlaybackProgressEvent> => {
+	console.log('[player.service] getPlaybackSnapshot invoke');
+	return invoke<PlaybackProgressEvent>('get_playback_snapshot');
+};
+
 export const stopPlayback = (): Promise<void> => {
 	console.log('[player.service] stopPlayback invoke');
 	return invoke<void>('stop');

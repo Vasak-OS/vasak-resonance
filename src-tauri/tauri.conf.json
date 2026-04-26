@@ -12,9 +12,21 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "vapp",
         "width": 800,
         "height": 600,
+        "decorations": false,
+        "transparent": true
+      },
+      {
+        "label": "mini-player",
+        "title": "MiniPlayer",
+        "width": 360,
+        "height": 120,
+        "alwaysOnTop": true,
+        "resizable": false,
+        "visible": false,
         "decorations": false,
         "transparent": true
       }

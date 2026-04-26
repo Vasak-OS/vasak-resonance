@@ -3,6 +3,7 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import {
 	type DroppedPlaybackTrack,
+	getPlaybackSnapshot,
 	handleDroppedFile,
 	type NowPlayingMetadata,
 	type PlaybackProgressEvent,
@@ -339,6 +340,15 @@ export const usePlayerStore = defineStore('player', () => {
 		});
 	};
 
+	const syncPlaybackSnapshot = async () => {
+		try {
+			const snapshot = await getPlaybackSnapshot();
+			applyProgress(snapshot);
+		} catch {
+			// Ignorado: el listener periódico actualizará el estado si falla la lectura inicial.
+		}
+	};
+
 	const initMprisNextListener = async () => {
 		if (unlistenMprisNext) {
 			return;
@@ -647,6 +657,7 @@ export const usePlayerStore = defineStore('player', () => {
 		hasTrack,
 		hasNextTrack,
 		initProgressListener,
+		syncPlaybackSnapshot,
 		initMprisNextListener,
 		initMprisPreviousListener,
 		initMprisStopListener,
