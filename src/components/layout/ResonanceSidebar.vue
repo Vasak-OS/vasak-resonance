@@ -2,6 +2,8 @@
 import { getSymbolSource } from '@vasakgroup/plugin-vicons';
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import TrackMetaCard from '@/components/player/TrackMetaCard.vue';
+import { useTrackSubtitle } from '@/composables/useTrackSubtitle';
 import { useTrackTitle } from '@/composables/useTrackTitle';
 import { usePlayerStore } from '@/stores/player';
 
@@ -28,13 +30,8 @@ const trackTitle = useTrackTitle({
 	fallback: 'Sin reproduccion',
 });
 
-const trackSubtitle = computed(() => {
-	if (!playerStore.currentTrack) {
-		return 'Vasak Resonance';
-	}
-	const artist = playerStore.currentTrack.artist || 'Unknown Artist';
-	const album = playerStore.currentTrack.album || 'Unknown Album';
-	return `${artist} • ${album}`;
+const trackSubtitle = useTrackSubtitle({
+	currentTrack: () => playerStore.currentTrack,
 });
 
 const playButtonLabel = computed(() => {
@@ -103,22 +100,13 @@ onMounted(async () => {
 		</nav>
 
 		<section class="mt-2 rounded-corner border border-ui-border bg-ui-surface/40 p-3">
-			<div
-				class="mx-auto mb-3 flex h-36 w-full max-w-[220px] items-center justify-center overflow-hidden rounded-corner border border-ui-border bg-ui-bg/60"
-			>
-				<img
-					v-if="coverArt"
-					:src="coverArt"
-					:alt="trackTitle"
-					class="h-full w-full object-cover"
-				/>
-				<div v-else class="text-sm font-semibold uppercase tracking-[0.16em] text-tx-muted">VR</div>
-			</div>
-
-			<div class="mb-3 space-y-1">
-				<p class="truncate text-sm font-semibold text-tx-main">{{ trackTitle }}</p>
-				<p class="truncate text-xs text-tx-muted">{{ trackSubtitle }}</p>
-			</div>
+			<TrackMetaCard
+				:title="trackTitle"
+				:subtitle="trackSubtitle"
+				:cover-src="coverArt"
+				variant="stacked"
+				placeholder-text="VR"
+			/>
 
 			<div class="grid grid-cols-3 gap-2">
 				<button

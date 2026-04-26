@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue';
 import PlaybackWaves from '@/components/player/PlaybackWaves.vue';
+import TrackMetaCard from '@/components/player/TrackMetaCard.vue';
 import { useConfigSync } from '@/composables/useConfigSync';
+import { useTrackSubtitle } from '@/composables/useTrackSubtitle';
 import { useTrackTitle } from '@/composables/useTrackTitle';
 import { usePlayerStore } from '@/stores/player';
 import { toggleMainAndMiniPlayer } from '@/services/window.service';
@@ -13,6 +15,10 @@ useConfigSync();
 const trackTitle = useTrackTitle({
 	currentTrack: () => playerStore.currentTrack,
 	currentPath: () => playerStore.currentPath,
+});
+
+const trackSubtitle = useTrackSubtitle({
+	currentTrack: () => playerStore.currentTrack,
 });
 
 const coverSrc = computed(() => playerStore.currentTrack?.cover_data_url || '');
@@ -39,20 +45,13 @@ onUnmounted(() => {
 	<div class="h-screen w-screen overflow-hidden rounded-corner-window border border-ui-border bg-ui-bg/90 p-3">
 		<div class="flex h-full flex-col">
 			<div class="flex min-h-0 flex-1 items-center gap-3">
-				<div class="h-16 w-16 shrink-0 overflow-hidden rounded-corner border border-primary/25 bg-ui-bg/70">
-					<img v-if="coverSrc" :src="coverSrc" alt="Caratula" class="h-full w-full object-cover">
-					<div v-else class="flex h-full w-full items-center justify-center text-[10px] text-tx-muted">
-						Sin portada
-					</div>
-				</div>
-
-				<div class="min-w-0 flex-1">
-					<p class="truncate text-xs uppercase tracking-[0.14em] text-tx-muted">MiniPlayer</p>
-					<p class="truncate text-sm font-semibold text-primary">{{ trackTitle }}</p>
-					<p class="truncate text-xs text-tx-muted">
-						{{ playerStore.currentTrack?.artist || 'Unknown Artist' }}
-					</p>
-				</div>
+				<TrackMetaCard
+					:title="trackTitle"
+					:subtitle="trackSubtitle"
+					:cover-src="coverSrc"
+					placeholder-text="VR"
+					title-class="text-primary"
+				/>
 
 				<div class="flex shrink-0 items-center gap-2">
 					<button
