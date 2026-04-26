@@ -222,6 +222,90 @@ pub fn search_tracks_fts(
         tracks.push(row.map_err(|e| format!("No se pudo leer resultado FTS5: {e}"))?);
     }
 
+    if !tracks.is_empty() {
+        return Ok(tracks);
+    }
+
+    search_tracks_contains(conn, query, limit)
+}
+
+fn search_tracks_contains(
+    conn: &Connection,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<LibraryTrack>, String> {
+    let tokens: Vec<String> = query
+        .split_whitespace()
+        .map(|token| token.trim_matches(|c: char| !c.is_alphanumeric() && c != '_'))
+        .filter(|token| !token.is_empty())
+        .map(|token| token.to_lowercase())
+        .collect();
+
+    if tokens.is_empty() {
+        return list_tracks(conn);
+    }
+
+    let clamped_limit = limit.clamp(1, 10_000) as i64;
+
+    let mut sql = String::from(
+        "
+        SELECT id, path, title, artist, album, duration_seconds, created_at
+        FROM tracks
+        WHERE 1 = 1
+        ",
+    );
+
+    for _ in &tokens {
+        sql.push_str(
+            "
+            AND (
+                LOWER(title) LIKE ?
+                OR LOWER(artist) LIKE ?
+                OR LOWER(album) LIKE ?
+            )
+            ",
+        );
+    }
+
+    sql.push_str(
+        "
+        ORDER BY created_at DESC, title COLLATE NOCASE ASC
+        LIMIT ?
+        ",
+    );
+
+    let mut params: Vec<String> = Vec::with_capacity(tokens.len() * 3 + 1);
+    for token in &tokens {
+        let wildcard = format!("%{}%", token);
+        params.push(wildcard.clone());
+        params.push(wildcard.clone());
+        params.push(wildcard);
+    }
+    params.push(clamped_limit.to_string());
+
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| format!("No se pudo preparar búsqueda contains: {e}"))?;
+
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(params.iter()), |row| {
+            Ok(LibraryTrack {
+                id: row.get(0)?,
+                path: row.get(1)?,
+                title: row.get(2)?,
+                artist: row.get(3)?,
+                album: row.get(4)?,
+                duration_seconds: row.get(5)?,
+                created_at: row.get(6)?,
+            })
+        })
+        .map_err(|e| format!("No se pudo ejecutar búsqueda contains: {e}"))?;
+
+    let mut tracks = Vec::new();
+    for row in rows {
+        tracks.push(row.map_err(|e| format!("No se pudo leer resultado contains: {e}"))?);
+    }
+
     Ok(tracks)
 }
 
