@@ -30,12 +30,12 @@ const gradientStyle = computed(() => {
 	if (!dominant) {
 		return {
 			background:
-				'linear-gradient(to top right, color-mix(in srgb, var(--color-primary) 26%, transparent) 0%, color-mix(in srgb, var(--color-secondary) 18%, transparent) 48%, transparent 86%)',
+				'linear-gradient(to top, color-mix(in srgb, var(--color-primary) 26%, transparent) 0%, color-mix(in srgb, var(--color-secondary) 18%, transparent) 48%, transparent 100%)',
 		};
 	}
 
 	return {
-		background: `linear-gradient(to top right, ${hexToRgba(dominant, 0.28)} 0%, ${hexToRgba(dominant, 0.16)} 48%, ${hexToRgba(dominant, 0.05)} 80%, transparent 100%)`,
+		background: `linear-gradient(to top, ${hexToRgba(dominant, 0.28)} 0%, ${hexToRgba(dominant, 0.16)} 48%, ${hexToRgba(dominant, 0.05)} 80%, transparent 100%)`,
 	};
 });
 </script>
