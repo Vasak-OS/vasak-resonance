@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { onMounted } from 'vue';
-import MiniPlayer from '@/components/player/MiniPlayer.vue';
 import ScanningIndicator from '@/components/layout/ScanningIndicator.vue';
+import MiniPlayer from '@/components/player/MiniPlayer.vue';
 import { useConfigSync } from '@/composables/useConfigSync';
-import { usePlayerStore } from '@/stores/player';
 import { scanDefaultMusicFolder } from '@/services/player.service';
+import { usePlayerStore } from '@/stores/player';
 
 const isMiniPlayerWindow = getCurrentWindow().label === 'mini-player';
 const AUTO_SCAN_KEY = 'resonance.auto-music-scan.last-run';

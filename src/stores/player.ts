@@ -430,7 +430,7 @@ export const usePlayerStore = defineStore('player', () => {
 			console.log('[playDropped] Llamando handleDroppedFile...');
 			const track = await handleDroppedFile(filePath);
 			console.log('[playDropped] Track obtenido:', track);
-			
+
 			// Si el track ya existe en la BD, usar los datos existentes y solo actualizar visuals
 			const existingInCache = trackCacheByPath.value[filePath];
 			if (existingInCache && existingInCache.album && existingInCache.album !== 'Unknown Album') {
@@ -439,13 +439,13 @@ export const usePlayerStore = defineStore('player', () => {
 				track.artist = existingInCache.artist || track.artist;
 				track.title = existingInCache.title || track.title;
 			}
-			
+
 			// Solo guardar en BD si es un track nuevo (no estaba en cache)
 			if (!existingInCache) {
 				await saveLibraryTrack(track);
 				console.log('[playDropped] Track sincronizado en SQLite');
 			}
-			
+
 			if (recordHistory && currentPath.value && currentPath.value !== track.path) {
 				history.value.push(currentPath.value);
 			}
@@ -656,7 +656,10 @@ export const usePlayerStore = defineStore('player', () => {
 			);
 
 			// Crear mapa de metadatos visuales por path
-			const visualMap: Record<string, { cover_data_url: string | null; dominant_color: string | null }> = {};
+			const visualMap: Record<
+				string,
+				{ cover_data_url: string | null; dominant_color: string | null }
+			> = {};
 			for (const result of visualMetadata) {
 				if (result.status === 'fulfilled') {
 					visualMap[result.value.path] = result.value;

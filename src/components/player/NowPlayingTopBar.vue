@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import LyricsView from '@/components/player/LyricsView.vue';
 import PlaybackWaves from '@/components/player/PlaybackWaves.vue';
+import VolumeControl from '@/components/player/VolumeControl.vue';
 import { formatSeconds } from '@/composables/useTimeFormat';
 import { useTrackTitle } from '@/composables/useTrackTitle';
 import { usePlayerStore } from '@/stores/player';
@@ -25,6 +26,7 @@ const trackTitle = useTrackTitle({
       <p class="min-w-0 truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">
         {{ trackTitle }}
       </p>
+			<VolumeControl />
       <p class="text-[11px] text-tx-muted">
         {{ formatSeconds(playerStore.positionSeconds) }} / {{ formatSeconds(playerStore.durationSeconds) }}
       </p>
