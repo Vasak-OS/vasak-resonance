@@ -178,7 +178,6 @@ fn record_to_payload(source: &str, record: &LrcLibRecord) -> TrackLyricsPayload 
 async fn fetch_signature_record(client: &Client, endpoint: &str, query: &LyricsQuery) -> Option<LrcLibRecord> {
 	let duration = query.duration_seconds;
 	let url = format!("{}/{}", LRCLIB_BASE_URL, endpoint);
-	eprintln!("[lyrics] fetch_signature_record -> url={} track='{}' artist='{}' album='{}' duration={}", url, query.track_name, query.artist_name, query.album_name, duration);
 
 	let response = match client
 		.get(url.clone())
@@ -220,7 +219,6 @@ async fn fetch_search_record(client: &Client, query: &LyricsQuery) -> Option<Lrc
 		return None;
 	}
 	let url = format!("{}/api/search", LRCLIB_BASE_URL);
-	eprintln!("[lyrics] fetch_search_record -> url={} q='{}'", url, base);
 
 	let response = match client.get(url.clone()).query(&[("q", base.as_str())]).send().await {
 		Ok(resp) => resp,
@@ -256,7 +254,6 @@ async fn fetch_search_record(client: &Client, query: &LyricsQuery) -> Option<Lrc
 		da.cmp(&db)
 	});
 
-	eprintln!("[lyrics] search picked id={} track='{}' artist='{}'", items[0].id, items[0].track_name, items[0].artist_name);
 	items.into_iter().next()
 }
 

@@ -50,13 +50,6 @@ const loadLyricsForCurrentTrack = async () => {
 	loading.value = true;
 	error.value = '';
 	try {
-		// Log query for debugging
-		console.debug('[LyricsView] fetching lyrics for', {
-			track: track.title,
-			artist: track.artist,
-			album: track.album,
-			duration: track.duration_seconds,
-		});
 		const payload = await fetchLyrics({
 			trackName: track.title || '',
 			artistName: track.artist || '',
@@ -71,7 +64,6 @@ const loadLyricsForCurrentTrack = async () => {
 	} catch (lyricsError: unknown) {
 		lyrics.value = null;
 		plainLines.value = [];
-		// show user-friendly message but log full error for debugging
 		console.error('[LyricsView] fetchLyrics error:', lyricsError);
 		error.value = `No se pudo cargar la letra: ${String(lyricsError)}`;
 	} finally {
