@@ -5,6 +5,7 @@ import {
 	type DroppedPlaybackTrack,
 	getPlaybackSnapshot,
 	handleDroppedFile,
+	listLibraryTracks,
 	type NowPlayingMetadata,
 	type PlaybackProgressEvent,
 	pausePlayback,
@@ -34,6 +35,7 @@ export const usePlayerStore = defineStore('player', () => {
 	const error = ref('');
 	const isDragOver = ref(false);
 	const globalBadgeMessage = ref('');
+	const isScanning = ref(false);
 	let globalBadgeTimeout: number | null = null;
 	let unlistenProgress: UnlistenFn | null = null;
 	let unlistenMprisNext: UnlistenFn | null = null;
@@ -603,6 +605,32 @@ export const usePlayerStore = defineStore('player', () => {
 		await playDropped(firstPath);
 	};
 
+	const setScanning = (value: boolean) => {
+		isScanning.value = value;
+	};
+
+	const reloadLibraryTracks = async () => {
+		try {
+			const tracks = await listLibraryTracks();
+			const newCache: Record<string, DroppedPlaybackTrack> = {};
+			for (const track of tracks) {
+				newCache[track.path] = {
+					path: track.path,
+					title: track.title,
+					artist: track.artist,
+					album: track.album,
+					duration_seconds: track.duration_seconds,
+					cover_data_url: trackCacheByPath.value[track.path]?.cover_data_url ?? null,
+					dominant_color: trackCacheByPath.value[track.path]?.dominant_color ?? null,
+				};
+			}
+			trackCacheByPath.value = newCache;
+			persistTrackCache();
+		} catch (err) {
+			console.error('[reloadLibraryTracks] Error loading tracks:', err);
+		}
+	};
+
 	const enqueuePaths = (paths: string[]) => {
 		const normalized = Array.from(
 			new Set(paths.map((path) => path.trim()).filter((path) => path.length > 0))
@@ -671,6 +699,7 @@ export const usePlayerStore = defineStore('player', () => {
 		playAlbum,
 		isCurrentFavorite,
 		isFavoritePath,
+		isScanning,
 		queue,
 		queuedCount,
 		nextActionLabel,
@@ -680,6 +709,8 @@ export const usePlayerStore = defineStore('player', () => {
 		ensureMetadataForPath,
 		moveQueueItem,
 		removeQueueItem,
+		reloadLibraryTracks,
+		setScanning,
 		isDragOver,
 		isPaused,
 		isPlaying,
