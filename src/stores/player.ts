@@ -430,8 +430,22 @@ export const usePlayerStore = defineStore('player', () => {
 			console.log('[playDropped] Llamando handleDroppedFile...');
 			const track = await handleDroppedFile(filePath);
 			console.log('[playDropped] Track obtenido:', track);
-			await saveLibraryTrack(track);
-			console.log('[playDropped] Track sincronizado en SQLite');
+			
+			// Si el track ya existe en la BD, usar los datos existentes y solo actualizar visuals
+			const existingInCache = trackCacheByPath.value[filePath];
+			if (existingInCache && existingInCache.album && existingInCache.album !== 'Unknown Album') {
+				// Mantener información correcta de album de la BD
+				track.album = existingInCache.album;
+				track.artist = existingInCache.artist || track.artist;
+				track.title = existingInCache.title || track.title;
+			}
+			
+			// Solo guardar en BD si es un track nuevo (no estaba en cache)
+			if (!existingInCache) {
+				await saveLibraryTrack(track);
+				console.log('[playDropped] Track sincronizado en SQLite');
+			}
+			
 			if (recordHistory && currentPath.value && currentPath.value !== track.path) {
 				history.value.push(currentPath.value);
 			}
@@ -613,17 +627,55 @@ export const usePlayerStore = defineStore('player', () => {
 		try {
 			const tracks = await listLibraryTracks();
 			const newCache: Record<string, DroppedPlaybackTrack> = {};
+
+			// Identificar tracks nuevos (no en cache anterior)
+			const previousPaths = new Set(Object.keys(trackCacheByPath.value));
+			const newPaths = tracks.filter((t) => !previousPaths.has(t.path));
+
+			// Extraer metadatos visuales (cover, color) de tracks nuevos en paralelo
+			const visualMetadata = await Promise.allSettled(
+				newPaths.map(async (track) => {
+					try {
+						const fullMetadata = await handleDroppedFile(track.path);
+						return {
+							path: track.path,
+							cover_data_url: fullMetadata.cover_data_url,
+							dominant_color: fullMetadata.dominant_color,
+						};
+					} catch {
+						return {
+							path: track.path,
+							cover_data_url: null,
+							dominant_color: null,
+						};
+					}
+				})
+			);
+
+			// Crear mapa de metadatos visuales por path
+			const visualMap: Record<string, { cover_data_url: string | null; dominant_color: string | null }> = {};
+			for (const result of visualMetadata) {
+				if (result.status === 'fulfilled') {
+					visualMap[result.value.path] = result.value;
+				}
+			}
+
+			// Reconstruir cache combinando datos de BD con metadatos visuales
 			for (const track of tracks) {
+				const existingEntry = trackCacheByPath.value[track.path];
+				const newVisuals = visualMap[track.path];
+
 				newCache[track.path] = {
 					path: track.path,
 					title: track.title,
 					artist: track.artist,
 					album: track.album,
 					duration_seconds: track.duration_seconds,
-					cover_data_url: trackCacheByPath.value[track.path]?.cover_data_url ?? null,
-					dominant_color: trackCacheByPath.value[track.path]?.dominant_color ?? null,
+					cover_data_url: newVisuals?.cover_data_url ?? existingEntry?.cover_data_url ?? null,
+					dominant_color: newVisuals?.dominant_color ?? existingEntry?.dominant_color ?? null,
 				};
 			}
+
 			trackCacheByPath.value = newCache;
 			persistTrackCache();
 		} catch (err) {
