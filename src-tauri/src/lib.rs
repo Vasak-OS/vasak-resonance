@@ -13,7 +13,7 @@ use commands::audio_control::{
 };
 use commands::lyrics::fetch_lyrics;
 use commands::library::{list_library_tracks, save_library_track, search_library_tracks};
-use commands::indexing::scan_music_folders;
+use commands::indexing::{scan_default_music_folder, scan_music_folders};
 use commands::playlists::{
     add_track_to_playlist_command, create_playlist_command, delete_playlist_command,
     list_playlist_tracks_command, list_playlists_command, remove_track_from_playlist_command,
@@ -37,6 +37,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             scan_music_folders,
+            scan_default_music_folder,
             list_library_tracks,
             save_library_track,
             search_library_tracks,

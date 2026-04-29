@@ -30,6 +30,14 @@ export interface PlaybackProgressEvent {
 	now_playing: NowPlayingMetadata | null;
 }
 
+export interface ScanSummary {
+	scanned_files: number;
+	inserted_tracks: number;
+	skipped_duplicates: number;
+	skipped_non_audio: number;
+	failed_files: number;
+}
+
 export interface LyricsLine {
 	time_ms: number;
 	text: string;
@@ -115,6 +123,11 @@ export const handleDroppedFile = (filePath: string): Promise<DroppedPlaybackTrac
 export const listLibraryTracks = (): Promise<LibraryTrack[]> => {
 	console.log('[player.service] listLibraryTracks invoke');
 	return invoke<LibraryTrack[]>('list_library_tracks');
+};
+
+export const scanDefaultMusicFolder = (): Promise<ScanSummary> => {
+	console.log('[player.service] scanDefaultMusicFolder invoke');
+	return invoke<ScanSummary>('scan_default_music_folder');
 };
 
 export const searchLibraryTracks = (query: string, limit?: number): Promise<LibraryTrack[]> => {

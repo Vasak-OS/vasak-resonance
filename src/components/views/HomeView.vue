@@ -3,6 +3,7 @@ import { getSymbolSource } from '@vasakgroup/plugin-vicons';
 import { RecycleScroller } from 'vue-virtual-scroller';
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import LabeledField from '@/components/layout/LabeledField.vue';
 import {
 	type DroppedPlaybackTrack,
 	type LibraryTrack,
@@ -228,34 +229,30 @@ onUnmounted(() => {
 			</div>
 
 			<div class="grid gap-3 lg:grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr]">
-				<label class="grid gap-1 text-xs uppercase tracking-[0.14em] text-tx-muted">
-					Buscar
+				<LabeledField label="Buscar">
 					<input
 						v-model="searchQuery"
 						type="search"
 						placeholder="Título, artista, album o ruta"
 						class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 placeholder:text-tx-muted/70 focus:border-primary/50"
 					/>
-				</label>
+				</LabeledField>
 
-				<label class="grid gap-1 text-xs uppercase tracking-[0.14em] text-tx-muted">
-					Artista
+				<LabeledField label="Artista">
 					<select v-model="artistFilter" class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
 						<option value="all">Todos</option>
 						<option v-for="artist in artistOptions" :key="artist" :value="artist">{{ artist }}</option>
 					</select>
-				</label>
+				</LabeledField>
 
-				<label class="grid gap-1 text-xs uppercase tracking-[0.14em] text-tx-muted">
-					Album
+				<LabeledField label="Album">
 					<select v-model="albumFilter" class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
 						<option value="all">Todos</option>
 						<option v-for="album in albumOptions" :key="album" :value="album">{{ album }}</option>
 					</select>
-				</label>
+				</LabeledField>
 
-				<label class="grid gap-1 text-xs uppercase tracking-[0.14em] text-tx-muted">
-					Ordenar
+				<LabeledField label="Ordenar">
 					<select v-model="sortBy" class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
 						<option value="recent-desc">Recientes primero</option>
 						<option value="title-asc">Título A-Z</option>
@@ -266,7 +263,7 @@ onUnmounted(() => {
 						<option value="duration-asc">Duración corta</option>
 						<option value="duration-desc">Duración larga</option>
 					</select>
-				</label>
+				</LabeledField>
 			</div>
 		</header>
 

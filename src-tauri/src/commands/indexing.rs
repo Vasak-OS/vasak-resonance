@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 use walkdir::WalkDir;
 
@@ -5,8 +6,7 @@ use crate::audio::{extract_track_from_file, is_supported_audio_file};
 use crate::db::{get_database_path, insert_track_if_not_exists, open_database};
 use crate::structs::ScanSummary;
 
-#[tauri::command]
-pub fn scan_music_folders(folders: Vec<String>) -> Result<ScanSummary, String> {
+fn scan_folders_internal(folders: &[String]) -> Result<ScanSummary, String> {
     let db_path = get_database_path()?;
     let conn = open_database(&db_path)?;
 
@@ -58,4 +58,62 @@ pub fn scan_music_folders(folders: Vec<String>) -> Result<ScanSummary, String> {
     }
 
     Ok(summary)
+}
+
+fn resolve_default_music_folders() -> Vec<String> {
+    let mut ordered = Vec::<PathBuf>::new();
+    let mut seen = HashSet::<PathBuf>::new();
+
+    let mut push_if_valid = |candidate: PathBuf| {
+        if candidate.exists() && candidate.is_dir() {
+            let canonical = std::fs::canonicalize(&candidate).unwrap_or(candidate.clone());
+            if seen.insert(canonical.clone()) {
+                ordered.push(canonical);
+            }
+        }
+    };
+
+    if let Some(audio_dir) = dirs::audio_dir() {
+        push_if_valid(audio_dir);
+    }
+
+    if let Some(home) = dirs::home_dir() {
+        // Fallbacks para sistemas donde xdg-user-dirs no esté configurado.
+        let common_candidates = [
+            "Music",
+            "Música",
+            "Musica",
+            "musica",
+            "music",
+            "MUSICA",
+            "MUSICA",
+            "Musik",
+            "musik",
+            "Muzyka",
+            "Muzica",
+            "Musique",
+            "Musik",
+            "Музыка",
+        ];
+
+        for name in common_candidates {
+            push_if_valid(home.join(name));
+        }
+    }
+
+    ordered
+        .into_iter()
+        .map(|path| path.to_string_lossy().to_string())
+        .collect()
+}
+
+#[tauri::command]
+pub fn scan_music_folders(folders: Vec<String>) -> Result<ScanSummary, String> {
+    scan_folders_internal(&folders)
+}
+
+#[tauri::command]
+pub fn scan_default_music_folder() -> Result<ScanSummary, String> {
+    let folders = resolve_default_music_folders();
+    scan_folders_internal(&folders)
 }
