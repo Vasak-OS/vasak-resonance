@@ -100,10 +100,16 @@ export const fetchLyrics = (params: {
 }): Promise<TrackLyricsPayload> => {
 	console.log('[player.service] fetchLyrics invoke:', params.trackName, params.artistName);
 	return invoke<TrackLyricsPayload>('fetch_lyrics', {
+		// enviar ambas convenciones (snake_case y camelCase) para compatibilidad
 		track_name: params.trackName,
 		artist_name: params.artistName,
 		album_name: params.albumName,
 		duration_seconds: Math.max(0, Math.floor(params.durationSeconds)),
+
+		trackName: params.trackName,
+		artistName: params.artistName,
+		albumName: params.albumName,
+		durationSeconds: Math.max(0, Math.floor(params.durationSeconds)),
 	});
 };
 
