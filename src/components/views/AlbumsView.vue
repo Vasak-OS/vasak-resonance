@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import { getSymbolSource } from '@vasakgroup/plugin-vicons';
 import { computed, onMounted, ref } from 'vue';
+import LabeledField from '@/components/layout/LabeledField.vue';
 import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
 const playIcon = ref('');
 const addAlbumIcon = ref('');
+const searchQuery = ref('');
+const artistFilter = ref('all');
+const sortBy = ref('album-asc');
+
+const normalize = (value: string) => value.trim().toLowerCase();
 
 const groupedAlbums = computed(() => {
 	const albumsMap = new Map<
@@ -49,6 +55,46 @@ const groupedAlbums = computed(() => {
 	}
 
 	return Array.from(albumsMap.values()).sort((a, b) => a.album.localeCompare(b.album));
+});
+
+const albumArtistOptions = computed(() => {
+	const values = new Set(groupedAlbums.value.map((album) => album.artist));
+	return Array.from(values).sort((left, right) => left.localeCompare(right));
+});
+
+const filteredAlbums = computed(() => {
+	const query = normalize(searchQuery.value);
+	const base = groupedAlbums.value.filter((album) => {
+		if (artistFilter.value !== 'all' && album.artist !== artistFilter.value) {
+			return false;
+		}
+
+		if (!query) {
+			return true;
+		}
+
+		const matchAlbum = normalize(album.album).includes(query);
+		const matchArtist = normalize(album.artist).includes(query);
+		const matchTrack = album.tracks.some(
+			(track) => normalize(track.title).includes(query) || normalize(track.artist).includes(query)
+		);
+
+		return matchAlbum || matchArtist || matchTrack;
+	});
+
+	return [...base].sort((left, right) => {
+		switch (sortBy.value) {
+			case 'album-desc':
+				return right.album.localeCompare(left.album);
+			case 'tracks-desc':
+				return right.tracks.length - left.tracks.length;
+			case 'tracks-asc':
+				return left.tracks.length - right.tracks.length;
+			case 'album-asc':
+			default:
+				return left.album.localeCompare(right.album);
+		}
+	});
 });
 
 const extractTrackName = (path: string): string => {
@@ -104,13 +150,40 @@ const onPlayAlbum = async (paths: string[]) => {
 			<h2 class="text-lg font-semibold text-tx-main">Biblioteca por album</h2>
 		</div>
 
-		<div v-if="groupedAlbums.length === 0" class="rounded-corner border border-dashed border-ui-border bg-ui-surface/35 p-4 text-sm text-tx-muted">
+		<div class="mb-4 grid gap-3 lg:grid-cols-[1.4fr_0.8fr_0.8fr]">
+			<LabeledField label="Buscar">
+				<input
+					v-model="searchQuery"
+					type="search"
+					placeholder="Album, artista o pista"
+					class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 placeholder:text-tx-muted/70 focus:border-primary/50"
+				/>
+			</LabeledField>
+
+			<LabeledField label="Artista">
+				<select v-model="artistFilter" class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
+					<option value="all">Todos</option>
+					<option v-for="artist in albumArtistOptions" :key="artist" :value="artist">{{ artist }}</option>
+				</select>
+			</LabeledField>
+
+			<LabeledField label="Ordenar">
+				<select v-model="sortBy" class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
+					<option value="album-asc">Album A-Z</option>
+					<option value="album-desc">Album Z-A</option>
+					<option value="tracks-desc">Mas pistas</option>
+					<option value="tracks-asc">Menos pistas</option>
+				</select>
+			</LabeledField>
+		</div>
+
+		<div v-if="filteredAlbums.length === 0" class="rounded-corner border border-dashed border-ui-border bg-ui-surface/35 p-4 text-sm text-tx-muted">
 			No hay albumes en cache todavia. Reproduce o marca canciones como favoritas para construir la biblioteca.
 		</div>
 
 		<div v-else class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
 			<article
-				v-for="album in groupedAlbums"
+				v-for="album in filteredAlbums"
 				:key="album.key"
 				class="rounded-corner border border-ui-border bg-ui-bg/80 p-4"
 			>

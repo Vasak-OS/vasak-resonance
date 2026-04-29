@@ -1,12 +1,18 @@
-	<script setup lang="ts">
+<script setup lang="ts">
 import { getSymbolSource } from '@vasakgroup/plugin-vicons';
 import { computed, onMounted, ref } from 'vue';
+import LabeledField from '@/components/layout/LabeledField.vue';
 import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
 const playIcon = ref('');
 const addFavoriteIcon = ref('');
 const removeIcon = ref('');
+const searchQuery = ref('');
+const artistFilter = ref('all');
+const sortBy = ref('recent');
+
+const normalize = (value: string) => value.trim().toLowerCase();
 
 const currentPath = computed(() => playerStore.currentPath || '');
 
@@ -15,6 +21,54 @@ const extractTrackName = (path: string): string => {
 	const parts = normalized.split('/');
 	return parts[parts.length - 1] || path;
 };
+
+const filteredFavoriteEntries = computed(() => {
+	const query = normalize(searchQuery.value);
+	const base = playerStore.favoriteEntries.filter((entry) => {
+		const artist = entry.metadata?.artist || 'Unknown Artist';
+		if (artistFilter.value !== 'all' && artist !== artistFilter.value) {
+			return false;
+		}
+
+		if (!query) {
+			return true;
+		}
+
+		const title = entry.metadata?.title || extractTrackName(entry.path);
+		const album = entry.metadata?.album || 'Unknown Album';
+		return (
+			normalize(title).includes(query) ||
+			normalize(artist).includes(query) ||
+			normalize(album).includes(query) ||
+			normalize(entry.path).includes(query)
+		);
+	});
+
+	if (sortBy.value === 'title-asc') {
+		return [...base].sort((left, right) => {
+			const leftTitle = left.metadata?.title || extractTrackName(left.path);
+			const rightTitle = right.metadata?.title || extractTrackName(right.path);
+			return leftTitle.localeCompare(rightTitle);
+		});
+	}
+
+	if (sortBy.value === 'artist-asc') {
+		return [...base].sort((left, right) => {
+			const leftArtist = left.metadata?.artist || 'Unknown Artist';
+			const rightArtist = right.metadata?.artist || 'Unknown Artist';
+			return leftArtist.localeCompare(rightArtist);
+		});
+	}
+
+	return base;
+});
+
+const favoriteArtistOptions = computed(() => {
+	const values = new Set(
+		playerStore.favoriteEntries.map((entry) => entry.metadata?.artist || 'Unknown Artist')
+	);
+	return Array.from(values).sort((left, right) => left.localeCompare(right));
+});
 
 onMounted(async () => {
 	const getSymbolic = getSymbolSource;
@@ -57,13 +111,39 @@ onMounted(async () => {
 			</button>
 		</div>
 
-		<div v-if="playerStore.favoritePaths.length === 0" class="rounded-corner border border-dashed border-ui-border bg-ui-surface/35 p-4 text-sm text-tx-muted">
+		<div class="mb-4 grid gap-3 lg:grid-cols-[1.4fr_0.8fr_0.8fr]">
+			<LabeledField label="Buscar">
+				<input
+					v-model="searchQuery"
+					type="search"
+					placeholder="Título, artista, album o ruta"
+					class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 placeholder:text-tx-muted/70 focus:border-primary/50"
+				/>
+			</LabeledField>
+
+			<LabeledField label="Artista">
+				<select v-model="artistFilter" class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
+					<option value="all">Todos</option>
+					<option v-for="artist in favoriteArtistOptions" :key="artist" :value="artist">{{ artist }}</option>
+				</select>
+			</LabeledField>
+
+			<LabeledField label="Ordenar">
+				<select v-model="sortBy" class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
+					<option value="recent">Recientes</option>
+					<option value="title-asc">Título A-Z</option>
+					<option value="artist-asc">Artista A-Z</option>
+				</select>
+			</LabeledField>
+		</div>
+
+		<div v-if="filteredFavoriteEntries.length === 0" class="rounded-corner border border-dashed border-ui-border bg-ui-surface/35 p-4 text-sm text-tx-muted">
 			Aun no tienes canciones en favoritos.
 		</div>
 
 		<ul v-else class="grid gap-2">
 			<li
-				v-for="entry in playerStore.favoriteEntries"
+				v-for="entry in filteredFavoriteEntries"
 				:key="entry.path"
 				class="flex items-center gap-3 rounded-corner border border-ui-border bg-ui-bg/70 px-3 py-2"
 			>
