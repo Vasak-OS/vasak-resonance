@@ -64,6 +64,22 @@ pub struct PlaybackProgressEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LyricsLine {
+    pub time_ms: u64,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrackLyricsPayload {
+    pub source: String,
+    pub synced: bool,
+    pub instrumental: bool,
+    pub plain_lyrics: Option<String>,
+    pub synced_lyrics: Option<String>,
+    pub lines: Vec<LyricsLine>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Playlist {
     pub id: i64,
     pub name: String,

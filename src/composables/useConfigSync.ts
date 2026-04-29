@@ -11,7 +11,9 @@ let sharedUnlisten: UnlistenFn | null = null;
 let activeConsumers = 0;
 let activeLoad: Promise<void> | null = null;
 
-const loadConfigSafely = async (configStore: Store<'config', { config: any; loadConfig: () => Promise<void> }>) => {
+const loadConfigSafely = async (
+	configStore: Store<'config', { config: any; loadConfig: () => Promise<void> }>
+) => {
 	if (!activeLoad) {
 		activeLoad = configStore.loadConfig().finally(() => {
 			activeLoad = null;

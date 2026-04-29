@@ -11,7 +11,7 @@ const maximizeIcon: Ref<string> = ref('');
 const miniIcon: Ref<string> = ref('');
 
 onMounted(async () => {
-  miniIcon.value = await getSymbolSource('screenshot-ui-window');
+	miniIcon.value = await getSymbolSource('screenshot-ui-window');
 	closeIcon.value = await getSymbolSource('window-close');
 	minimizeIcon.value = await getSymbolSource('window-minimize');
 	maximizeIcon.value = await getSymbolSource('window-maximize');

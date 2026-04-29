@@ -2,12 +2,16 @@ mod audio;
 mod audio_manager;
 mod commands;
 mod db;
+mod lyrics;
 #[cfg(target_os = "linux")]
 mod mpris;
 mod structs;
 
 use audio_manager::AudioState;
-use commands::audio_control::{get_playback_snapshot, pause, play_file, resume, seek, set_volume, stop};
+use commands::audio_control::{
+    get_playback_snapshot, pause, play_file, resume, seek, set_volume, stop,
+};
+use commands::lyrics::fetch_lyrics;
 use commands::library::{list_library_tracks, save_library_track, search_library_tracks};
 use commands::indexing::scan_music_folders;
 use commands::playlists::{
@@ -44,6 +48,7 @@ pub fn run() {
             seek,
             set_volume,
             get_playback_snapshot,
+            fetch_lyrics,
             create_playlist_command,
             list_playlists_command,
             delete_playlist_command,

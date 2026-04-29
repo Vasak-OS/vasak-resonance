@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { getSymbolSource } from '@vasakgroup/plugin-vicons';
-import { computed } from 'vue';
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import TransportButton from '@/components/player/transport/TransportButton.vue';
 
 const props = defineProps<{

@@ -30,6 +30,20 @@ export interface PlaybackProgressEvent {
 	now_playing: NowPlayingMetadata | null;
 }
 
+export interface LyricsLine {
+	time_ms: number;
+	text: string;
+}
+
+export interface TrackLyricsPayload {
+	source: string;
+	synced: boolean;
+	instrumental: boolean;
+	plain_lyrics: string | null;
+	synced_lyrics: string | null;
+	lines: LyricsLine[];
+}
+
 export interface LibraryTrack {
 	id: number;
 	path: string;
@@ -68,6 +82,21 @@ export const setPlaybackVolume = (volume: number): Promise<void> => {
 export const getPlaybackSnapshot = (): Promise<PlaybackProgressEvent> => {
 	console.log('[player.service] getPlaybackSnapshot invoke');
 	return invoke<PlaybackProgressEvent>('get_playback_snapshot');
+};
+
+export const fetchLyrics = (params: {
+	trackName: string;
+	artistName: string;
+	albumName: string;
+	durationSeconds: number;
+}): Promise<TrackLyricsPayload> => {
+	console.log('[player.service] fetchLyrics invoke:', params.trackName, params.artistName);
+	return invoke<TrackLyricsPayload>('fetch_lyrics', {
+		track_name: params.trackName,
+		artist_name: params.artistName,
+		album_name: params.albumName,
+		duration_seconds: Math.max(0, Math.floor(params.durationSeconds)),
+	});
 };
 
 export const stopPlayback = (): Promise<void> => {

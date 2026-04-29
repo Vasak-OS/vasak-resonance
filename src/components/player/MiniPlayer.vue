@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue';
 import PlaybackWaves from '@/components/player/PlaybackWaves.vue';
-import MiniTransportControls from '@/components/player/transport/MiniTransportControls.vue';
 import TrackMetaCard from '@/components/player/TrackMetaCard.vue';
+import MiniTransportControls from '@/components/player/transport/MiniTransportControls.vue';
 import { useConfigSync } from '@/composables/useConfigSync';
 import { useTrackSubtitle } from '@/composables/useTrackSubtitle';
 import { useTrackTitle } from '@/composables/useTrackTitle';
-import { usePlayerStore } from '@/stores/player';
 import { toggleMainAndMiniPlayer } from '@/services/window.service';
+import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LyricsView from '@/components/player/LyricsView.vue';
 import PlaybackWaves from '@/components/player/PlaybackWaves.vue';
 import { formatSeconds } from '@/composables/useTimeFormat';
 import { useTrackTitle } from '@/composables/useTrackTitle';
@@ -28,6 +29,10 @@ const trackTitle = useTrackTitle({
         {{ formatSeconds(playerStore.positionSeconds) }} / {{ formatSeconds(playerStore.durationSeconds) }}
       </p>
     </div>
+
+		<div class="mt-2">
+			<LyricsView />
+		</div>
 
 	</section>
 </template>

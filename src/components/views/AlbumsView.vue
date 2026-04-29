@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { getSymbolSource } from '@vasakgroup/plugin-vicons';
-import { computed, onMounted } from 'vue';
-import { ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();

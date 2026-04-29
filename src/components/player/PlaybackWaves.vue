@@ -36,9 +36,11 @@ const progressPercent = computed(() => {
 });
 
 const barHeight = (index: number): number => {
-	const phase = (index + 1) * props.phaseMultiplier + playerStore.positionSeconds * props.timeMultiplier;
+	const phase =
+		(index + 1) * props.phaseMultiplier + playerStore.positionSeconds * props.timeMultiplier;
 	const wave = Math.sin(phase) * 0.5 + 0.5;
-	const floor = playerStore.isPaused || !playerStore.hasTrack ? props.floorPaused : props.floorPlaying;
+	const floor =
+		playerStore.isPaused || !playerStore.hasTrack ? props.floorPaused : props.floorPlaying;
 	return Math.round(floor + wave * props.amplitude);
 };
 

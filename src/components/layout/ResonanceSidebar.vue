@@ -2,8 +2,8 @@
 import { getSymbolSource } from '@vasakgroup/plugin-vicons';
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import MainTransportControls from '@/components/player/transport/MainTransportControls.vue';
 import TrackMetaCard from '@/components/player/TrackMetaCard.vue';
+import MainTransportControls from '@/components/player/transport/MainTransportControls.vue';
 import { useTrackSubtitle } from '@/composables/useTrackSubtitle';
 import { useTrackTitle } from '@/composables/useTrackTitle';
 import { usePlayerStore } from '@/stores/player';
