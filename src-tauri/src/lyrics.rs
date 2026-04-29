@@ -178,9 +178,10 @@ fn record_to_payload(source: &str, record: &LrcLibRecord) -> TrackLyricsPayload 
 async fn fetch_signature_record(client: &Client, endpoint: &str, query: &LyricsQuery) -> Option<LrcLibRecord> {
 	let duration = query.duration_seconds;
 	let url = format!("{}/{}", LRCLIB_BASE_URL, endpoint);
+	eprintln!("[lyrics] fetch_signature_record -> url={} track='{}' artist='{}' album='{}' duration={}", url, query.track_name, query.artist_name, query.album_name, duration);
 
-	let response = client
-		.get(url)
+	let response = match client
+		.get(url.clone())
 		.query(&[
 			("track_name", &query.track_name),
 			("artist_name", &query.artist_name),
@@ -189,13 +190,28 @@ async fn fetch_signature_record(client: &Client, endpoint: &str, query: &LyricsQ
 		])
 		.send()
 		.await
-		.ok()?;
+	{
+		Ok(resp) => resp,
+		Err(err) => {
+			eprintln!("[lyrics] request error for {}: {}", url, err);
+			return None;
+		}
+	};
 
-	if !response.status().is_success() {
+	let status = response.status();
+	if !status.is_success() {
+		let body = response.text().await.unwrap_or_else(|_| "<no body>".to_string());
+		eprintln!("[lyrics] non-success {} {} -> {}", url, status, body);
 		return None;
 	}
 
-	response.json::<LrcLibRecord>().await.ok()
+	match response.json::<LrcLibRecord>().await {
+		Ok(rec) => Some(rec),
+		Err(err) => {
+			eprintln!("[lyrics] failed to parse JSON from {}: {}", url, err);
+			None
+		}
+	}
 }
 
 async fn fetch_search_record(client: &Client, query: &LyricsQuery) -> Option<LrcLibRecord> {
@@ -203,20 +219,34 @@ async fn fetch_search_record(client: &Client, query: &LyricsQuery) -> Option<Lrc
 	if base.is_empty() {
 		return None;
 	}
+	let url = format!("{}/api/search", LRCLIB_BASE_URL);
+	eprintln!("[lyrics] fetch_search_record -> url={} q='{}'", url, base);
 
-	let response = client
-		.get(format!("{}/api/search", LRCLIB_BASE_URL))
-		.query(&[("q", base.as_str())])
-		.send()
-		.await
-		.ok()?;
+	let response = match client.get(url.clone()).query(&[("q", base.as_str())]).send().await {
+		Ok(resp) => resp,
+		Err(err) => {
+			eprintln!("[lyrics] search request error for {}: {}", url, err);
+			return None;
+		}
+	};
 
-	if !response.status().is_success() {
+	let status = response.status();
+	if !status.is_success() {
+		let body = response.text().await.unwrap_or_else(|_| "<no body>".to_string());
+		eprintln!("[lyrics] search non-success {} {} -> {}", url, status, body);
 		return None;
 	}
 
-	let mut items = response.json::<Vec<LrcLibRecord>>().await.ok()?;
+	let mut items = match response.json::<Vec<LrcLibRecord>>().await {
+		Ok(list) => list,
+		Err(err) => {
+			eprintln!("[lyrics] failed to parse search JSON: {}", err);
+			return None;
+		}
+	};
+
 	if items.is_empty() {
+		eprintln!("[lyrics] search returned empty list for q='{}'", base);
 		return None;
 	}
 
@@ -226,6 +256,7 @@ async fn fetch_search_record(client: &Client, query: &LyricsQuery) -> Option<Lrc
 		da.cmp(&db)
 	});
 
+	eprintln!("[lyrics] search picked id={} track='{}' artist='{}'", items[0].id, items[0].track_name, items[0].artist_name);
 	items.into_iter().next()
 }
 
