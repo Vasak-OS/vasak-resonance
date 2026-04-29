@@ -625,14 +625,17 @@ export const usePlayerStore = defineStore('player', () => {
 
 	const reloadLibraryTracks = async () => {
 		try {
+			// Limpiar cache local primero para forzar recarga desde cero
+			trackCacheByPath.value = {};
+			persistTrackCache();
+
 			const tracks = await listLibraryTracks();
 			const newCache: Record<string, DroppedPlaybackTrack> = {};
 
 			// Identificar tracks nuevos (no en cache anterior)
-			const previousPaths = new Set(Object.keys(trackCacheByPath.value));
-			const newPaths = tracks.filter((t) => !previousPaths.has(t.path));
+			const newPaths = tracks; // Todos son "nuevos" porque limpiamos el cache
 
-			// Extraer metadatos visuales (cover, color) de tracks nuevos en paralelo
+			// Extraer metadatos visuales (cover, color) de todos los tracks en paralelo
 			const visualMetadata = await Promise.allSettled(
 				newPaths.map(async (track) => {
 					try {
@@ -662,7 +665,6 @@ export const usePlayerStore = defineStore('player', () => {
 
 			// Reconstruir cache combinando datos de BD con metadatos visuales
 			for (const track of tracks) {
-				const existingEntry = trackCacheByPath.value[track.path];
 				const newVisuals = visualMap[track.path];
 
 				newCache[track.path] = {
@@ -671,8 +673,8 @@ export const usePlayerStore = defineStore('player', () => {
 					artist: track.artist,
 					album: track.album,
 					duration_seconds: track.duration_seconds,
-					cover_data_url: newVisuals?.cover_data_url ?? existingEntry?.cover_data_url ?? null,
-					dominant_color: newVisuals?.dominant_color ?? existingEntry?.dominant_color ?? null,
+					cover_data_url: newVisuals?.cover_data_url ?? null,
+					dominant_color: newVisuals?.dominant_color ?? null,
 				};
 			}
 
