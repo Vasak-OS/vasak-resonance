@@ -238,31 +238,46 @@ onUnmounted(() => {
 					/>
 				</LabeledField>
 
-				<LabeledField label="Artista">
-					<select v-model="artistFilter" class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
-						<option value="all">Todos</option>
-						<option v-for="artist in artistOptions" :key="artist" :value="artist">{{ artist }}</option>
-					</select>
+				<LabeledField label="Artista" wrapperClass="relative hidden lg:block">
+					<div class="relative">
+						<select v-model="artistFilter" class="appearance-none rounded-corner border border-ui-border bg-ui-surface/80 px-3 py-2 pr-8 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
+							<option value="all">Todos</option>
+							<option v-for="artist in artistOptions" :key="artist" :value="artist">{{ artist }}</option>
+						</select>
+						<svg class="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-tx-muted" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+							<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clip-rule="evenodd" />
+						</svg>
+					</div>
 				</LabeledField>
 
-				<LabeledField label="Album">
-					<select v-model="albumFilter" class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
-						<option value="all">Todos</option>
-						<option v-for="album in albumOptions" :key="album" :value="album">{{ album }}</option>
-					</select>
+				<LabeledField label="Album" wrapperClass="relative hidden lg:block">
+					<div class="relative">
+						<select v-model="albumFilter" class="appearance-none rounded-corner border border-ui-border bg-ui-surface/80 px-3 py-2 pr-8 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
+							<option value="all">Todos</option>
+							<option v-for="album in albumOptions" :key="album" :value="album">{{ album }}</option>
+						</select>
+						<svg class="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-tx-muted" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+							<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clip-rule="evenodd" />
+						</svg>
+					</div>
 				</LabeledField>
 
-				<LabeledField label="Ordenar">
-					<select v-model="sortBy" class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
-						<option value="recent-desc">Recientes primero</option>
-						<option value="title-asc">Título A-Z</option>
-						<option value="title-desc">Título Z-A</option>
-						<option value="artist-asc">Artista A-Z</option>
-						<option value="artist-desc">Artista Z-A</option>
-						<option value="album-asc">Album A-Z</option>
-						<option value="duration-asc">Duración corta</option>
-						<option value="duration-desc">Duración larga</option>
-					</select>
+				<LabeledField label="Ordenar" wrapperClass="relative hidden lg:block">
+					<div class="relative">
+						<select v-model="sortBy" class="appearance-none rounded-corner border border-ui-border bg-ui-surface/80 px-3 py-2 pr-8 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
+							<option value="recent-desc">Recientes primero</option>
+							<option value="title-asc">Título A-Z</option>
+							<option value="title-desc">Título Z-A</option>
+							<option value="artist-asc">Artista A-Z</option>
+							<option value="artist-desc">Artista Z-A</option>
+							<option value="album-asc">Album A-Z</option>
+							<option value="duration-asc">Duración corta</option>
+							<option value="duration-desc">Duración larga</option>
+						</select>
+						<svg class="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-tx-muted" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+							<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clip-rule="evenodd" />
+						</svg>
+					</div>
 				</LabeledField>
 			</div>
 		</header>
