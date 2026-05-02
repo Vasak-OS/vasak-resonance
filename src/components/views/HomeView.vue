@@ -176,6 +176,27 @@ const playTrack = async (path: string) => {
 	await playerStore.playDropped(path);
 };
 
+const playRandomFiltered = async () => {
+	const list = sortedTracks.value ?? [];
+	if (list.length === 0) {
+		playerStore.globalBadgeMessage = 'No hay canciones que reproducir';
+		return;
+	}
+
+	// Crear una copia y mezclar aleatoriamente
+	const shuffled = [...list].sort(() => Math.random() - 0.5);
+	const firstTrack = shuffled[0];
+	const restTracks = shuffled.slice(1);
+
+	// Reproducir la primera canción
+	await playerStore.playDropped(firstTrack.path);
+
+	// Agregar el resto a la cola
+	if (restTracks.length > 0) {
+		playerStore.enqueuePaths(restTracks.map((t) => t.path));
+	}
+};
+
 const toggleFavorite = (path: string) => {
 	playerStore.toggleFavoritePath(path);
 };
@@ -279,6 +300,20 @@ onUnmounted(() => {
 						</svg>
 					</div>
 				</LabeledField>
+
+				<div class="col-span-full flex items-end gap-2">
+					<button
+						@click="playRandomFiltered"
+						:disabled="sortedTracks.length === 0"
+						class="inline-flex items-center gap-2 rounded-corner border border-secondary/50 bg-secondary/15 px-4 py-2 text-sm font-medium text-secondary transition-colors duration-200 hover:enabled:border-secondary/80 hover:enabled:bg-secondary/25 disabled:opacity-50 disabled:cursor-not-allowed"
+						title="Reproducir aleatoriamente respetando los filtros aplicados"
+					>
+						<svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+							<path d="M3 2a1 1 0 011 1v2.101a7 7 0 0110.821 3.394c.105.302.214.602.321.901l1.196-.605A1 1 0 0117 7V4a1 1 0 00-2 0v1.101A9 9 0 005 3H4a1 1 0 00-1 1zm14 12a1 1 0 01-1 1h-1.101a7 7 0 01-10.82-3.394c-.105-.302-.214-.602-.321-.901l-1.196.605A1 1 0 003 13v3a1 1 0 002 0v-1.101A9 9 0 0015 17h1a1 1 0 001-1z" />
+						</svg>
+						<span>Aleatorio</span>
+					</button>
+				</div>
 			</div>
 		</header>
 

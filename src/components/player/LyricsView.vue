@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
-import { Transition } from 'vue';
+import { computed, ref, Transition, watch } from 'vue';
 import { fetchLyrics, type LyricsLine, type TrackLyricsPayload } from '@/services/player.service';
 import { usePlayerStore } from '@/stores/player';
 
