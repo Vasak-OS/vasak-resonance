@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
-use walkdir::WalkDir;
 use tauri::Emitter;
+use walkdir::WalkDir;
 
 use crate::audio::{extract_track_from_file, is_supported_audio_file};
 use crate::db::{get_database_path, insert_track_if_not_exists, open_database};
@@ -114,12 +114,14 @@ pub fn scan_music_folders(folders: Vec<String>) -> Result<ScanSummary, String> {
 }
 
 #[tauri::command]
-pub async fn scan_default_music_folder(app_handle: tauri::AppHandle) -> Result<ScanSummary, String> {
+pub async fn scan_default_music_folder(
+    app_handle: tauri::AppHandle,
+) -> Result<ScanSummary, String> {
     let folders = resolve_default_music_folders();
     let result = scan_folders_internal(&folders)?;
-    
+
     // Emit scan complete event
     let _ = app_handle.emit("scan-complete", &result);
-    
+
     Ok(result)
 }

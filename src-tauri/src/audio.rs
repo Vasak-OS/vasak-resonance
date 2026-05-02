@@ -5,9 +5,9 @@ use lofty::picture::PictureType;
 use lofty::prelude::{AudioFile, TaggedFileExt};
 use lofty::probe::Probe;
 use lofty::tag::Accessor;
-use std::io::Cursor;
 use std::collections::HashMap;
 use std::fs;
+use std::io::Cursor;
 use std::path::Path;
 
 use crate::structs::{NowPlayingMetadata, Track};
@@ -20,7 +20,9 @@ pub fn extract_track_from_file(path: &Path) -> Result<Track, String> {
         .read()
         .map_err(|e| format!("No se pudo leer metadata de {}: {e}", path.display()))?;
 
-    let primary_tag = tagged_file.primary_tag().or_else(|| tagged_file.first_tag());
+    let primary_tag = tagged_file
+        .primary_tag()
+        .or_else(|| tagged_file.first_tag());
     let fallback_name = path
         .file_stem()
         .and_then(|s| s.to_str())
@@ -70,7 +72,9 @@ pub fn extract_now_playing_metadata_with_cover_cache(
         .read()
         .map_err(|e| format!("No se pudo leer metadata de {}: {e}", path.display()))?;
 
-    let primary_tag = tagged_file.primary_tag().or_else(|| tagged_file.first_tag());
+    let primary_tag = tagged_file
+        .primary_tag()
+        .or_else(|| tagged_file.first_tag());
     let fallback_name = path
         .file_stem()
         .and_then(|s| s.to_str())
@@ -94,7 +98,8 @@ pub fn extract_now_playing_metadata_with_cover_cache(
     let mut computed_cover_data_url: Option<String> = None;
     let mut computed_dominant_color: Option<String> = None;
 
-    let (cover_data_url, dominant_color) = if let Some(cached_cover) = cover_cache.get(&canonical_path_str)
+    let (cover_data_url, dominant_color) = if let Some(cached_cover) =
+        cover_cache.get(&canonical_path_str)
     {
         (
             cached_cover.clone(),
@@ -138,7 +143,11 @@ pub fn extract_now_playing_metadata_with_cover_cache(
 
 fn extract_dominant_color_hex(image_data: &[u8]) -> Option<String> {
     let cursor = Cursor::new(image_data);
-    let decoded = ImageReader::new(cursor).with_guessed_format().ok()?.decode().ok()?;
+    let decoded = ImageReader::new(cursor)
+        .with_guessed_format()
+        .ok()?
+        .decode()
+        .ok()?;
     let rgba = decoded.to_rgba8();
 
     let palette = get_palette(rgba.as_raw(), ColorFormat::Rgba, 10, 5).ok()?;
@@ -149,8 +158,7 @@ fn extract_dominant_color_hex(image_data: &[u8]) -> Option<String> {
 
 pub fn is_supported_audio_file(path: &Path) -> bool {
     const SUPPORTED_EXTENSIONS: &[&str] = &[
-        "mp3", "flac", "ogg", "oga", "wav", "m4a", "aac", "opus", "wma", "aiff",
-        "alac",
+        "mp3", "flac", "ogg", "oga", "wav", "m4a", "aac", "opus", "wma", "aiff", "alac",
     ];
 
     path.extension()

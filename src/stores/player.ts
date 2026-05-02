@@ -1,6 +1,6 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { defineStore } from 'pinia';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import {
 	type DroppedPlaybackTrack,
 	getPlaybackSnapshot,
@@ -41,6 +41,28 @@ export const usePlayerStore = defineStore('player', () => {
 	let unlistenMprisNext: UnlistenFn | null = null;
 	let unlistenMprisPrevious: UnlistenFn | null = null;
 	let unlistenMprisStop: UnlistenFn | null = null;
+	let beforeUnloadHandler: (() => void) | null = null;
+	const playbackStorage = ref<any | null>(null);
+
+	const initPlaybackStorage = async () => {
+		try {
+			if (!playbackStorage.value) {
+				const filePath = 'resonance-playback.json';
+				try {
+					// Use Function-constructor import to avoid bundler static analysis
+					// which would otherwise try to resolve the module at build time.
+					const dynamicImport = new Function('return import("@tauri-apps/plugin-store")');
+					const plugin = await dynamicImport();
+					playbackStorage.value = await new plugin.LazyStore(filePath);
+					await playbackStorage.value.save();
+				} catch (err) {
+					console.warn('[initPlaybackStorage] plugin-store not available, fallback to localStorage', err);
+				}
+			}
+		} catch (err) {
+			console.error('[initPlaybackStorage] failed:', err);
+		}
+	};
 
 	const progressPercent = computed(() => {
 		if (!durationSeconds.value || durationSeconds.value <= 0) {
@@ -168,6 +190,82 @@ export const usePlayerStore = defineStore('player', () => {
 		}
 
 		window.localStorage.setItem('resonance.track-cache', JSON.stringify(trackCacheByPath.value));
+	};
+
+	const persistPlaybackState = async () => {
+		try {
+			await initPlaybackStorage();
+			if (playbackStorage.value) {
+				const payload = {
+					currentPath: currentPath.value,
+					queue: queue.value,
+					positionSeconds: positionSeconds.value,
+					isPlaying: isPlaying.value,
+					volume: volume.value,
+				};
+				await playbackStorage.value.set('playback', payload);
+				await playbackStorage.value.save();
+				return;
+			}
+
+			// Fallback to localStorage if plugin-store not available
+			if (typeof window !== 'undefined') {
+				const payload = {
+					currentPath: currentPath.value,
+					queue: queue.value,
+					positionSeconds: positionSeconds.value,
+					isPlaying: isPlaying.value,
+					volume: volume.value,
+				};
+				try {
+					window.localStorage.setItem('resonance.playback-state', JSON.stringify(payload));
+				} catch {
+					// ignore
+				}
+			}
+		} catch (err) {
+			console.error('[persistPlaybackState] failed:', err);
+		}
+	};
+
+	const syncPlaybackStateFromStorage = async () => {
+		try {
+			await initPlaybackStorage();
+			let parsed: any = null;
+			if (playbackStorage.value) {
+				parsed = await playbackStorage.value.get('playback');
+			} else if (typeof window !== 'undefined') {
+				const raw = window.localStorage.getItem('resonance.playback-state');
+				if (raw) {
+					parsed = JSON.parse(raw);
+				}
+			}
+
+			if (!parsed) return;
+
+			queue.value = Array.isArray(parsed.queue)
+				? parsed.queue.filter((p: unknown) => typeof p === 'string' && (p as string).length > 0) as string[]
+				: [];
+			void ensureMetadataForPaths(queue.value);
+
+			if (typeof parsed.volume === 'number') {
+				volume.value = parsed.volume;
+				void setPlaybackVolume(parsed.volume);
+			}
+
+			if (parsed.currentPath) {
+				await ensureMetadataForPath(parsed.currentPath);
+				await playDropped(parsed.currentPath);
+				if (typeof parsed.positionSeconds === 'number' && parsed.positionSeconds > 0) {
+					await seekPlayback(parsed.positionSeconds);
+				}
+				if (!parsed.isPlaying) {
+					await pausePlayback();
+				}
+			}
+		} catch (err) {
+			console.error('[syncPlaybackStateFromStorage] failed:', err);
+		}
 	};
 
 	const cacheTrackMetadata = (track: DroppedPlaybackTrack) => {
@@ -729,6 +827,29 @@ export const usePlayerStore = defineStore('player', () => {
 	syncTrackCacheFromStorage();
 	syncFavoritesFromStorage();
 	void ensureMetadataForFavorites();
+
+	// Restaurar estado de reproducción guardado y persistir cambios
+	void syncPlaybackStateFromStorage();
+
+	watch([currentPath, queue, positionSeconds, isPlaying, volume], () => {
+		void persistPlaybackState();
+	}, { deep: true });
+
+	if (typeof window !== 'undefined') {
+		beforeUnloadHandler = () => {
+			void persistPlaybackState();
+		};
+		window.addEventListener('beforeunload', beforeUnloadHandler);
+		void (async () => {
+			try {
+				await listen('tauri://close-requested', () => {
+					void persistPlaybackState();
+				});
+			} catch {
+				// ignore if not running under Tauri or listen fails
+			}
+		})();
+	}
 
 	return {
 		advanceQueue,

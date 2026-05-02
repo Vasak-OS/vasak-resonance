@@ -4,21 +4,24 @@ use crate::structs::Track;
 
 #[tauri::command]
 pub fn list_library_tracks() -> Result<Vec<LibraryTrack>, String> {
-	let db_path = get_database_path()?;
-	let conn = open_database(&db_path)?;
-	list_tracks(&conn)
+    let db_path = get_database_path()?;
+    let conn = open_database(&db_path)?;
+    list_tracks(&conn)
 }
 
 #[tauri::command]
 pub fn save_library_track(track: Track) -> Result<(), String> {
-	let db_path = get_database_path()?;
-	let conn = open_database(&db_path)?;
-	upsert_track(&conn, &track)
+    let db_path = get_database_path()?;
+    let conn = open_database(&db_path)?;
+    upsert_track(&conn, &track)
 }
 
 #[tauri::command]
-pub fn search_library_tracks(query: String, limit: Option<usize>) -> Result<Vec<LibraryTrack>, String> {
-	let db_path = get_database_path()?;
-	let conn = open_database(&db_path)?;
-	search_tracks_fts(&conn, &query, limit.unwrap_or(2000))
+pub fn search_library_tracks(
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<LibraryTrack>, String> {
+    let db_path = get_database_path()?;
+    let conn = open_database(&db_path)?;
+    search_tracks_fts(&conn, &query, limit.unwrap_or(2000))
 }

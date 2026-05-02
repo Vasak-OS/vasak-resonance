@@ -225,11 +225,11 @@ struct AudioManager {
 
 impl AudioManager {
     fn new() -> Result<Self, String> {
-        let (stream, stream_handle) =
-            OutputStream::try_default().map_err(|e| format!("No se pudo inicializar salida de audio: {e}"))?;
+        let (stream, stream_handle) = OutputStream::try_default()
+            .map_err(|e| format!("No se pudo inicializar salida de audio: {e}"))?;
 
-        let sink =
-            Sink::try_new(&stream_handle).map_err(|e| format!("No se pudo crear sink de audio: {e}"))?;
+        let sink = Sink::try_new(&stream_handle)
+            .map_err(|e| format!("No se pudo crear sink de audio: {e}"))?;
 
         Ok(Self {
             _stream: stream,
@@ -260,8 +260,8 @@ impl AudioManager {
             .map_err(|e| format!("No se pudo decodificar audio: {e}"))?;
         let duration = decoder.total_duration();
 
-        let new_sink =
-            Sink::try_new(&self.stream_handle).map_err(|e| format!("No se pudo crear sink: {e}"))?;
+        let new_sink = Sink::try_new(&self.stream_handle)
+            .map_err(|e| format!("No se pudo crear sink: {e}"))?;
         new_sink.set_volume(self.volume);
         new_sink.append(decoder);
         new_sink.play();
@@ -339,13 +339,14 @@ impl AudioManager {
             second
         };
 
-        let file = File::open(&path).map_err(|e| format!("No se pudo abrir archivo de audio: {e}"))?;
-        let decoder =
-            Decoder::new(BufReader::new(file)).map_err(|e| format!("No se pudo decodificar audio: {e}"))?;
+        let file =
+            File::open(&path).map_err(|e| format!("No se pudo abrir archivo de audio: {e}"))?;
+        let decoder = Decoder::new(BufReader::new(file))
+            .map_err(|e| format!("No se pudo decodificar audio: {e}"))?;
         let duration = decoder.total_duration();
 
-        let new_sink =
-            Sink::try_new(&self.stream_handle).map_err(|e| format!("No se pudo crear sink: {e}"))?;
+        let new_sink = Sink::try_new(&self.stream_handle)
+            .map_err(|e| format!("No se pudo crear sink: {e}"))?;
         new_sink.set_volume(self.volume);
 
         if target > 0 {
@@ -424,21 +425,19 @@ fn run_audio_loop(
 ) {
     let mut manager = match AudioManager::new() {
         Ok(manager) => manager,
-        Err(error) => {
-            loop {
-                match command_rx.recv() {
-                    Ok(AudioCommand::PlayFile { respond_to, .. })
-                    | Ok(AudioCommand::Pause { respond_to })
-                    | Ok(AudioCommand::Stop { respond_to })
-                    | Ok(AudioCommand::Resume { respond_to })
-                    | Ok(AudioCommand::Seek { respond_to, .. })
-                    | Ok(AudioCommand::SetVolume { respond_to, .. }) => {
-                        let _ = respond_to.send(Err(error.clone()));
-                    }
-                    Err(_) => return,
+        Err(error) => loop {
+            match command_rx.recv() {
+                Ok(AudioCommand::PlayFile { respond_to, .. })
+                | Ok(AudioCommand::Pause { respond_to })
+                | Ok(AudioCommand::Stop { respond_to })
+                | Ok(AudioCommand::Resume { respond_to })
+                | Ok(AudioCommand::Seek { respond_to, .. })
+                | Ok(AudioCommand::SetVolume { respond_to, .. }) => {
+                    let _ = respond_to.send(Err(error.clone()));
                 }
+                Err(_) => return,
             }
-        }
+        },
     };
 
     loop {

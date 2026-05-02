@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use tauri::{AppHandle, Emitter};
 use zbus::fdo;
-use zbus::ConnectionBuilder;
 use zbus::zvariant::{OwnedValue, Value};
+use zbus::ConnectionBuilder;
 
 use crate::audio_manager::AudioState;
 
@@ -236,7 +236,11 @@ fn build_metadata(snapshot: &crate::structs::PlaybackProgressEvent) -> HashMap<S
     };
 
     if let Some(path) = &snapshot.path {
-        insert_value(&mut metadata, "xesam:url", Value::new(format!("file://{}", path)));
+        insert_value(
+            &mut metadata,
+            "xesam:url",
+            Value::new(format!("file://{}", path)),
+        );
         insert_value(
             &mut metadata,
             "mpris:trackid",
@@ -245,13 +249,21 @@ fn build_metadata(snapshot: &crate::structs::PlaybackProgressEvent) -> HashMap<S
     }
 
     if let Some(now_playing) = &snapshot.now_playing {
-        insert_value(&mut metadata, "xesam:title", Value::new(now_playing.title.clone()));
+        insert_value(
+            &mut metadata,
+            "xesam:title",
+            Value::new(now_playing.title.clone()),
+        );
         insert_value(
             &mut metadata,
             "xesam:artist",
             Value::new(vec![now_playing.artist.clone()]),
         );
-        insert_value(&mut metadata, "xesam:album", Value::new(now_playing.album.clone()));
+        insert_value(
+            &mut metadata,
+            "xesam:album",
+            Value::new(now_playing.album.clone()),
+        );
         insert_value(
             &mut metadata,
             "mpris:length",
@@ -259,7 +271,11 @@ fn build_metadata(snapshot: &crate::structs::PlaybackProgressEvent) -> HashMap<S
         );
 
         if let Some(cover_data_url) = &now_playing.cover_data_url {
-            insert_value(&mut metadata, "mpris:artUrl", Value::new(cover_data_url.clone()));
+            insert_value(
+                &mut metadata,
+                "mpris:artUrl",
+                Value::new(cover_data_url.clone()),
+            );
         }
     }
 

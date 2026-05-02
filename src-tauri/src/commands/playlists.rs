@@ -1,6 +1,6 @@
 use crate::db::{
-    add_track_to_playlist, create_playlist, delete_playlist, get_database_path, list_playlist_tracks,
-    list_playlists, open_database, remove_track_from_playlist,
+    add_track_to_playlist, create_playlist, delete_playlist, get_database_path,
+    list_playlist_tracks, list_playlists, open_database, remove_track_from_playlist,
 };
 use crate::structs::{Playlist, PlaylistTrack};
 

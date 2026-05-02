@@ -415,7 +415,10 @@ pub fn remove_track_from_playlist(
     Ok(())
 }
 
-pub fn list_playlist_tracks(conn: &Connection, playlist_id: i64) -> Result<Vec<PlaylistTrack>, String> {
+pub fn list_playlist_tracks(
+    conn: &Connection,
+    playlist_id: i64,
+) -> Result<Vec<PlaylistTrack>, String> {
     let mut stmt = conn
         .prepare(
             "
