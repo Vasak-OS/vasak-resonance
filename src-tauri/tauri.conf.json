@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "vapp",
+  "productName": "vasak-resonance",
   "version": "0.1.0",
-  "identifier": "ar.net.vasak.vapp",
+  "identifier": "ar.net.vasak.resonance",
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "vapp",
+        "title": "Resonance",
         "width": 800,
         "height": 600,
         "decorations": false,
@@ -21,7 +21,7 @@
       },
       {
         "label": "mini-player",
-        "title": "MiniPlayer",
+        "title": "MiniPlayer - Resonance",
         "width": 360,
         "height": 120,
         "alwaysOnTop": true,
