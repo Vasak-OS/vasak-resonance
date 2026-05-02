@@ -40,6 +40,7 @@ enum AudioCommand {
         volume: f32,
         respond_to: Sender<Result<(), String>>,
     },
+    Shutdown,
 }
 
 #[derive(Clone)]
@@ -123,6 +124,11 @@ impl AudioState {
         }
 
         response
+    }
+
+    pub fn shutdown(&self) -> Result<(), String> {
+        self.send(AudioCommand::Shutdown)?;
+        Ok(())
     }
 
     pub fn seek(&self, second: u64) -> Result<(), String> {
@@ -435,6 +441,7 @@ fn run_audio_loop(
                 | Ok(AudioCommand::SetVolume { respond_to, .. }) => {
                     let _ = respond_to.send(Err(error.clone()));
                 }
+                Ok(AudioCommand::Shutdown) => return,
                 Err(_) => return,
             }
         },
@@ -468,6 +475,10 @@ fn run_audio_loop(
             Ok(AudioCommand::SetVolume { volume, respond_to }) => {
                 let _ = respond_to.send(manager.set_volume(volume));
                 publish_snapshot(&app_handle, &playback_snapshot, manager.progress_snapshot());
+            }
+            Ok(AudioCommand::Shutdown) => {
+                let _ = manager.stop();
+                break;
             }
             Err(RecvTimeoutError::Timeout) => {
                 publish_snapshot(&app_handle, &playback_snapshot, manager.progress_snapshot());

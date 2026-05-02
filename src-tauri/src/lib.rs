@@ -19,7 +19,7 @@ use commands::playlists::{
     add_track_to_playlist_command, create_playlist_command, delete_playlist_command,
     list_playlist_tracks_command, list_playlists_command, remove_track_from_playlist_command,
 };
-use commands::window::toggle_main_and_miniplayer;
+use commands::window::{toggle_main_and_miniplayer, close_app};
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -57,7 +57,8 @@ pub fn run() {
             add_track_to_playlist_command,
             remove_track_from_playlist_command,
             list_playlist_tracks_command,
-            toggle_main_and_miniplayer
+            toggle_main_and_miniplayer,
+            close_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

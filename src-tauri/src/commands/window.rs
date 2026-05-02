@@ -55,3 +55,16 @@ pub fn toggle_main_and_miniplayer(app: AppHandle) -> Result<(), String> {
 
     Ok(())
 }
+
+#[tauri::command]
+pub fn close_app(app: AppHandle) -> Result<(), String> {
+    use crate::audio_manager::AudioState;
+    
+    // Get audio state and shutdown
+    if let Some(audio_state) = app.try_state::<AudioState>() {
+        let _ = audio_state.shutdown();
+    }
+
+    // Exit the application
+    std::process::exit(0);
+}

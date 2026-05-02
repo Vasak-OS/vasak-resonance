@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { invoke } from '@tauri-apps/api/core';
 import { getSymbolSource } from '@vasakgroup/plugin-vicons';
 import { onMounted, Ref, ref } from 'vue';
 import { toggleMainAndMiniPlayer } from '@/services/window.service';
@@ -20,6 +21,17 @@ onMounted(async () => {
 const toggleMiniPlayer = async () => {
 	await toggleMainAndMiniPlayer();
 };
+
+const closeApp = async () => {
+	try {
+		// Call backend close command which will shutdown audio first
+		await invoke('close_app');
+	} catch (error) {
+		console.error('Failed to close app:', error);
+		// Fallback to direct close if command fails
+		await appWindow.close();
+	}
+};
 </script>
 <template>
   <div class="flex gap-1" data-tauri-drag-region>
@@ -38,7 +50,7 @@ const toggleMiniPlayer = async () => {
     <span class="p-1 bg-ui-bg/80 rounded-corner hover:bg-status-warning border border-ui-border" @click="appWindow.toggleMaximize()">
       <img :src="maximizeIcon" class="h-6 w-6 inline-block" alt="Maximize">
     </span>
-    <span class="p-1 bg-ui-bg/80 rounded-corner hover:bg-status-error border border-ui-border" @click="appWindow.close()">
+    <span class="p-1 bg-ui-bg/80 rounded-corner hover:bg-status-error border border-ui-border" @click="closeApp">
       <img :src="closeIcon" class="h-6 w-6 inline-block" alt="Close">
     </span>
   </div>
