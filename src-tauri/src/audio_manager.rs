@@ -169,6 +169,13 @@ impl AudioState {
         }
     }
 
+    pub fn play(&self) -> Result<(), String> {
+        match self.playback_status()? {
+            "Paused" => self.resume(),
+            _ => Ok(()),
+        }
+    }
+
     pub fn playback_status(&self) -> Result<&'static str, String> {
         let status = self
             .runtime_status

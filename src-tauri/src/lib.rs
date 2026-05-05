@@ -5,6 +5,7 @@ mod db;
 mod lyrics;
 #[cfg(target_os = "linux")]
 mod mpris;
+mod remote_control;
 mod structs;
 
 use audio_manager::AudioState;
@@ -33,6 +34,7 @@ pub fn run() {
             let audio_state = AudioState::new(app.handle().clone());
             #[cfg(target_os = "linux")]
             mpris::start_mpris_service(app.handle().clone(), audio_state.clone());
+            remote_control::start_remote_control_service(app.handle().clone(), audio_state.clone());
             app.manage(audio_state);
             Ok(())
         })

@@ -7,7 +7,7 @@ use zbus::ConnectionBuilder;
 
 use crate::audio_manager::AudioState;
 
-const MPRIS_BUS_NAME: &str = "org.mpris.MediaPlayer2.vasakresonance";
+const MPRIS_BUS_NAME: &str = "org.mpris.MediaPlayer2.vasak-resonance";
 const MPRIS_OBJECT_PATH: &str = "/org/mpris/MediaPlayer2";
 
 pub fn start_mpris_service(app_handle: AppHandle, audio_state: AudioState) {
@@ -96,14 +96,7 @@ impl MprisRootInterface {
 #[zbus::interface(name = "org.mpris.MediaPlayer2.Player")]
 impl MprisPlayerInterface {
     fn play(&self) -> fdo::Result<()> {
-        match self.audio_state.playback_status() {
-            Ok("Paused") => self
-                .audio_state
-                .resume()
-                .map_err(|e| fdo::Error::Failed(e.to_string())),
-            Ok(_) => Ok(()),
-            Err(e) => Err(fdo::Error::Failed(e)),
-        }
+        self.audio_state.play().map_err(fdo::Error::Failed)
     }
 
     fn pause(&self) -> fdo::Result<()> {
