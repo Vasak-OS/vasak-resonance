@@ -2,6 +2,8 @@ use reqwest::Client;
 use serde::Deserialize;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
@@ -11,6 +13,9 @@ const LRCLIB_BASE_URL: &str = "https://lrclib.net";
 
 static LYRICS_CACHE: OnceLock<Mutex<HashMap<String, TrackLyricsPayload>>> = OnceLock::new();
 static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
+
+const NEW_LYRICS_CACHE_RELATIVE_PATH: &str = ".config/resonance/lyrics-cache.json";
+const LEGACY_LYRICS_CACHE_RELATIVE_PATH: &str = ".config/vasak/lyrics-cache.json";
 
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -34,7 +39,71 @@ pub struct LyricsQuery {
 }
 
 fn cache() -> &'static Mutex<HashMap<String, TrackLyricsPayload>> {
-    LYRICS_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+    LYRICS_CACHE.get_or_init(|| Mutex::new(load_persistent_cache()))
+}
+
+fn lyrics_cache_path() -> Option<PathBuf> {
+    let home = std::env::var("HOME").map(PathBuf::from).ok().or_else(dirs::home_dir)?;
+    Some(home.join(NEW_LYRICS_CACHE_RELATIVE_PATH))
+}
+
+fn legacy_lyrics_cache_path() -> Option<PathBuf> {
+    let home = std::env::var("HOME").map(PathBuf::from).ok().or_else(dirs::home_dir)?;
+    Some(home.join(LEGACY_LYRICS_CACHE_RELATIVE_PATH))
+}
+
+fn load_persistent_cache() -> HashMap<String, TrackLyricsPayload> {
+    let Some(new_path) = lyrics_cache_path() else {
+        return HashMap::new();
+    };
+
+    if let Ok(content) = fs::read_to_string(&new_path) {
+        return serde_json::from_str::<HashMap<String, TrackLyricsPayload>>(&content)
+            .unwrap_or_default();
+    }
+
+    let Some(legacy_path) = legacy_lyrics_cache_path() else {
+        return HashMap::new();
+    };
+
+    let content = match fs::read_to_string(&legacy_path) {
+        Ok(content) => content,
+        Err(_) => return HashMap::new(),
+    };
+
+    let legacy_cache =
+        serde_json::from_str::<HashMap<String, TrackLyricsPayload>>(&content).unwrap_or_default();
+
+    if !legacy_cache.is_empty() {
+        persist_cache(&legacy_cache);
+    }
+
+    legacy_cache
+}
+
+fn persist_cache(cache_map: &HashMap<String, TrackLyricsPayload>) {
+    let Some(path) = lyrics_cache_path() else {
+        return;
+    };
+
+    if let Some(parent) = path.parent() {
+        if let Err(err) = fs::create_dir_all(parent) {
+            eprintln!("[lyrics] no se pudo crear carpeta de caché local: {}", err);
+            return;
+        }
+    }
+
+    let content = match serde_json::to_string(cache_map) {
+        Ok(content) => content,
+        Err(err) => {
+            eprintln!("[lyrics] no se pudo serializar caché local: {}", err);
+            return;
+        }
+    };
+
+    if let Err(err) = fs::write(path, content) {
+        eprintln!("[lyrics] no se pudo guardar caché local: {}", err);
+    }
 }
 
 fn http_client() -> &'static Client {
@@ -291,10 +360,7 @@ pub async fn fetch_track_lyrics(query: LyricsQuery) -> Result<TrackLyricsPayload
 
     let client = http_client();
 
-    let mut record = fetch_signature_record(client, "api/get-cached", &normalized).await;
-    if record.is_none() {
-        record = fetch_signature_record(client, "api/get", &normalized).await;
-    }
+    let mut record = fetch_signature_record(client, "api/get", &normalized).await;
     if record.is_none() {
         record = fetch_search_record(client, &normalized).await;
     }
@@ -314,6 +380,7 @@ pub async fn fetch_track_lyrics(query: LyricsQuery) -> Result<TrackLyricsPayload
 
     if let Ok(mut locked) = cache().lock() {
         locked.insert(key, payload.clone());
+        persist_cache(&locked);
     }
 
     Ok(payload)

@@ -4,19 +4,45 @@ use std::path::{Path, PathBuf};
 
 use crate::structs::{LibraryTrack, Playlist, PlaylistTrack, Track};
 
-pub fn get_database_path() -> Result<PathBuf, String> {
-    let home = std::env::var("HOME")
+const NEW_DB_RELATIVE_PATH: &str = ".config/resonance/resonance.db";
+const LEGACY_DB_RELATIVE_PATH: &str = ".config/vasak/resonance.db";
+
+fn resolve_home_dir() -> Result<PathBuf, String> {
+    std::env::var("HOME")
         .map(PathBuf::from)
         .ok()
         .or_else(dirs::home_dir)
-        .ok_or_else(|| "No se pudo resolver HOME".to_string())?;
+        .ok_or_else(|| "No se pudo resolver HOME".to_string())
+}
 
-    Ok(home.join(".config/vasak/resonance.db"))
+pub fn get_database_path() -> Result<PathBuf, String> {
+    let home = resolve_home_dir()?;
+    let new_path = home.join(NEW_DB_RELATIVE_PATH);
+    let legacy_path = home.join(LEGACY_DB_RELATIVE_PATH);
+
+    // Migra automáticamente la base legada al nuevo directorio de config.
+    if !new_path.exists() && legacy_path.exists() {
+        if let Some(parent) = new_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("No se pudo crear ~/.config/resonance: {e}"))?;
+        }
+
+        fs::rename(&legacy_path, &new_path).map_err(|e| {
+            format!(
+                "No se pudo migrar la base de datos desde {} a {}: {e}",
+                legacy_path.display(),
+                new_path.display()
+            )
+        })?;
+    }
+
+    Ok(new_path)
 }
 
 pub fn open_database(db_path: &Path) -> Result<Connection, String> {
     if let Some(parent) = db_path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("No se pudo crear ~/.config/vasak: {e}"))?;
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("No se pudo crear ~/.config/resonance: {e}"))?;
     }
 
     let conn = Connection::open(db_path)
