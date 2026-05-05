@@ -1,7 +1,7 @@
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufReader, Read, Write};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
@@ -21,6 +21,11 @@ struct RuntimeStatus {
 enum AudioCommand {
     PlayFile {
         file_path: String,
+        respond_to: Sender<Result<(), String>>,
+    },
+    PlayStream {
+        url: String,
+        station_name: String,
         respond_to: Sender<Result<(), String>>,
     },
     Pause {
@@ -71,6 +76,24 @@ impl AudioState {
         let (tx, rx) = mpsc::channel::<Result<(), String>>();
         self.send(AudioCommand::PlayFile {
             file_path,
+            respond_to: tx,
+        })?;
+        let response = rx
+            .recv()
+            .map_err(|_| "No se recibió respuesta del hilo de audio".to_string())?;
+
+        if response.is_ok() {
+            self.update_runtime_status(true, false)?;
+        }
+
+        response
+    }
+
+    pub fn play_stream(&self, url: String, station_name: String) -> Result<(), String> {
+        let (tx, rx) = mpsc::channel::<Result<(), String>>();
+        self.send(AudioCommand::PlayStream {
+            url,
+            station_name,
             respond_to: tx,
         })?;
         let response = rx
@@ -234,6 +257,8 @@ struct AudioManager {
     paused_position: Duration,
     is_paused: bool,
     volume: f32,
+    stream_tempfile: Option<PathBuf>,
+    _stream_writer_running: bool,
 }
 
 impl AudioManager {
@@ -257,6 +282,8 @@ impl AudioManager {
             paused_position: Duration::from_secs(0),
             is_paused: false,
             volume: 1.0,
+            stream_tempfile: None,
+            _stream_writer_running: false,
         })
     }
 
@@ -294,6 +321,93 @@ impl AudioManager {
         self.started_at = Some(Instant::now());
         self.paused_position = Duration::from_secs(0);
         self.is_paused = false;
+
+        Ok(())
+    }
+
+    fn play_stream_blocking(&mut self, url: &str, station_name: &str) -> Result<(), String> {
+        // Buffer a small prefix of the stream to a temp file, then open it for decoding
+        // and continue writing while decoding. This is a pragmatic approach for
+        // streaming formats that require Seek at decode initialization.
+        let client = reqwest::blocking::Client::new();
+        let mut resp = client
+            .get(url)
+            .header("User-Agent", "vasak-resonance/1.0")
+            .send()
+            .map_err(|e| format!("Error connecting to stream: {}", e))?;
+
+        if !resp.status().is_success() {
+            return Err(format!("Stream returned status: {}", resp.status()));
+        }
+
+        // Create a named temp file so we can open it twice (writer + reader)
+        let mut named = tempfile::NamedTempFile::new().map_err(|e| format!("Tempfile error: {}", e))?;
+        let path = named.path().to_path_buf();
+
+        // Write an initial buffer (e.g., 256KB) to allow decoder detection
+        const PRIMER_BYTES: usize = 256 * 1024;
+        let mut written: usize = 0;
+        while written < PRIMER_BYTES {
+            let mut buf = [0u8; 8192];
+            let n = resp.read(&mut buf).map_err(|e| format!("Stream read error: {}", e))?;
+            if n == 0 {
+                break;
+            }
+            named
+                .write_all(&buf[..n])
+                .map_err(|e| format!("Tempfile write error: {}", e))?;
+            written += n;
+        }
+
+        // Flush and reopen for reading
+        named.flush().map_err(|e| format!("Tempfile flush error: {}", e))?;
+        let reader_file = std::fs::File::open(&path).map_err(|e| format!("Open tempfile for read error: {}", e))?;
+        let mut buf_reader = std::io::BufReader::new(reader_file);
+
+        let decoder = Decoder::new(buf_reader).map_err(|e| format!("No se pudo decodificar stream de audio: {e}"))?;
+        let duration = decoder.total_duration();
+
+        // Continue writing the rest of the stream in a detached thread so decoding can continue
+        let mut writer = named.reopen().map_err(|e| format!("Reopen tempfile for write error: {}", e))?;
+        std::thread::spawn(move || {
+            let mut resp = resp; // moved into closure
+            let mut buf = [0u8; 8192];
+            loop {
+                match resp.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        let _ = writer.write_all(&buf[..n]);
+                        let _ = writer.flush();
+                    }
+                }
+            }
+        });
+
+        let new_sink = Sink::try_new(&self.stream_handle)
+            .map_err(|e| format!("No se pudo crear sink: {e}"))?;
+        new_sink.set_volume(self.volume);
+        new_sink.append(decoder);
+        new_sink.play();
+
+        self.sink.stop();
+        self.sink = new_sink;
+        self.current_path = None;
+        self.current_metadata = Some(NowPlayingMetadata {
+            title: station_name.to_string(),
+            artist: "Radio Stream".to_string(),
+            album: String::new(),
+            duration_seconds: duration.as_ref().map(|d| d.as_secs()).unwrap_or(0),
+            cover_data_url: None,
+            dominant_color: None,
+            path: url.to_string(),
+        });
+        self.current_duration = duration;
+        self.started_at = Some(Instant::now());
+        self.paused_position = Duration::from_secs(0);
+        self.is_paused = false;
+
+        // Remember tempfile path so we can clean up later
+        self.stream_tempfile = Some(path);
 
         Ok(())
     }
@@ -337,6 +451,11 @@ impl AudioManager {
         self.started_at = None;
         self.paused_position = Duration::from_secs(0);
         self.is_paused = false;
+        // Clean up any temporary stream file
+        if let Some(path) = &self.stream_tempfile {
+            let _ = std::fs::remove_file(path);
+            self.stream_tempfile = None;
+        }
         Ok(())
     }
 
@@ -441,6 +560,7 @@ fn run_audio_loop(
         Err(error) => loop {
             match command_rx.recv() {
                 Ok(AudioCommand::PlayFile { respond_to, .. })
+                | Ok(AudioCommand::PlayStream { respond_to, .. })
                 | Ok(AudioCommand::Pause { respond_to })
                 | Ok(AudioCommand::Stop { respond_to })
                 | Ok(AudioCommand::Resume { respond_to })
@@ -454,6 +574,8 @@ fn run_audio_loop(
         },
     };
 
+    // No separate Tokio runtime needed for blocking stream playback.
+
     loop {
         match command_rx.recv_timeout(Duration::from_millis(500)) {
             Ok(AudioCommand::PlayFile {
@@ -461,6 +583,16 @@ fn run_audio_loop(
                 respond_to,
             }) => {
                 let _ = respond_to.send(manager.play_file(file_path));
+                publish_snapshot(&app_handle, &playback_snapshot, manager.progress_snapshot());
+            }
+            Ok(AudioCommand::PlayStream {
+                url,
+                station_name,
+                respond_to,
+            }) => {
+                // Use blocking playback on the audio thread to stream without downloading entire data.
+                let result = manager.play_stream_blocking(&url, &station_name);
+                let _ = respond_to.send(result);
                 publish_snapshot(&app_handle, &playback_snapshot, manager.progress_snapshot());
             }
             Ok(AudioCommand::Pause { respond_to }) => {

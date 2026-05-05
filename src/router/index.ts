@@ -27,6 +27,11 @@ export const router = createRouter({
 					name: 'playlists',
 					component: () => import('@/components/views/PlaylistsView.vue'),
 				},
+				{
+					path: 'radios',
+					name: 'radios',
+					component: () => import('@/components/views/RadiosView.vue'),
+				},
 			],
 		},
 		{

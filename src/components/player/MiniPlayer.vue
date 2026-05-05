@@ -7,9 +7,9 @@ import MiniTransportControls from '@/components/player/transport/MiniTransportCo
 import { useConfigSync } from '@/composables/useConfigSync';
 import { useTrackSubtitle } from '@/composables/useTrackSubtitle';
 import { useTrackTitle } from '@/composables/useTrackTitle';
+import { extractDominantColorFromDataUrl, fetchAlbumCover } from '@/services/album-cover.service';
 import { toggleMainAndMiniPlayer } from '@/services/window.service';
 import { usePlayerStore } from '@/stores/player';
-import { extractDominantColorFromDataUrl, fetchAlbumCover } from '@/services/album-cover.service';
 
 const playerStore = usePlayerStore();
 const fetchedCoverUrl = ref<string>('');

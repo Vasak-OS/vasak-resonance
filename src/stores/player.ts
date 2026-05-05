@@ -56,7 +56,10 @@ export const usePlayerStore = defineStore('player', () => {
 					playbackStorage.value = await new plugin.LazyStore(filePath);
 					await playbackStorage.value.save();
 				} catch (err) {
-					console.warn('[initPlaybackStorage] plugin-store not available, fallback to localStorage', err);
+					console.warn(
+						'[initPlaybackStorage] plugin-store not available, fallback to localStorage',
+						err
+					);
 				}
 			}
 		} catch (err) {
@@ -244,7 +247,9 @@ export const usePlayerStore = defineStore('player', () => {
 			if (!parsed) return;
 
 			queue.value = Array.isArray(parsed.queue)
-				? parsed.queue.filter((p: unknown) => typeof p === 'string' && (p as string).length > 0) as string[]
+				? (parsed.queue.filter(
+						(p: unknown) => typeof p === 'string' && (p as string).length > 0
+					) as string[])
 				: [];
 			void ensureMetadataForPaths(queue.value);
 
@@ -847,9 +852,13 @@ export const usePlayerStore = defineStore('player', () => {
 	// Restaurar estado de reproducción guardado y persistir cambios
 	void syncPlaybackStateFromStorage();
 
-	watch([currentPath, queue, positionSeconds, isPlaying, volume], () => {
-		void persistPlaybackState();
-	}, { deep: true });
+	watch(
+		[currentPath, queue, positionSeconds, isPlaying, volume],
+		() => {
+			void persistPlaybackState();
+		},
+		{ deep: true }
+	);
 
 	if (typeof window !== 'undefined') {
 		beforeUnloadHandler = () => {

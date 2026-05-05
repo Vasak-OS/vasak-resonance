@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { getSymbolSource } from '@vasakgroup/plugin-vicons';
-import { computed, onMounted, ref, type Ref } from 'vue';
+import { computed, onMounted, type Ref, ref } from 'vue';
 import LabeledField from '@/components/layout/LabeledField.vue';
-import { usePlayerStore } from '@/stores/player';
 import { fetchAlbumCover } from '@/services/album-cover.service';
+import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
 const playIcon = ref('');
@@ -144,7 +144,7 @@ onMounted(async () => {
 	addAlbumIcon.value = addAlbumSrc;
 
 	await playerStore.ensureMetadataForFavorites();
-	
+
 	// Fetch album covers from cache/APIs
 	await fetchAllCovers();
 });

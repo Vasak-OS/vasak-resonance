@@ -6,8 +6,8 @@ import TrackMetaCard from '@/components/player/TrackMetaCard.vue';
 import MainTransportControls from '@/components/player/transport/MainTransportControls.vue';
 import { useTrackSubtitle } from '@/composables/useTrackSubtitle';
 import { useTrackTitle } from '@/composables/useTrackTitle';
-import { usePlayerStore } from '@/stores/player';
 import { extractDominantColorFromDataUrl, fetchAlbumCover } from '@/services/album-cover.service';
+import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
 const router = useRouter();
@@ -18,6 +18,7 @@ const sections = [
 	{ id: 'albums', label: 'Albums', icon: 'folder-music-symbolic' },
 	{ id: 'favorites', label: 'Favoritos', icon: 'starred-symbolic' },
 	{ id: 'playlists', label: 'Playlists', icon: 'view-list-symbolic' },
+	{ id: 'radios', label: 'Radios', icon: 'media-playback-start-symbolic' },
 ] as const;
 
 const iconSources = ref<Record<string, string>>({});

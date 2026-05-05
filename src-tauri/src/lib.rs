@@ -6,6 +6,7 @@ mod lyrics;
 mod metadata_fetcher;
 #[cfg(target_os = "linux")]
 mod mpris;
+mod radio;
 mod remote_control;
 mod structs;
 
@@ -22,6 +23,7 @@ use commands::playlists::{
     add_track_to_playlist_command, create_playlist_command, delete_playlist_command,
     list_playlist_tracks_command, list_playlists_command, remove_track_from_playlist_command,
 };
+use commands::radio::{fetch_radio_stations, play_radio_stream};
 use commands::window::{toggle_main_and_miniplayer, close_app};
 use tauri::Manager;
 
@@ -90,6 +92,8 @@ pub fn run() {
             add_track_to_playlist_command,
             remove_track_from_playlist_command,
             list_playlist_tracks_command,
+            fetch_radio_stations,
+            play_radio_stream,
             toggle_main_and_miniplayer,
             close_app,
         ])

@@ -1,6 +1,6 @@
 <script lang="ts" setup>
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getSymbolSource } from '@vasakgroup/plugin-vicons';
 import { onMounted, Ref, ref } from 'vue';
 import { toggleMainAndMiniPlayer } from '@/services/window.service';
