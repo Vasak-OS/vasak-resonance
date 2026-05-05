@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { getSymbolSource } from '@vasakgroup/plugin-vicons';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, type Ref } from 'vue';
 import LabeledField from '@/components/layout/LabeledField.vue';
 import { usePlayerStore } from '@/stores/player';
+import { fetchAlbumCover } from '@/services/album-cover.service';
 
 const playerStore = usePlayerStore();
 const playIcon = ref('');
@@ -10,6 +11,9 @@ const addAlbumIcon = ref('');
 const searchQuery = ref('');
 const artistFilter = ref('all');
 const sortBy = ref('album-asc');
+
+// Cache for fetched cover URLs per artist-album key
+const coverUrlCache: Ref<Record<string, string>> = ref({});
 
 const normalize = (value: string) => value.trim().toLowerCase();
 
@@ -21,6 +25,7 @@ const groupedAlbums = computed(() => {
 			album: string;
 			artist: string;
 			cover: string;
+			coverDataUrl: string | null;
 			tracks: { path: string; title: string; artist: string }[];
 		}
 	>();
@@ -34,6 +39,7 @@ const groupedAlbums = computed(() => {
 				album,
 				artist: track.artist || 'Unknown Artist',
 				cover: track.cover_data_url || '',
+				coverDataUrl: track.cover_data_url || null,
 				tracks: [],
 			});
 		}
@@ -45,6 +51,7 @@ const groupedAlbums = computed(() => {
 
 		if (!group.cover && track.cover_data_url) {
 			group.cover = track.cover_data_url;
+			group.coverDataUrl = track.cover_data_url;
 		}
 
 		group.tracks.push({
@@ -56,6 +63,29 @@ const groupedAlbums = computed(() => {
 
 	return Array.from(albumsMap.values()).sort((a, b) => a.album.localeCompare(b.album));
 });
+
+// Fetch covers for all albums on mount
+const fetchAllCovers = async () => {
+	for (const album of groupedAlbums.value) {
+		const cacheKey = `${album.artist}|${album.album}`;
+		if (!coverUrlCache.value[cacheKey]) {
+			try {
+				const url = await fetchAlbumCover(album.artist, album.album);
+				if (url) {
+					coverUrlCache.value[cacheKey] = url;
+				}
+			} catch (error) {
+				console.debug(`Failed to fetch cover for ${album.artist} - ${album.album}`);
+			}
+		}
+	}
+};
+
+// Getter for cover URL with fallback
+const getCoverUrl = (album: any): string => {
+	const cacheKey = `${album.artist}|${album.album}`;
+	return coverUrlCache.value[cacheKey] || album.cover || '';
+};
 
 const albumArtistOptions = computed(() => {
 	const values = new Set(groupedAlbums.value.map((album) => album.artist));
@@ -114,6 +144,9 @@ onMounted(async () => {
 	addAlbumIcon.value = addAlbumSrc;
 
 	await playerStore.ensureMetadataForFavorites();
+	
+	// Fetch album covers from cache/APIs
+	await fetchAllCovers();
 });
 
 const onPlayTrack = async (path: string) => {
@@ -188,7 +221,7 @@ const onPlayAlbum = async (paths: string[]) => {
 				class="rounded-corner border border-ui-border bg-ui-bg/80 p-4"
 			>
 				<div class="mb-3 flex h-44 items-center justify-center overflow-hidden rounded-corner border border-ui-border bg-ui-surface/45">
-					<img v-if="album.cover" :src="album.cover" :alt="album.album" class="h-full w-full object-cover" />
+					<img v-if="getCoverUrl(album)" :src="getCoverUrl(album)" :alt="album.album" class="h-full w-full object-cover" />
 					<div v-else class="text-sm font-semibold uppercase tracking-[0.16em] text-tx-muted">No Cover</div>
 				</div>
 				<p class="truncate text-base font-semibold text-tx-main">{{ album.album }}</p>

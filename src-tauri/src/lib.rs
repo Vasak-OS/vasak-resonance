@@ -3,6 +3,7 @@ mod audio_manager;
 mod commands;
 mod db;
 mod lyrics;
+mod metadata_fetcher;
 #[cfg(target_os = "linux")]
 mod mpris;
 mod remote_control;
@@ -15,6 +16,7 @@ use commands::audio_control::{
 use commands::indexing::{scan_default_music_folder, scan_music_folders};
 use commands::library::{list_library_tracks, save_library_track, search_library_tracks};
 use commands::lyrics::fetch_lyrics;
+use commands::metadata::fetch_album_cover_command;
 use commands::playback::handle_dropped_file;
 use commands::playlists::{
     add_track_to_playlist_command, create_playlist_command, delete_playlist_command,
@@ -53,6 +55,7 @@ pub fn run() {
             set_volume,
             get_playback_snapshot,
             fetch_lyrics,
+            fetch_album_cover_command,
             create_playlist_command,
             list_playlists_command,
             delete_playlist_command,

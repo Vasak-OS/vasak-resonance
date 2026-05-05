@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import PlaybackWaves from '@/components/player/PlaybackWaves.vue';
 import TrackMetaCard from '@/components/player/TrackMetaCard.vue';
 import MiniTransportControls from '@/components/player/transport/MiniTransportControls.vue';
@@ -8,8 +8,10 @@ import { useTrackSubtitle } from '@/composables/useTrackSubtitle';
 import { useTrackTitle } from '@/composables/useTrackTitle';
 import { toggleMainAndMiniPlayer } from '@/services/window.service';
 import { usePlayerStore } from '@/stores/player';
+import { fetchAlbumCover } from '@/services/album-cover.service';
 
 const playerStore = usePlayerStore();
+const fetchedCoverUrl = ref<string>('');
 
 useConfigSync();
 
@@ -22,7 +24,41 @@ const trackSubtitle = useTrackSubtitle({
 	currentTrack: () => playerStore.currentTrack,
 });
 
-const coverSrc = computed(() => playerStore.currentTrack?.cover_data_url || '');
+const coverSrc = computed(() => {
+	// First try embedded cover
+	if (playerStore.currentTrack?.cover_data_url) {
+		return playerStore.currentTrack.cover_data_url;
+	}
+	// Fall back to fetched cover from cache/APIs
+	return fetchedCoverUrl.value;
+});
+
+// Watch for track changes and fetch cover if needed
+watch(
+	() => playerStore.currentTrack,
+	async (newTrack) => {
+		if (!newTrack) {
+			fetchedCoverUrl.value = '';
+			return;
+		}
+
+		// If track has embedded cover, don't fetch
+		if (newTrack.cover_data_url) {
+			fetchedCoverUrl.value = '';
+			return;
+		}
+
+		// Try to fetch cover from cache/APIs
+		try {
+			const url = await fetchAlbumCover(newTrack.artist, newTrack.album);
+			fetchedCoverUrl.value = url;
+		} catch (error) {
+			console.debug('Failed to fetch cover for current track in miniplayer');
+			fetchedCoverUrl.value = '';
+		}
+	},
+	{ immediate: true }
+);
 
 const togglePlayback = async () => {
 	await playerStore.togglePlayPause();

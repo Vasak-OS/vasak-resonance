@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { getSymbolSource } from '@vasakgroup/plugin-vicons';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import TrackMetaCard from '@/components/player/TrackMetaCard.vue';
 import MainTransportControls from '@/components/player/transport/MainTransportControls.vue';
 import { useTrackSubtitle } from '@/composables/useTrackSubtitle';
 import { useTrackTitle } from '@/composables/useTrackTitle';
 import { usePlayerStore } from '@/stores/player';
+import { fetchAlbumCover } from '@/services/album-cover.service';
 
 const playerStore = usePlayerStore();
 const router = useRouter();
@@ -20,10 +21,18 @@ const sections = [
 ] as const;
 
 const iconSources = ref<Record<string, string>>({});
+const fetchedCoverUrl = ref<string>('');
 
 const selectedSection = computed(() => (typeof route.name === 'string' ? route.name : 'home'));
 
-const coverArt = computed(() => playerStore.currentTrack?.cover_data_url || '');
+const coverArt = computed(() => {
+	// First try embedded cover
+	if (playerStore.currentTrack?.cover_data_url) {
+		return playerStore.currentTrack.cover_data_url;
+	}
+	// Fall back to fetched cover from cache/APIs
+	return fetchedCoverUrl.value;
+});
 
 const trackTitle = useTrackTitle({
 	currentTrack: () => playerStore.currentTrack,
@@ -34,6 +43,33 @@ const trackTitle = useTrackTitle({
 const trackSubtitle = useTrackSubtitle({
 	currentTrack: () => playerStore.currentTrack,
 });
+
+// Watch for track changes and fetch cover if needed
+watch(
+	() => playerStore.currentTrack,
+	async (newTrack) => {
+		if (!newTrack) {
+			fetchedCoverUrl.value = '';
+			return;
+		}
+
+		// If track has embedded cover, don't fetch
+		if (newTrack.cover_data_url) {
+			fetchedCoverUrl.value = '';
+			return;
+		}
+
+		// Try to fetch cover from cache/APIs
+		try {
+			const url = await fetchAlbumCover(newTrack.artist, newTrack.album);
+			fetchedCoverUrl.value = url;
+		} catch (error) {
+			console.debug('Failed to fetch cover for current track');
+			fetchedCoverUrl.value = '';
+		}
+	},
+	{ immediate: true }
+);
 
 const onSelectSection = async (id: string) => {
 	if (selectedSection.value === id) {
