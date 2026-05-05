@@ -37,7 +37,35 @@ pub fn run() {
             #[cfg(target_os = "linux")]
             mpris::start_mpris_service(app.handle().clone(), audio_state.clone());
             remote_control::start_remote_control_service(app.handle().clone(), audio_state.clone());
-            app.manage(audio_state);
+                app.manage(audio_state.clone());
+
+                let maybe_args: Vec<String> = std::env::args().skip(1).collect();
+                if !maybe_args.is_empty() {
+                    for raw in maybe_args.into_iter() {
+                        let candidate = if raw.starts_with("file://") {
+                            if raw.starts_with("file:///") {
+                                raw.replacen("file://", "", 1)
+                            } else if raw.starts_with("file://localhost/") {
+                                raw.replacen("file://localhost", "", 1)
+                            } else {
+                                raw.replacen("file://", "", 1)
+                            }
+                        } else {
+                            raw
+                        };
+
+                        let path = std::path::PathBuf::from(candidate);
+                        if path.exists() && path.is_file() {
+                            let play_path = path.to_string_lossy().to_string();
+                            let audio_clone = audio_state.clone();
+                            // Spawn so setup doesn't block; play_file will queue into audio thread.
+                            std::thread::spawn(move || {
+                                let _ = audio_clone.play_file(play_path);
+                            });
+                            break;
+                        }
+                    }
+                }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
