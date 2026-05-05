@@ -20,7 +20,7 @@ useAudioDrop({
 });
 
 onMounted(async () => {
-	appIcon.value = await getIconSource('applications-multimedia');
+	appIcon.value = await getIconSource('music-app');
 	await playerStore.initProgressListener();
 	await playerStore.initMprisNextListener();
 	await playerStore.initMprisPreviousListener();
