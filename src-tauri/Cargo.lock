@@ -1433,6 +1433,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07bbe89c50d7a535e539b8c17bc0b49bdb77747034daa8087407d655f3f7cc1d"
 dependencies = [
  "futures-core",
+ "futures-sink",
 ]
 
 [[package]]
@@ -3944,7 +3945,9 @@ checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
 dependencies = [
  "base64 0.22.1",
  "bytes",
+ "futures-channel",
  "futures-core",
+ "futures-util",
  "http",
  "http-body",
  "http-body-util",
@@ -5602,6 +5605,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
+name = "ureq"
+version = "2.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02d1a66277ed75f640d608235660df48c8e3c19f3b4edb6a263315626cc3c01d"
+dependencies = [
+ "base64 0.22.1",
+ "log",
+ "once_cell",
+ "serde",
+ "serde_json",
+ "url",
+]
+
+[[package]]
 name = "url"
 version = "2.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5672,6 +5689,7 @@ name = "vapp"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "bytes",
  "color-thief",
  "dirs",
  "futures-util",
@@ -5689,8 +5707,10 @@ dependencies = [
  "tauri-plugin-shell",
  "tauri-plugin-store",
  "tauri-plugin-vicons",
+ "tempfile",
  "tokio",
  "tokio-tungstenite",
+ "ureq",
  "urlencoding",
  "walkdir",
  "zbus",
