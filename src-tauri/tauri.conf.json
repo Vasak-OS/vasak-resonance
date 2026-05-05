@@ -44,6 +44,7 @@
         "files": {}
       },
       "deb": {
+        "desktopTemplate": "vasak-resonance.desktop.hbs",
         "depends": [
           "libcairo2",
           "desktop-file-utils",

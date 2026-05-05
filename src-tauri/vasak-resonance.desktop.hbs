@@ -1,0 +1,22 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Resonance
+GenericName=Music Player
+Comment=Reproductor de música de VasakOS
+Exec={{exec}} %U
+Icon=vasak-resonance
+Terminal=false
+Categories=Audio;Player;AudioVideo;
+MimeType=audio/mpeg;audio/flac;audio/ogg;audio/*;
+StartupWMClass={{productName}}
+StartupNotify=true
+Actions=Open;ShowNowPlaying;
+
+[Desktop Action Open]
+Name=Open {{productName}}
+Exec={{exec}}
+
+[Desktop Action ShowNowPlaying]
+Name=Show Now Playing
+Exec={{exec}} --show-now-playing
