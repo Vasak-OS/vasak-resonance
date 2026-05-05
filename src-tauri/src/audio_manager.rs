@@ -1,10 +1,11 @@
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufReader, Read, Write};
+use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
@@ -257,8 +258,10 @@ struct AudioManager {
     paused_position: Duration,
     is_paused: bool,
     volume: f32,
-    stream_tempfile: Option<PathBuf>,
-    _stream_writer_running: bool,
+    // streaming management
+    stream_writer_handle: Option<thread::JoinHandle<()>>,
+    stream_decoder_handle: Option<thread::JoinHandle<()>>,
+    streaming_active: Arc<AtomicBool>,
 }
 
 impl AudioManager {
@@ -282,8 +285,9 @@ impl AudioManager {
             paused_position: Duration::from_secs(0),
             is_paused: false,
             volume: 1.0,
-            stream_tempfile: None,
-            _stream_writer_running: false,
+            stream_writer_handle: None,
+            stream_decoder_handle: None,
+            streaming_active: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -326,9 +330,15 @@ impl AudioManager {
     }
 
     fn play_stream_blocking(&mut self, url: &str, station_name: &str) -> Result<(), String> {
-        // Buffer a small prefix of the stream to a temp file, then open it for decoding
-        // and continue writing while decoding. This is a pragmatic approach for
-        // streaming formats that require Seek at decode initialization.
+        // New approach: streaming decode using Symphonia + a blocking shared buffer.
+        use symphonia::core::audio::{AudioBufferRef, SampleBuffer};
+        use symphonia::core::codecs::DecoderOptions;
+        use symphonia::core::formats::FormatOptions;
+        use symphonia::core::io::MediaSourceStream;
+        use symphonia::core::meta::MetadataOptions;
+        use symphonia::core::probe::Hint;
+        use symphonia::default::{get_codecs, get_probe};
+
         let client = reqwest::blocking::Client::new();
         let mut resp = client
             .get(url)
@@ -340,53 +350,213 @@ impl AudioManager {
             return Err(format!("Stream returned status: {}", resp.status()));
         }
 
-        // Create a named temp file so we can open it twice (writer + reader)
-        let mut named = tempfile::NamedTempFile::new().map_err(|e| format!("Tempfile error: {}", e))?;
-        let path = named.path().to_path_buf();
+        let buffer: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+        let condvar = Arc::new(Condvar::new());
+        let eof = Arc::new(AtomicBool::new(false));
+        self.streaming_active.store(true, Ordering::SeqCst);
 
-        // Write an initial buffer (e.g., 256KB) to allow decoder detection
-        const PRIMER_BYTES: usize = 256 * 1024;
-        let mut written: usize = 0;
-        while written < PRIMER_BYTES {
-            let mut buf = [0u8; 8192];
-            let n = resp.read(&mut buf).map_err(|e| format!("Stream read error: {}", e))?;
-            if n == 0 {
-                break;
-            }
-            named
-                .write_all(&buf[..n])
-                .map_err(|e| format!("Tempfile write error: {}", e))?;
-            written += n;
-        }
-
-        // Flush and reopen for reading
-        named.flush().map_err(|e| format!("Tempfile flush error: {}", e))?;
-        let reader_file = std::fs::File::open(&path).map_err(|e| format!("Open tempfile for read error: {}", e))?;
-        let mut buf_reader = std::io::BufReader::new(reader_file);
-
-        let decoder = Decoder::new(buf_reader).map_err(|e| format!("No se pudo decodificar stream de audio: {e}"))?;
-        let duration = decoder.total_duration();
-
-        // Continue writing the rest of the stream in a detached thread so decoding can continue
-        let mut writer = named.reopen().map_err(|e| format!("Reopen tempfile for write error: {}", e))?;
-        std::thread::spawn(move || {
-            let mut resp = resp; // moved into closure
-            let mut buf = [0u8; 8192];
+        // Writer thread
+        let buffer_writer = Arc::clone(&buffer);
+        let condvar_writer = Arc::clone(&condvar);
+        let eof_writer = Arc::clone(&eof);
+        let mut resp_for_writer = resp;
+        let writer_handle = thread::spawn(move || {
+            let mut tmp = [0u8; 8192];
             loop {
-                match resp.read(&mut buf) {
-                    Ok(0) | Err(_) => break,
+                match resp_for_writer.read(&mut tmp) {
+                    Ok(0) => {
+                        eof_writer.store(true, Ordering::SeqCst);
+                        condvar_writer.notify_all();
+                        break;
+                    }
                     Ok(n) => {
-                        let _ = writer.write_all(&buf[..n]);
-                        let _ = writer.flush();
+                        {
+                            let mut guard = buffer_writer.lock().unwrap();
+                            guard.extend_from_slice(&tmp[..n]);
+                        }
+                        condvar_writer.notify_all();
+                    }
+                    Err(_) => {
+                        eof_writer.store(true, Ordering::SeqCst);
+                        condvar_writer.notify_all();
+                        break;
                     }
                 }
             }
         });
 
-        let new_sink = Sink::try_new(&self.stream_handle)
-            .map_err(|e| format!("No se pudo crear sink: {e}"))?;
+        // StreamingSource that implements Read + Seek
+        struct StreamingSource {
+            buf: Arc<Mutex<Vec<u8>>>,
+            condvar: Arc<Condvar>,
+            eof: Arc<AtomicBool>,
+            pos: u64,
+        }
+
+        impl Read for StreamingSource {
+            fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+                let mut guard = self.buf.lock().unwrap();
+                loop {
+                    let available = guard.len() as i64 - self.pos as i64;
+                    if available > 0 {
+                        let n = std::cmp::min(available as usize, out.len());
+                        let start = self.pos as usize;
+                        out[..n].copy_from_slice(&guard[start..start + n]);
+                        self.pos += n as u64;
+                        return Ok(n);
+                    }
+                    if self.eof.load(Ordering::SeqCst) {
+                        return Ok(0);
+                    }
+                    guard = self.condvar.wait(guard).unwrap();
+                }
+            }
+        }
+
+        impl Seek for StreamingSource {
+            fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
+                let mut guard = self.buf.lock().unwrap();
+                match pos {
+                    SeekFrom::Start(off) => {
+                        while guard.len() as u64 <= off && !self.eof.load(Ordering::SeqCst) {
+                            guard = self.condvar.wait(guard).unwrap();
+                        }
+                        let max = guard.len() as u64;
+                        self.pos = std::cmp::min(off, max);
+                        Ok(self.pos)
+                    }
+                    SeekFrom::Current(off) => {
+                        let target = if off < 0 {
+                            self.pos.saturating_sub((-off) as u64)
+                        } else {
+                            self.pos.saturating_add(off as u64)
+                        };
+                        while guard.len() as u64 <= target && !self.eof.load(Ordering::SeqCst) {
+                            guard = self.condvar.wait(guard).unwrap();
+                        }
+                        let max = guard.len() as u64;
+                        self.pos = std::cmp::min(target, max);
+                        Ok(self.pos)
+                    }
+                    SeekFrom::End(off) => {
+                        while !self.eof.load(Ordering::SeqCst) {
+                            guard = self.condvar.wait(guard).unwrap();
+                        }
+                        let len = guard.len() as i64;
+                        let target = len + off;
+                        let target_u = if target < 0 { 0 } else { target as u64 };
+                        self.pos = std::cmp::min(target_u, guard.len() as u64);
+                        Ok(self.pos)
+                    }
+                }
+            }
+        }
+
+        let streaming_source = StreamingSource {
+            buf: Arc::clone(&buffer),
+            condvar: Arc::clone(&condvar),
+            eof: Arc::clone(&eof),
+            pos: 0,
+        };
+
+        use symphonia::core::io::ReadOnlySource;
+        let mss = MediaSourceStream::new(Box::new(ReadOnlySource::new(streaming_source)), Default::default());
+        let mut hint = Hint::new();
+        if let Some(ext) = url.split('.').last() {
+            hint.with_extension(ext);
+        }
+
+        let probed = get_probe()
+            .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
+            .map_err(|e| format!("Error probing stream format: {}", e))?;
+        let mut format = probed.format;
+
+        let track = format
+            .tracks()
+            .get(0)
+            .ok_or_else(|| "No se encontró pista de audio en el stream".to_string())?;
+
+        // Clone codec params to create decoder inside the decoder thread and to
+        // read channels/sample_rate here for rodio source.
+        let codec_params = track.codec_params.clone();
+        let channels = codec_params.channels.as_ref().map(|c| c.count() as u16).unwrap_or(2);
+        let sample_rate = codec_params.sample_rate.unwrap_or(44100);
+
+        // Channel for PCM frames
+        let (pcm_tx, pcm_rx) = mpsc::channel::<Vec<f32>>();
+
+        use symphonia::core::audio::Signal;
+        // Decoder thread: create decoder inside the thread using cloned codec_params
+        let decoder_handle = thread::spawn(move || {
+            let mut decoder = match get_codecs().make(&codec_params, &DecoderOptions::default()) {
+                Ok(d) => d,
+                Err(_) => return,
+            };
+            loop {
+                match format.next_packet() {
+                    Ok(packet) => match decoder.decode(&packet) {
+                        Ok(audio_buf) => {
+                            let frames = audio_buf.frames();
+                            let spec = audio_buf.spec().clone();
+                            let mut sb = SampleBuffer::<f32>::new(frames as u64, spec);
+                            sb.copy_interleaved_ref(audio_buf);
+                            let out = sb.samples().to_vec();
+                            let _ = pcm_tx.send(out);
+                        }
+                        Err(_) => break,
+                    },
+                    Err(_) => break,
+                }
+            }
+        });
+
+        // Rodio source
+        struct RodioSymphoniaSource {
+            rx: mpsc::Receiver<Vec<f32>>,
+            current: Vec<f32>,
+            pos: usize,
+            channels: u16,
+            sample_rate: u32,
+        }
+
+        impl Iterator for RodioSymphoniaSource {
+            type Item = f32;
+            fn next(&mut self) -> Option<f32> {
+                if self.pos >= self.current.len() {
+                    match self.rx.recv() {
+                        Ok(v) => {
+                            self.current = v;
+                            self.pos = 0;
+                        }
+                        Err(_) => return None,
+                    }
+                }
+                let v = self.current[self.pos];
+                self.pos += 1;
+                Some(v)
+            }
+        }
+
+        impl Source for RodioSymphoniaSource {
+            fn current_frame_len(&self) -> Option<usize> { None }
+            fn channels(&self) -> u16 { self.channels }
+            fn sample_rate(&self) -> u32 { self.sample_rate }
+            fn total_duration(&self) -> Option<Duration> { None }
+        }
+
+        
+
+        let rodio_src = RodioSymphoniaSource {
+            rx: pcm_rx,
+            current: Vec::new(),
+            pos: 0,
+            channels,
+            sample_rate,
+        };
+
+        let new_sink = Sink::try_new(&self.stream_handle).map_err(|e| format!("No se pudo crear sink: {e}"))?;
         new_sink.set_volume(self.volume);
-        new_sink.append(decoder);
+        new_sink.append(rodio_src);
         new_sink.play();
 
         self.sink.stop();
@@ -396,18 +566,18 @@ impl AudioManager {
             title: station_name.to_string(),
             artist: "Radio Stream".to_string(),
             album: String::new(),
-            duration_seconds: duration.as_ref().map(|d| d.as_secs()).unwrap_or(0),
+            duration_seconds: 0,
             cover_data_url: None,
             dominant_color: None,
             path: url.to_string(),
         });
-        self.current_duration = duration;
+        self.current_duration = None;
         self.started_at = Some(Instant::now());
         self.paused_position = Duration::from_secs(0);
         self.is_paused = false;
 
-        // Remember tempfile path so we can clean up later
-        self.stream_tempfile = Some(path);
+        self.stream_writer_handle = Some(writer_handle);
+        self.stream_decoder_handle = Some(decoder_handle);
 
         Ok(())
     }
@@ -451,10 +621,13 @@ impl AudioManager {
         self.started_at = None;
         self.paused_position = Duration::from_secs(0);
         self.is_paused = false;
-        // Clean up any temporary stream file
-        if let Some(path) = &self.stream_tempfile {
-            let _ = std::fs::remove_file(path);
-            self.stream_tempfile = None;
+        // Stop streaming threads if active
+        self.streaming_active.store(false, Ordering::SeqCst);
+        if let Some(handle) = self.stream_writer_handle.take() {
+            let _ = handle.join();
+        }
+        if let Some(handle) = self.stream_decoder_handle.take() {
+            let _ = handle.join();
         }
         Ok(())
     }

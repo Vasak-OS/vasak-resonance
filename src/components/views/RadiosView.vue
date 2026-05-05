@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { getSymbolSource } from '@vasakgroup/plugin-vicons';
-import { computed, onMounted, type Ref, ref } from 'vue';
+import { computed, onMounted, onBeforeUnmount, type Ref, ref } from 'vue';
+import { listen } from '@tauri-apps/api/event';
 import LabeledField from '@/components/layout/LabeledField.vue';
 import type { RadioStation } from '@/services/radio.service';
 import {
@@ -19,6 +20,8 @@ const loading = ref(false);
 const error = ref('');
 const selectedTag = ref('lofi');
 const searchQuery = ref('');
+const bufferingStationUuid = ref<string | null>(null);
+const lastRequestedUrl = ref('');
 
 const availableTags = [
 	'lofi',
@@ -94,8 +97,12 @@ async function loadStations() {
 
 async function handlePlayStation(station: RadioStation) {
 	try {
+		bufferingStationUuid.value = station.uuid;
+		lastRequestedUrl.value = station.url || '';
 		await playRadioStation(station);
+		// keep buffering indicator until playback event arrives
 	} catch (err) {
+		bufferingStationUuid.value = null;
 		error.value = `Error playing station: ${err}`;
 		console.error(err);
 	}
@@ -109,6 +116,22 @@ onMounted(async () => {
 
 	// Load initial stations
 	await loadStations();
+
+	// Listen to backend playback snapshots to clear buffering indicator
+	const unlisten = await listen('audio-playback-progress', (event) => {
+		const payload = (event as any).payload;
+		if (!payload) return;
+		const now = payload.now_playing as any;
+		if (now && now.path && lastRequestedUrl.value && now.path === lastRequestedUrl.value) {
+			if (payload.is_playing) {
+				bufferingStationUuid.value = null;
+			}
+		}
+	});
+	// remove listener on unmount
+	onBeforeUnmount(() => {
+		try { unlisten && unlisten(); } catch (e) {}
+	});
 });
 </script>
 
@@ -215,12 +238,18 @@ onMounted(async () => {
 
 					<!-- Play button overlay -->
 					<div class="flex-shrink-0 flex items-center">
-						<button
-							class="p-2 bg-secondary rounded-full hover:bg-primary transition-colors"
-							@click.stop="handlePlayStation(station)"
-						>
-							<img :src="playIcon" alt="Play" class="w-5 h-5" />
-						</button>
+						<div class="relative">
+							<button
+								class="p-2 bg-secondary rounded-full hover:bg-primary transition-colors"
+								@click.stop="handlePlayStation(station)"
+							>
+								<img :src="playIcon" alt="Play" class="w-5 h-5" />
+							</button>
+							<!-- buffering indicator -->
+							<div v-if="bufferingStationUuid === station.uuid" class="absolute inset-0 flex items-center justify-center">
+								<div class="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin border-white"></div>
+							</div>
+						</div>
 					</div>
 				</div>
 			</div>
