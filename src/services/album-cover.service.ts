@@ -79,6 +79,68 @@ export function clearCoverCache(): void {
 	coverCache.clear();
 }
 
+const componentToHex = (value: number): string => {
+	const clamped = Math.max(0, Math.min(255, Math.round(value)));
+	return clamped.toString(16).padStart(2, '0').toUpperCase();
+};
+
+/**
+ * Extract dominant color from a data URL image (covers from cache/API).
+ */
+export async function extractDominantColorFromDataUrl(dataUrl: string): Promise<string | null> {
+	if (!dataUrl || !dataUrl.startsWith('data:image/')) {
+		return null;
+	}
+
+	if (typeof window === 'undefined') {
+		return null;
+	}
+
+	const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+		const img = new Image();
+		img.onload = () => resolve(img);
+		img.onerror = () => reject(new Error('Failed to decode cover image'));
+		img.src = dataUrl;
+	});
+
+	const canvas = document.createElement('canvas');
+	const context = canvas.getContext('2d');
+	if (!context) {
+		return null;
+	}
+
+	const sampleWidth = 48;
+	const sampleHeight = 48;
+	canvas.width = sampleWidth;
+	canvas.height = sampleHeight;
+	context.drawImage(image, 0, 0, sampleWidth, sampleHeight);
+
+	const data = context.getImageData(0, 0, sampleWidth, sampleHeight).data;
+	let red = 0;
+	let green = 0;
+	let blue = 0;
+	let total = 0;
+
+	for (let index = 0; index < data.length; index += 4) {
+		const alpha = data[index + 3];
+		if (alpha < 96) {
+			continue;
+		}
+
+		red += data[index];
+		green += data[index + 1];
+		blue += data[index + 2];
+		total += 1;
+	}
+
+	if (total === 0) {
+		return null;
+	}
+
+	const dominant = `#${componentToHex(red / total)}${componentToHex(green / total)}${componentToHex(blue / total)}`;
+	return dominant;
+}
+
 /**
  * Get cache stats for debugging
  */

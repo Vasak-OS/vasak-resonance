@@ -7,7 +7,7 @@ import MainTransportControls from '@/components/player/transport/MainTransportCo
 import { useTrackSubtitle } from '@/composables/useTrackSubtitle';
 import { useTrackTitle } from '@/composables/useTrackTitle';
 import { usePlayerStore } from '@/stores/player';
-import { fetchAlbumCover } from '@/services/album-cover.service';
+import { extractDominantColorFromDataUrl, fetchAlbumCover } from '@/services/album-cover.service';
 
 const playerStore = usePlayerStore();
 const router = useRouter();
@@ -62,7 +62,23 @@ watch(
 		// Try to fetch cover from cache/APIs
 		try {
 			const url = await fetchAlbumCover(newTrack.artist, newTrack.album);
+			if (playerStore.currentTrack?.path !== newTrack.path) {
+				return;
+			}
+
+			if (playerStore.currentTrack?.cover_data_url) {
+				fetchedCoverUrl.value = '';
+				return;
+			}
+
 			fetchedCoverUrl.value = url;
+
+			if (url && !newTrack.cover_data_url) {
+				const dominantColor = await extractDominantColorFromDataUrl(url);
+				if (playerStore.currentTrack?.path === newTrack.path) {
+					playerStore.setCurrentTrackVisuals(url, dominantColor);
+				}
+			}
 		} catch (error) {
 			console.debug('Failed to fetch cover for current track');
 			fetchedCoverUrl.value = '';

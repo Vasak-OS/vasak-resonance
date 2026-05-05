@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import PlaybackWaves from '@/components/player/PlaybackWaves.vue';
+import PlayerBackground from '@/components/player/PlayerBackground.vue';
 import TrackMetaCard from '@/components/player/TrackMetaCard.vue';
 import MiniTransportControls from '@/components/player/transport/MiniTransportControls.vue';
 import { useConfigSync } from '@/composables/useConfigSync';
@@ -8,7 +9,7 @@ import { useTrackSubtitle } from '@/composables/useTrackSubtitle';
 import { useTrackTitle } from '@/composables/useTrackTitle';
 import { toggleMainAndMiniPlayer } from '@/services/window.service';
 import { usePlayerStore } from '@/stores/player';
-import { fetchAlbumCover } from '@/services/album-cover.service';
+import { extractDominantColorFromDataUrl, fetchAlbumCover } from '@/services/album-cover.service';
 
 const playerStore = usePlayerStore();
 const fetchedCoverUrl = ref<string>('');
@@ -51,7 +52,23 @@ watch(
 		// Try to fetch cover from cache/APIs
 		try {
 			const url = await fetchAlbumCover(newTrack.artist, newTrack.album);
+			if (playerStore.currentTrack?.path !== newTrack.path) {
+				return;
+			}
+
+			if (playerStore.currentTrack?.cover_data_url) {
+				fetchedCoverUrl.value = '';
+				return;
+			}
+
 			fetchedCoverUrl.value = url;
+
+			if (url && !newTrack.cover_data_url) {
+				const dominantColor = await extractDominantColorFromDataUrl(url);
+				if (playerStore.currentTrack?.path === newTrack.path) {
+					playerStore.setCurrentTrackVisuals(url, dominantColor);
+				}
+			}
 		} catch (error) {
 			console.debug('Failed to fetch cover for current track in miniplayer');
 			fetchedCoverUrl.value = '';
@@ -79,8 +96,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-	<div class="h-screen w-screen overflow-hidden rounded-corner-window border border-ui-border bg-ui-bg/90 p-3">
-		<div class="flex h-full flex-col">
+	<div class="relative h-screen w-screen overflow-hidden rounded-corner-window border border-ui-border bg-ui-bg/90 p-3">
+		<PlayerBackground />
+
+		<div class="relative z-10 flex h-full flex-col">
 			<div class="flex min-h-0 flex-1 items-center gap-2">
 				<TrackMetaCard
 					class="min-w-0 flex-1"

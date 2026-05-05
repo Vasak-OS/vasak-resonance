@@ -280,6 +280,20 @@ export const usePlayerStore = defineStore('player', () => {
 		persistTrackCache();
 	};
 
+	const setCurrentTrackVisuals = (coverDataUrl: string | null, dominantColor: string | null) => {
+		if (!currentTrack.value?.path) {
+			return;
+		}
+
+		currentTrack.value = {
+			...currentTrack.value,
+			cover_data_url: coverDataUrl,
+			dominant_color: dominantColor,
+		};
+
+		cacheTrackMetadata(currentTrack.value);
+	};
+
 	const getTrackMetadata = (path: string) => {
 		return trackCacheByPath.value[path] ?? null;
 	};
@@ -405,14 +419,16 @@ export const usePlayerStore = defineStore('player', () => {
 
 		if (payload.now_playing) {
 			const nowPlaying: NowPlayingMetadata = payload.now_playing;
+			const cachedTrack = trackCacheByPath.value[nowPlaying.path] ?? null;
 			currentTrack.value = {
 				path: nowPlaying.path,
 				title: nowPlaying.title,
 				artist: nowPlaying.artist,
 				album: nowPlaying.album,
 				duration_seconds: nowPlaying.duration_seconds,
-				cover_data_url: nowPlaying.cover_data_url,
-				dominant_color: nowPlaying.dominant_color,
+				// Preserve cached/embedded visuals when playback events don't include them.
+				cover_data_url: nowPlaying.cover_data_url ?? cachedTrack?.cover_data_url ?? null,
+				dominant_color: nowPlaying.dominant_color ?? cachedTrack?.dominant_color ?? null,
 			};
 			cacheTrackMetadata(currentTrack.value);
 		} else if (!payload.path) {
@@ -885,6 +901,7 @@ export const usePlayerStore = defineStore('player', () => {
 		trackCacheList,
 		ensureMetadataForFavorites,
 		ensureMetadataForPath,
+		setCurrentTrackVisuals,
 		moveQueueItem,
 		removeQueueItem,
 		reloadLibraryTracks,
