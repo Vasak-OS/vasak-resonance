@@ -2,8 +2,6 @@
 rustflags = [
     "-C", "link-arg=-fuse-ld=lld",  # LLD: linker más rápido, mejor dead-code elimination
     "-C", "target-cpu=x86-64",       # Baseline x86-64: compatible con cualquier CPU de 64 bits
-    # Nota: NO usar --as-needed aquí. rusqlite (bundled) y ring compilan código C/asm estático
-    # que LLD descartaría prematuramente con --as-needed, causando "undefined symbol" en sqlite3_* y ring_core_*
 ]
 
 [target.aarch64-unknown-linux-gnu]
