@@ -55,7 +55,9 @@
           "libsoup2.4-1",
           "libsoup-3.0-0",
           "libpango-1.0-0",
-          "libwebkit2gtk-4.1-0"
+          "libwebkit2gtk-4.1-0",
+          "sqlite3",
+          "dbus"
         ],
         "files": {}
       }
