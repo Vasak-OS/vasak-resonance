@@ -28,7 +28,12 @@ const trackTitle = useTrackTitle({
       </p>
 			<VolumeControl />
       <p class="text-[11px] text-tx-muted">
-        {{ formatSeconds(playerStore.positionSeconds) }} / {{ formatSeconds(playerStore.durationSeconds) }}
+				<template v-if="playerStore.isStream">
+					{{ formatSeconds(playerStore.positionSeconds) }}
+				</template>
+				<template v-else>
+					{{ formatSeconds(playerStore.positionSeconds) }} / {{ formatSeconds(playerStore.durationSeconds) }}
+				</template>
       </p>
     </div>
 

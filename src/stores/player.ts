@@ -73,6 +73,7 @@ export const usePlayerStore = defineStore('player', () => {
 	});
 
 	const hasTrack = computed(() => Boolean(currentPath.value));
+	const isStream = computed(() => !currentPath.value && Boolean(currentTrack.value?.path?.startsWith('http')));
 	const queuedCount = computed(() => queue.value.length);
 	const trackCacheList = computed(() => Object.values(trackCacheByPath.value));
 	const favoriteEntries = computed(() =>
@@ -403,10 +404,13 @@ export const usePlayerStore = defineStore('player', () => {
 	};
 
 	const applyProgress = (payload: PlaybackProgressEvent) => {
+		const prevPath = currentPath.value;
 		currentPath.value = payload.path;
 		const dur = payload.duration_seconds ?? durationSeconds.value;
 		positionSeconds.value = dur ? Math.min(payload.position_seconds, dur) : payload.position_seconds;
-		if (payload.duration_seconds !== null) {
+		if (prevPath !== payload.path) {
+			durationSeconds.value = payload.duration_seconds;
+		} else if (payload.duration_seconds !== null) {
 			durationSeconds.value = payload.duration_seconds;
 		}
 		isPlaying.value = payload.is_playing;
@@ -918,6 +922,7 @@ export const usePlayerStore = defineStore('player', () => {
 		setScanning,
 		isDragOver,
 		isPaused,
+		isStream,
 		isPlaying,
 		pause,
 		play,
