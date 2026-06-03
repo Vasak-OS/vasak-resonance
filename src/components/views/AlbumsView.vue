@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { getSymbolSource } from '@vasakgroup/plugin-vicons';
 import { computed, onMounted, type Ref, ref } from 'vue';
 import LabeledField from '@/components/layout/LabeledField.vue';
+import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import { fetchAlbumCover } from '@/services/album-cover.service';
 import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
-const playIcon = ref('');
-const addAlbumIcon = ref('');
+const playIcon = useReactiveIcon('media-playback-start');
+const addAlbumIcon = useReactiveIcon('media-track-add-amarok');
 const searchQuery = ref('');
 const artistFilter = ref('all');
 const sortBy = ref('album-asc');
@@ -27,6 +27,7 @@ const groupedAlbums = computed(() => {
 			cover: string;
 			coverDataUrl: string | null;
 			tracks: { path: string; title: string; artist: string }[];
+			tracksPreview: { path: string; title: string; artist: string }[];
 		}
 	>();
 
@@ -41,6 +42,7 @@ const groupedAlbums = computed(() => {
 				cover: track.cover_data_url || '',
 				coverDataUrl: track.cover_data_url || null,
 				tracks: [],
+				tracksPreview: [],
 			});
 		}
 
@@ -61,7 +63,12 @@ const groupedAlbums = computed(() => {
 		});
 	}
 
-	return Array.from(albumsMap.values()).sort((a, b) => a.album.localeCompare(b.album));
+	return Array.from(albumsMap.values())
+		.map((group) => ({
+			...group,
+			tracksPreview: group.tracks.slice(0, 4),
+		}))
+		.sort((a, b) => a.album.localeCompare(b.album));
 });
 
 // Fetch covers for all albums on mount
@@ -120,7 +127,6 @@ const filteredAlbums = computed(() => {
 				return right.tracks.length - left.tracks.length;
 			case 'tracks-asc':
 				return left.tracks.length - right.tracks.length;
-			case 'album-asc':
 			default:
 				return left.album.localeCompare(right.album);
 		}
@@ -134,15 +140,6 @@ const extractTrackName = (path: string): string => {
 };
 
 onMounted(async () => {
-	const getSymbolic = getSymbolSource;
-	const [playSrc, addAlbumSrc] = await Promise.all([
-		getSymbolic('media-playback-start').catch(() => ''),
-		getSymbolic('media-track-add-amarok').catch(() => ''),
-	]);
-
-	playIcon.value = playSrc;
-	addAlbumIcon.value = addAlbumSrc;
-
 	await playerStore.ensureMetadataForFavorites();
 
 	// Fetch album covers from cache/APIs
@@ -255,7 +252,7 @@ const onPlayAlbum = async (paths: string[]) => {
 
 				<ul class="mt-3 grid gap-1.5">
 					<li
-						v-for="track in album.tracks.slice(0, 4)"
+						v-for="track in album.tracksPreview"
 						:key="track.path"
 						class="flex min-w-0 items-center gap-2 rounded-corner border border-transparent px-2 py-1 hover:border-ui-border hover:bg-ui-surface/45"
 					>

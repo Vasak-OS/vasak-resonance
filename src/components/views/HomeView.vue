@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { getSymbolSource } from '@vasakgroup/plugin-vicons';
 import { RecycleScroller } from 'vue-virtual-scroller';
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import LabeledField from '@/components/layout/LabeledField.vue';
+import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import {
 	type DroppedPlaybackTrack,
 	type LibraryTrack,
@@ -22,9 +22,9 @@ const artistFilter = ref('all');
 const albumFilter = ref('all');
 const sortBy = ref('recent-desc');
 const ftsSearchResults = ref<LibraryTrack[] | null>(null);
-const playIcon = ref('');
-const addFavoriteIcon = ref('');
-const removeIcon = ref('');
+const playIcon = useReactiveIcon('media-playback-start');
+const addFavoriteIcon = useReactiveIcon('new-star');
+const removeIcon = useReactiveIcon('remove');
 let searchDebounceTimer: number | null = null;
 
 const normalize = (value: string) => value.trim().toLowerCase();
@@ -163,7 +163,6 @@ const sortedTracks = computed(() => {
 				return left.duration_seconds - right.duration_seconds;
 			case 'duration-desc':
 				return right.duration_seconds - left.duration_seconds;
-			case 'recent-desc':
 			default:
 				return (
 					right.created_at.localeCompare(left.created_at) || left.title.localeCompare(right.title)
@@ -202,17 +201,6 @@ const toggleFavorite = (path: string) => {
 };
 
 onMounted(async () => {
-	const getSymbolic = getSymbolSource;
-	const [playSrc, addFavSrc, removeSrc] = await Promise.all([
-		getSymbolic('media-playback-start').catch(() => ''),
-		getSymbolic('new-star').catch(() => ''),
-		getSymbolic('remove').catch(() => ''),
-	]);
-
-	playIcon.value = playSrc;
-	addFavoriteIcon.value = addFavSrc;
-	removeIcon.value = removeSrc;
-
 	await syncCachedTracksToDatabase();
 	await loadLibrary();
 	await playerStore.ensureMetadataForFavorites();

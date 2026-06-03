@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { getSymbolSource } from '@vasakgroup/plugin-vicons';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import TrackMetaCard from '@/components/player/TrackMetaCard.vue';
 import MainTransportControls from '@/components/player/transport/MainTransportControls.vue';
+import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import { useTrackSubtitle } from '@/composables/useTrackSubtitle';
 import { useTrackTitle } from '@/composables/useTrackTitle';
 import { extractDominantColorFromDataUrl, fetchAlbumCover } from '@/services/album-cover.service';
@@ -21,7 +21,20 @@ const sections = [
 	{ id: 'radios', label: 'Radios', icon: 'media-playback-start-symbolic' },
 ] as const;
 
-const iconSources = ref<Record<string, string>>({});
+const homeIcon = useReactiveIcon('go-home-symbolic');
+const albumsIcon = useReactiveIcon('folder-music-symbolic');
+const favoritesIcon = useReactiveIcon('starred-symbolic');
+const playlistsIcon = useReactiveIcon('view-list-symbolic');
+const radiosIcon = useReactiveIcon('media-playback-start-symbolic');
+
+const iconSources = computed(() => ({
+	home: homeIcon.value,
+	albums: albumsIcon.value,
+	favorites: favoritesIcon.value,
+	playlists: playlistsIcon.value,
+	radios: radiosIcon.value,
+}));
+
 const fetchedCoverUrl = ref<string>('');
 
 const selectedSection = computed(() => (typeof route.name === 'string' ? route.name : 'home'));
@@ -47,23 +60,29 @@ const trackSubtitle = useTrackSubtitle({
 
 // Watch for track changes and fetch cover if needed
 watch(
-	() => playerStore.currentTrack,
-	async (newTrack) => {
-		if (!newTrack) {
+	() => playerStore.currentTrack?.path,
+	async (newPath) => {
+		if (!newPath) {
+			fetchedCoverUrl.value = '';
+			return;
+		}
+
+		const track = playerStore.currentTrack;
+		if (!track) {
 			fetchedCoverUrl.value = '';
 			return;
 		}
 
 		// If track has embedded cover, don't fetch
-		if (newTrack.cover_data_url) {
+		if (track.cover_data_url) {
 			fetchedCoverUrl.value = '';
 			return;
 		}
 
 		// Try to fetch cover from cache/APIs
 		try {
-			const url = await fetchAlbumCover(newTrack.artist, newTrack.album);
-			if (playerStore.currentTrack?.path !== newTrack.path) {
+			const url = await fetchAlbumCover(track.artist, track.album);
+			if (playerStore.currentTrack?.path !== newPath) {
 				return;
 			}
 
@@ -74,9 +93,9 @@ watch(
 
 			fetchedCoverUrl.value = url;
 
-			if (url && !newTrack.cover_data_url) {
+			if (url && !track.cover_data_url) {
 				const dominantColor = await extractDominantColorFromDataUrl(url);
-				if (playerStore.currentTrack?.path === newTrack.path) {
+				if (playerStore.currentTrack?.path === newPath) {
 					playerStore.setCurrentTrackVisuals(url, dominantColor);
 				}
 			}
@@ -95,21 +114,6 @@ const onSelectSection = async (id: string) => {
 
 	await router.push({ name: id });
 };
-
-onMounted(async () => {
-	const loadedSources = await Promise.all(
-		sections.map(async (section) => {
-			try {
-				const src = await getSymbolSource(section.icon);
-				return [section.id, src] as const;
-			} catch {
-				return [section.id, ''] as const;
-			}
-		})
-	);
-
-	iconSources.value = Object.fromEntries(loadedSources);
-});
 </script>
 
 <template>
@@ -119,7 +123,7 @@ onMounted(async () => {
 			<p class="text-sm font-semibold text-tx-main">Biblioteca</p>
 		</header>
 
-		<nav class="flex-1 space-y-2 overflow-y-auto px-1 py-3">
+		<nav v-once class="flex-1 space-y-2 overflow-y-auto px-1 py-3">
 			<button
 				v-for="section in sections"
 				:key="section.id"

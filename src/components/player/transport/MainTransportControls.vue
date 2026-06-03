@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { getSymbolSource } from '@vasakgroup/plugin-vicons';
-import { computed, onMounted, ref } from 'vue';
+import { computed } from 'vue';
 import TransportButton from '@/components/player/transport/TransportButton.vue';
+import { useReactiveIcon } from '@/composables/useReactiveIcon';
 
 const props = defineProps<{
 	hasTrack: boolean;
@@ -24,25 +24,10 @@ const playButtonLabel = computed(() => {
 	return props.isPaused ? 'Play' : 'Pause';
 });
 
-const prevIcon = ref('');
-const playIcon = ref('');
-const pauseIcon = ref('');
-const nextIcon = ref('');
-
-onMounted(async () => {
-	const getSymbolSrc = getSymbolSource;
-	const [prevSrc, playSrc, pauseSrc, nextSrc] = await Promise.all([
-		getSymbolSrc('player_rew').catch(() => ''),
-		getSymbolSrc('media-playback-start').catch(() => ''),
-		getSymbolSrc('media-playback-pause').catch(() => ''),
-		getSymbolSrc('player_fwd').catch(() => ''),
-	]);
-
-	prevIcon.value = prevSrc;
-	playIcon.value = playSrc;
-	pauseIcon.value = pauseSrc;
-	nextIcon.value = nextSrc;
-});
+const prevIcon = useReactiveIcon('player_rew');
+const playIcon = useReactiveIcon('media-playback-start');
+const pauseIcon = useReactiveIcon('media-playback-pause');
+const nextIcon = useReactiveIcon('player_fwd');
 
 const playPauseIcon = computed(() => {
 	return props.isPaused || !props.hasTrack ? playIcon.value : pauseIcon.value;

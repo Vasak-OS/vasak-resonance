@@ -1,22 +1,14 @@
 <script lang="ts" setup>
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { getSymbolSource } from '@vasakgroup/plugin-vicons';
-import { onMounted, Ref, ref } from 'vue';
+import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import { toggleMainAndMiniPlayer } from '@/services/window.service';
 
 const appWindow = getCurrentWindow();
-const closeIcon: Ref<string> = ref('');
-const minimizeIcon: Ref<string> = ref('');
-const maximizeIcon: Ref<string> = ref('');
-const miniIcon: Ref<string> = ref('');
-
-onMounted(async () => {
-	miniIcon.value = await getSymbolSource('screenshot-ui-window');
-	closeIcon.value = await getSymbolSource('window-close');
-	minimizeIcon.value = await getSymbolSource('window-minimize');
-	maximizeIcon.value = await getSymbolSource('window-maximize');
-});
+const miniIcon = useReactiveIcon('screenshot-ui-window');
+const closeIcon = useReactiveIcon('window-close');
+const minimizeIcon = useReactiveIcon('window-minimize');
+const maximizeIcon = useReactiveIcon('window-maximize');
 
 const toggleMiniPlayer = async () => {
 	await toggleMainAndMiniPlayer();

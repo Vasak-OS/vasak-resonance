@@ -29,35 +29,43 @@ const props = withDefaults(
 
 const playerStore = usePlayerStore();
 
-const spectrumSteps = computed(() => Array.from({ length: props.steps }, (_, index) => index));
-
 const progressPercent = computed(() => {
 	return Math.min(100, Math.max(0, playerStore.progressPercent));
 });
 
-const barHeight = (index: number): number => {
-	const phase =
-		(index + 1) * props.phaseMultiplier + playerStore.positionSeconds * props.timeMultiplier;
-	const wave = Math.sin(phase) * 0.5 + 0.5;
+const bars = computed(() => {
+	const steps = props.steps;
+	const amp = props.amplitude;
+	const phaseMul = props.phaseMultiplier;
+	const timeMul = props.timeMultiplier;
 	const floor =
 		playerStore.isPaused || !playerStore.hasTrack ? props.floorPaused : props.floorPlaying;
-	return Math.round(floor + wave * props.amplitude);
-};
+	const pos = playerStore.positionSeconds;
+	const pct = progressPercent.value;
+	const result = new Array(steps);
 
-const isActiveBar = (index: number): boolean => {
-	const stepPercent = ((index + 1) / props.steps) * 100;
-	return stepPercent <= progressPercent.value;
-};
+	for (let i = 0; i < steps; i++) {
+		const phase = (i + 1) * phaseMul + pos * timeMul;
+		const wave = Math.sin(phase) * 0.5 + 0.5;
+		const stepPercent = ((i + 1) / steps) * 100;
+		result[i] = {
+			height: Math.round(floor + wave * amp),
+			isActive: stepPercent <= pct,
+		};
+	}
+
+	return result;
+});
 </script>
 
 <template>
 	<div class="flex w-full items-end gap-0.5 overflow-hidden" :class="barHeight">
 		<span
-			v-for="step in spectrumSteps"
+			v-for="(bar, step) in bars"
 			:key="step"
 			class="flex-1 rounded-sm transition-all duration-200"
-			:class="isActiveBar(step) ? activeClass : inactiveClass"
-			:style="{ height: `${barHeight(step)}px` }"
+			:class="bar.isActive ? activeClass : inactiveClass"
+			:style="{ height: `${bar.height}px` }"
 		/>
 	</div>
 </template>

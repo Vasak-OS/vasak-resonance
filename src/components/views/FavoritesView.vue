@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { getSymbolSource } from '@vasakgroup/plugin-vicons';
 import { computed, onMounted, ref } from 'vue';
 import LabeledField from '@/components/layout/LabeledField.vue';
+import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
-const playIcon = ref('');
-const addFavoriteIcon = ref('');
-const removeIcon = ref('');
+const playIcon = useReactiveIcon('media-playback-start');
+const addFavoriteIcon = useReactiveIcon('new-star');
+const removeIcon = useReactiveIcon('remove');
 const searchQuery = ref('');
 const artistFilter = ref('all');
 const sortBy = ref('recent');
@@ -71,17 +71,6 @@ const favoriteArtistOptions = computed(() => {
 });
 
 onMounted(async () => {
-	const getSymbolic = getSymbolSource;
-	const [playSrc, addFavSrc, removeSrc] = await Promise.all([
-		getSymbolic('media-playback-start').catch(() => ''),
-		getSymbolic('new-star').catch(() => ''),
-		getSymbolic('remove').catch(() => ''),
-	]);
-
-	playIcon.value = playSrc;
-	addFavoriteIcon.value = addFavSrc;
-	removeIcon.value = removeSrc;
-
 	await playerStore.ensureMetadataForFavorites();
 });
 </script>

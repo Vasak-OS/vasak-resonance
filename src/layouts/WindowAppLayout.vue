@@ -1,6 +1,5 @@
 <script lang="ts" setup>
-import { getIconSource } from '@vasakgroup/plugin-vicons';
-import { onMounted, onUnmounted, ref } from 'vue';
+import { onMounted, onUnmounted } from 'vue';
 import { RouterView } from 'vue-router';
 import AppWindowShell from '@/components/layout/AppWindowShell.vue';
 import AudioDropOverlay from '@/components/layout/AudioDropOverlay.vue';
@@ -9,10 +8,11 @@ import NowPlayingTopBar from '@/components/player/NowPlayingTopBar.vue';
 import PlayerBackground from '@/components/player/PlayerBackground.vue';
 import TopBarComponent from '@/components/topbar/TopBarComponent.vue';
 import { useAudioDrop } from '@/composables/useAudioDrop';
+import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
-const appIcon = ref('');
+const appIcon = useReactiveIcon('music-app', 'icon');
 
 useAudioDrop({
 	onFilesDropped: (paths: string[]) => playerStore.handleDroppedPaths(paths),
@@ -20,7 +20,6 @@ useAudioDrop({
 });
 
 onMounted(async () => {
-	appIcon.value = await getIconSource('music-app');
 	await playerStore.initProgressListener();
 	await playerStore.initMprisNextListener();
 	await playerStore.initMprisPreviousListener();

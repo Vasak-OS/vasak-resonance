@@ -53,32 +53,6 @@ export async function fetchAlbumCover(artist: string, album: string): Promise<st
 	}
 }
 
-/**
- * Get cover URL with fallback strategy:
- * 1. Return cover_data_url if available (existing embedded cover)
- * 2. Try to fetch from cache/APIs if cover_data_url is empty
- */
-export async function getOrFetchCoverUrl(
-	artist: string,
-	album: string,
-	existingCoverDataUrl: string | null | undefined
-): Promise<string> {
-	// If we have an existing cover, use it
-	if (existingCoverDataUrl) {
-		return existingCoverDataUrl;
-	}
-
-	// Try to fetch from cache/APIs
-	return fetchAlbumCover(artist, album);
-}
-
-/**
- * Clear in-memory cache (useful for testing or refresh)
- */
-export function clearCoverCache(): void {
-	coverCache.clear();
-}
-
 const componentToHex = (value: number): string => {
 	const clamped = Math.max(0, Math.min(255, Math.round(value)));
 	return clamped.toString(16).padStart(2, '0').toUpperCase();
@@ -88,7 +62,7 @@ const componentToHex = (value: number): string => {
  * Extract dominant color from a data URL image (covers from cache/API).
  */
 export async function extractDominantColorFromDataUrl(dataUrl: string): Promise<string | null> {
-	if (!dataUrl || !dataUrl.startsWith('data:image/')) {
+	if (!dataUrl?.startsWith('data:image/')) {
 		return null;
 	}
 
@@ -139,14 +113,4 @@ export async function extractDominantColorFromDataUrl(dataUrl: string): Promise<
 
 	const dominant = `#${componentToHex(red / total)}${componentToHex(green / total)}${componentToHex(blue / total)}`;
 	return dominant;
-}
-
-/**
- * Get cache stats for debugging
- */
-export function getCoverCacheStats(): { size: number; keys: string[] } {
-	return {
-		size: coverCache.size,
-		keys: Array.from(coverCache.keys()),
-	};
 }

@@ -36,23 +36,29 @@ const coverSrc = computed(() => {
 
 // Watch for track changes and fetch cover if needed
 watch(
-	() => playerStore.currentTrack,
-	async (newTrack) => {
-		if (!newTrack) {
+	() => playerStore.currentTrack?.path,
+	async (newPath) => {
+		if (!newPath) {
+			fetchedCoverUrl.value = '';
+			return;
+		}
+
+		const track = playerStore.currentTrack;
+		if (!track) {
 			fetchedCoverUrl.value = '';
 			return;
 		}
 
 		// If track has embedded cover, don't fetch
-		if (newTrack.cover_data_url) {
+		if (track.cover_data_url) {
 			fetchedCoverUrl.value = '';
 			return;
 		}
 
 		// Try to fetch cover from cache/APIs
 		try {
-			const url = await fetchAlbumCover(newTrack.artist, newTrack.album);
-			if (playerStore.currentTrack?.path !== newTrack.path) {
+			const url = await fetchAlbumCover(track.artist, track.album);
+			if (playerStore.currentTrack?.path !== newPath) {
 				return;
 			}
 
@@ -63,9 +69,9 @@ watch(
 
 			fetchedCoverUrl.value = url;
 
-			if (url && !newTrack.cover_data_url) {
+			if (url && !track.cover_data_url) {
 				const dominantColor = await extractDominantColorFromDataUrl(url);
-				if (playerStore.currentTrack?.path === newTrack.path) {
+				if (playerStore.currentTrack?.path === newPath) {
 					playerStore.setCurrentTrackVisuals(url, dominantColor);
 				}
 			}

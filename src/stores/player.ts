@@ -1,6 +1,7 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { defineStore } from 'pinia';
-import { computed, ref, watch } from 'vue';
+import { computed, ref, shallowRef, watch } from 'vue';
+import { devLog } from '@/composables/useDevLog';
 import {
 	type DroppedPlaybackTrack,
 	getPlaybackSnapshot,
@@ -23,7 +24,7 @@ export const usePlayerStore = defineStore('player', () => {
 	const queue = ref<string[]>([]);
 	const history = ref<string[]>([]);
 	const favoritePaths = ref<string[]>([]);
-	const trackCacheByPath = ref<Record<string, DroppedPlaybackTrack>>({});
+	const trackCacheByPath = shallowRef<Record<string, DroppedPlaybackTrack>>({});
 	const positionSeconds = ref(0);
 	const durationSeconds = ref<number | null>(null);
 	const isPlaying = ref(false);
@@ -49,10 +50,7 @@ export const usePlayerStore = defineStore('player', () => {
 			if (!playbackStorage.value) {
 				const filePath = 'resonance-playback.json';
 				try {
-					// Use Function-constructor import to avoid bundler static analysis
-					// which would otherwise try to resolve the module at build time.
-					const dynamicImport = new Function('return import("@tauri-apps/plugin-store")');
-					const plugin = await dynamicImport();
+					const plugin = await import("@tauri-apps/plugin-store");
 					playbackStorage.value = await new plugin.LazyStore(filePath);
 					await playbackStorage.value.save();
 				} catch (err) {
@@ -542,17 +540,17 @@ export const usePlayerStore = defineStore('player', () => {
 	};
 
 	const playDropped = async (filePath: string, recordHistory = true) => {
-		console.log('[playDropped] Iniciando reproducción de:', filePath);
+		devLog('[playDropped] Iniciando reproducción de:', filePath);
 		busy.value = true;
 		error.value = '';
 		try {
-			console.log('[playDropped] Llamando handleDroppedFile...');
+			devLog('[playDropped] Llamando handleDroppedFile...');
 			const track = await handleDroppedFile(filePath);
-			console.log('[playDropped] Track obtenido:', track);
+			devLog('[playDropped] Track obtenido:', track);
 
 			// Si el track ya existe en la BD, usar los datos existentes y solo actualizar visuals
 			const existingInCache = trackCacheByPath.value[filePath];
-			if (existingInCache && existingInCache.album && existingInCache.album !== 'Unknown Album') {
+			if (existingInCache?.album && existingInCache.album !== 'Unknown Album') {
 				// Mantener información correcta de album de la BD
 				track.album = existingInCache.album;
 				track.artist = existingInCache.artist || track.artist;
@@ -572,9 +570,9 @@ export const usePlayerStore = defineStore('player', () => {
 			cacheTrackMetadata(track);
 			currentPath.value = track.path;
 			durationSeconds.value = track.duration_seconds;
-			console.log('[playDropped] Llamando playFile con:', track.path);
+			devLog('[playDropped] Llamando playFile con:', track.path);
 			await playFile(track.path);
-			console.log('[playDropped] playFile completado exitosamente');
+			devLog('[playDropped] playFile completado exitosamente');
 		} catch (dropError: unknown) {
 			console.error('[playDropped] Error:', dropError);
 			error.value = `No se pudo cargar el archivo arrastrado: ${String(dropError)}`;
@@ -721,20 +719,20 @@ export const usePlayerStore = defineStore('player', () => {
 	};
 
 	const handleDroppedPaths = async (paths: string[]) => {
-		console.log('[handleDroppedPaths] Paths recibidos:', paths);
+		devLog('[handleDroppedPaths] Paths recibidos:', paths);
 		const normalized = Array.from(
 			new Set(paths.map((path) => path.trim()).filter((path) => path.length > 0))
 		);
-		console.log('[handleDroppedPaths] Paths normalizados:', normalized);
+		devLog('[handleDroppedPaths] Paths normalizados:', normalized);
 		const [firstPath, ...rest] = normalized;
 		if (!firstPath) {
-			console.warn('[handleDroppedPaths] No hay primera ruta para reproducir');
+			devLog('[handleDroppedPaths] No hay primera ruta para reproducir');
 			return;
 		}
 
 		queue.value = rest;
 		void ensureMetadataForPaths(normalized);
-		console.log('[handleDroppedPaths] Llamando playDropped con:', firstPath);
+		devLog('[handleDroppedPaths] Llamando playDropped con:', firstPath);
 		await playDropped(firstPath);
 	};
 
@@ -751,38 +749,48 @@ export const usePlayerStore = defineStore('player', () => {
 			const tracks = await listLibraryTracks();
 			const newCache: Record<string, DroppedPlaybackTrack> = {};
 
-			// Identificar tracks nuevos (no en cache anterior)
-			const newPaths = tracks; // Todos son "nuevos" porque limpiamos el cache
+			// Extraer metadatos visuales (cover, color) de todos los tracks en batches
+			const batchSize = 20;
+			const visualMetadata: {
+				path: string;
+				cover_data_url: string | null;
+				dominant_color: string | null;
+			}[] = [];
 
-			// Extraer metadatos visuales (cover, color) de todos los tracks en paralelo
-			const visualMetadata = await Promise.allSettled(
-				newPaths.map(async (track) => {
-					try {
-						const fullMetadata = await handleDroppedFile(track.path);
-						return {
-							path: track.path,
-							cover_data_url: fullMetadata.cover_data_url,
-							dominant_color: fullMetadata.dominant_color,
-						};
-					} catch {
-						return {
-							path: track.path,
-							cover_data_url: null,
-							dominant_color: null,
-						};
+			for (let i = 0; i < tracks.length; i += batchSize) {
+				const batch = tracks.slice(i, i + batchSize);
+				const batchResults = await Promise.allSettled(
+					batch.map(async (track) => {
+						try {
+							const fullMetadata = await handleDroppedFile(track.path);
+							return {
+								path: track.path,
+								cover_data_url: fullMetadata.cover_data_url,
+								dominant_color: fullMetadata.dominant_color,
+							};
+						} catch {
+							return {
+								path: track.path,
+								cover_data_url: null,
+								dominant_color: null,
+							};
+						}
+					})
+				);
+				for (const result of batchResults) {
+					if (result.status === 'fulfilled') {
+						visualMetadata.push(result.value);
 					}
-				})
-			);
+				}
+			}
 
 			// Crear mapa de metadatos visuales por path
 			const visualMap: Record<
 				string,
 				{ cover_data_url: string | null; dominant_color: string | null }
 			> = {};
-			for (const result of visualMetadata) {
-				if (result.status === 'fulfilled') {
-					visualMap[result.value.path] = result.value;
-				}
+			for (const item of visualMetadata) {
+				visualMap[item.path] = item;
 			}
 
 			// Reconstruir cache combinando datos de BD con metadatos visuales
@@ -852,13 +860,28 @@ export const usePlayerStore = defineStore('player', () => {
 	// Restaurar estado de reproducción guardado y persistir cambios
 	void syncPlaybackStateFromStorage();
 
-	watch(
-		[currentPath, queue, positionSeconds, isPlaying, volume],
-		() => {
+	let persistTimer: ReturnType<typeof setTimeout> | null = null;
+	const debouncedPersist = () => {
+		if (persistTimer) {
+			clearTimeout(persistTimer);
+		}
+		persistTimer = setTimeout(() => {
 			void persistPlaybackState();
+			persistTimer = null;
+		}, 1000);
+	};
+
+	watch(
+		[currentPath, queue, isPlaying, volume],
+		() => {
+			debouncedPersist();
 		},
-		{ deep: true }
+		{ deep: false }
 	);
+
+	watch(positionSeconds, () => {
+		debouncedPersist();
+	});
 
 	if (typeof window !== 'undefined') {
 		beforeUnloadHandler = () => {
@@ -892,7 +915,6 @@ export const usePlayerStore = defineStore('player', () => {
 		initMprisNextListener,
 		initMprisPreviousListener,
 		initMprisStopListener,
-		history,
 		favoritePaths,
 		favoriteEntries,
 		globalBadgeMessage,

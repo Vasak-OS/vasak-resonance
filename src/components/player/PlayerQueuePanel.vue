@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { getSymbolSource } from '@vasakgroup/plugin-vicons';
-import { onMounted, ref } from 'vue';
+import { ref } from 'vue';
+import { useReactiveIcon } from '@/composables/useReactiveIcon';
 
 const props = defineProps<{
 	queueItems: string[];
@@ -14,7 +14,7 @@ const emit = defineEmits<{
 
 const draggingQueueIndex = ref<number | null>(null);
 const dropTargetIndex = ref<number | null>(null);
-const clearAllIcon = ref('');
+const clearAllIcon = useReactiveIcon('edit-clear-all-symbolic');
 
 const extractTrackName = (path: string): string => {
 	const normalized = path.replace(/\\/g, '/');
@@ -55,11 +55,6 @@ const onQueueDrop = (targetIndex: number) => {
 	draggingQueueIndex.value = null;
 	dropTargetIndex.value = null;
 };
-
-onMounted(async () => {
-	const getSymbolic = getSymbolSource;
-	clearAllIcon.value = await getSymbolic('edit-clear-all-symbolic').catch(() => '');
-});
 </script>
 
 <template>

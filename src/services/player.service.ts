@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { devLog } from '@/composables/useDevLog';
 
 export interface DroppedPlaybackTrack {
 	path: string;
@@ -63,32 +64,32 @@ export interface LibraryTrack {
 }
 
 export const playFile = (filePath: string): Promise<void> => {
-	console.log('[player.service] playFile invoke:', filePath);
+	devLog('[player.service] playFile invoke:', filePath);
 	return invoke<void>('play_file', { filePath, file_path: filePath });
 };
 
 export const pausePlayback = (): Promise<void> => {
-	console.log('[player.service] pausePlayback invoke');
+	devLog('[player.service] pausePlayback invoke');
 	return invoke<void>('pause');
 };
 
 export const resumePlayback = (): Promise<void> => {
-	console.log('[player.service] resumePlayback invoke');
+	devLog('[player.service] resumePlayback invoke');
 	return invoke<void>('resume');
 };
 
 export const seekPlayback = (second: number): Promise<void> => {
-	console.log('[player.service] seekPlayback invoke:', second);
+	devLog('[player.service] seekPlayback invoke:', second);
 	return invoke<void>('seek', { second: Math.max(0, Math.floor(second)) });
 };
 
 export const setPlaybackVolume = (volume: number): Promise<void> => {
-	console.log('[player.service] setPlaybackVolume invoke:', volume);
+	devLog('[player.service] setPlaybackVolume invoke:', volume);
 	return invoke<void>('set_volume', { volume });
 };
 
 export const getPlaybackSnapshot = (): Promise<PlaybackProgressEvent> => {
-	console.log('[player.service] getPlaybackSnapshot invoke');
+	devLog('[player.service] getPlaybackSnapshot invoke');
 	return invoke<PlaybackProgressEvent>('get_playback_snapshot');
 };
 
@@ -98,14 +99,8 @@ export const fetchLyrics = (params: {
 	albumName: string;
 	durationSeconds: number;
 }): Promise<TrackLyricsPayload> => {
-	console.log('[player.service] fetchLyrics invoke:', params.trackName, params.artistName);
+	devLog('[player.service] fetchLyrics invoke:', params.trackName, params.artistName);
 	return invoke<TrackLyricsPayload>('fetch_lyrics', {
-		// enviar ambas convenciones (snake_case y camelCase) para compatibilidad
-		track_name: params.trackName,
-		artist_name: params.artistName,
-		album_name: params.albumName,
-		duration_seconds: Math.max(0, Math.floor(params.durationSeconds)),
-
 		trackName: params.trackName,
 		artistName: params.artistName,
 		albumName: params.albumName,
@@ -114,12 +109,12 @@ export const fetchLyrics = (params: {
 };
 
 export const stopPlayback = (): Promise<void> => {
-	console.log('[player.service] stopPlayback invoke');
+	devLog('[player.service] stopPlayback invoke');
 	return invoke<void>('stop');
 };
 
 export const handleDroppedFile = (filePath: string): Promise<DroppedPlaybackTrack> => {
-	console.log('[player.service] handleDroppedFile invoke:', filePath);
+	devLog('[player.service] handleDroppedFile invoke:', filePath);
 	return invoke<DroppedPlaybackTrack>('handle_dropped_file', {
 		filePath,
 		file_path: filePath,
@@ -127,21 +122,21 @@ export const handleDroppedFile = (filePath: string): Promise<DroppedPlaybackTrac
 };
 
 export const listLibraryTracks = (): Promise<LibraryTrack[]> => {
-	console.log('[player.service] listLibraryTracks invoke');
+	devLog('[player.service] listLibraryTracks invoke');
 	return invoke<LibraryTrack[]>('list_library_tracks');
 };
 
 export const scanDefaultMusicFolder = (): Promise<ScanSummary> => {
-	console.log('[player.service] scanDefaultMusicFolder invoke');
+	devLog('[player.service] scanDefaultMusicFolder invoke');
 	return invoke<ScanSummary>('scan_default_music_folder');
 };
 
 export const searchLibraryTracks = (query: string, limit?: number): Promise<LibraryTrack[]> => {
-	console.log('[player.service] searchLibraryTracks invoke:', query);
+	devLog('[player.service] searchLibraryTracks invoke:', query);
 	return invoke<LibraryTrack[]>('search_library_tracks', { query, limit });
 };
 
 export const saveLibraryTrack = (track: DroppedPlaybackTrack): Promise<void> => {
-	console.log('[player.service] saveLibraryTrack invoke:', track.path);
+	devLog('[player.service] saveLibraryTrack invoke:', track.path);
 	return invoke<void>('save_library_track', { track });
 };

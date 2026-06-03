@@ -5,9 +5,11 @@ fn position_miniplayer_bottom_right(app: &AppHandle) -> Result<(), String> {
         .get_webview_window("mini-player")
         .ok_or_else(|| "No se encontro la ventana MiniPlayer".to_string())?;
 
-    let monitor = mini_window
-        .current_monitor()
-        .map_err(|error| error.to_string())?
+    // Obtener monitor desde la ventana principal (visible al momento del toggle)
+    let monitor = app
+        .get_webview_window("main")
+        .and_then(|w| w.current_monitor().ok().flatten())
+        .or_else(|| mini_window.current_monitor().ok().flatten())
         .ok_or_else(|| "No se encontro monitor activo".to_string())?;
 
     let monitor_position = monitor.position();
@@ -47,9 +49,9 @@ pub fn toggle_main_and_miniplayer(app: AppHandle) -> Result<(), String> {
         main_window.show().map_err(|error| error.to_string())?;
         main_window.set_focus().map_err(|error| error.to_string())?;
     } else {
-        main_window.hide().map_err(|error| error.to_string())?;
         mini_window.show().map_err(|error| error.to_string())?;
         position_miniplayer_bottom_right(&app)?;
+        main_window.hide().map_err(|error| error.to_string())?;
         mini_window.set_focus().map_err(|error| error.to_string())?;
     }
 

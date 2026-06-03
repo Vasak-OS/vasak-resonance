@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { getSymbolSource } from '@vasakgroup/plugin-vicons';
-import { computed, onMounted, onBeforeUnmount, type Ref, ref } from 'vue';
 import { listen } from '@tauri-apps/api/event';
+import { computed, onBeforeUnmount, onMounted, type Ref, ref } from 'vue';
 import LabeledField from '@/components/layout/LabeledField.vue';
+import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import type { RadioStation } from '@/services/radio.service';
 import {
 	fetchRadioStations,
@@ -13,8 +13,8 @@ import {
 import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
-const playIcon = ref('');
-const searchIcon = ref('');
+const playIcon = useReactiveIcon('media-playback-start');
+const searchIcon = useReactiveIcon('file-search');
 const stations: Ref<RadioStation[]> = ref([]);
 const loading = ref(false);
 const error = ref('');
@@ -53,7 +53,7 @@ const filteredStations = computed(() => {
 });
 
 const sortedStations = computed(() => {
-	return filteredStations.value.sort((a, b) => {
+	return [...filteredStations.value].sort((a, b) => {
 		// Sort by votes (higher first), then by name
 		const aVotes = a.votes || 0;
 		const bVotes = b.votes || 0;
@@ -108,30 +108,29 @@ async function handlePlayStation(station: RadioStation) {
 	}
 }
 
-onMounted(async () => {
-	const playSymbol = await getSymbolSource('media-playback-start');
-	const searchSymbol = await getSymbolSource('file-search');
-	playIcon.value = playSymbol;
-	searchIcon.value = searchSymbol;
+let unlistenPlayback: (() => void) | null = null;
 
+onMounted(async () => {
 	// Load initial stations
 	await loadStations();
 
 	// Listen to backend playback snapshots to clear buffering indicator
-	const unlisten = await listen('audio-playback-progress', (event) => {
+	unlistenPlayback = await listen('audio-playback-progress', (event) => {
 		const payload = (event as any).payload;
 		if (!payload) return;
 		const now = payload.now_playing as any;
-		if (now && now.path && lastRequestedUrl.value && now.path === lastRequestedUrl.value) {
+		if (now?.path && lastRequestedUrl.value && now.path === lastRequestedUrl.value) {
 			if (payload.is_playing) {
 				bufferingStationUuid.value = null;
 			}
 		}
 	});
-	// remove listener on unmount
-	onBeforeUnmount(() => {
-		try { unlisten && unlisten(); } catch (e) {}
-	});
+});
+
+onBeforeUnmount(() => {
+	if (unlistenPlayback) {
+		unlistenPlayback();
+	}
 });
 </script>
 
@@ -142,7 +141,7 @@ onMounted(async () => {
 			<h1 class="text-2xl font-bold">Radio Stations</h1>
 
 			<!-- Tag selection -->
-			<div class="flex gap-2 flex-wrap">
+			<div v-once class="flex gap-2 flex-wrap">
 				<button
 					v-for="tag in availableTags"
 					:key="tag"
