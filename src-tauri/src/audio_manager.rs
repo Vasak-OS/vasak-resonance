@@ -1,9 +1,8 @@
-use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
+use rodio::{OutputStream, OutputStreamHandle, Sink, Source};
 use rodio::buffer::SamplesBuffer;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufReader, Read, Seek, SeekFrom, Write};
-use std::path::PathBuf;
+use std::io::{Read, Seek, SeekFrom};
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -304,16 +303,7 @@ impl AudioManager {
         }
 
         let canonical_path = std::fs::canonicalize(&path).unwrap_or(path);
-        let file = File::open(&canonical_path)
-            .map_err(|e| format!("No se pudo abrir archivo de audio: {e}"))?;
-        let decoder = Decoder::new(BufReader::new(file))
-            .map_err(|e| format!("No se pudo decodificar audio: {e}"))?;
-        let duration = decoder.total_duration();
-        let channels = decoder.channels();
-        let sample_rate = decoder.sample_rate();
-
-        // Decode and cache all PCM samples for instant seeking
-        let all_samples: Vec<f32> = decoder.convert_samples().collect();
+        let (all_samples, channels, sample_rate) = Self::decode_file(&canonical_path)?;
         let total_dur = (all_samples.len() as u64) / (sample_rate as u64 * channels as u64);
         self.cached_samples = Some((all_samples.clone(), channels, sample_rate));
 
@@ -347,9 +337,48 @@ impl AudioManager {
         Ok(())
     }
 
+    fn decode_file(path: &Path) -> Result<(Vec<f32>, u16, u32), String> {
+        let output = std::process::Command::new("ffmpeg")
+            .args([
+                "-v", "quiet",
+                "-i", &path.to_string_lossy(),
+                "-f", "wav",
+                "pipe:1",
+            ])
+            .output()
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    "ffmpeg no está instalado. Instálelo para reproducir este formato (ej: sudo apt install ffmpeg)".to_string()
+                } else {
+                    format!("Error al ejecutar ffmpeg: {e}")
+                }
+            })?;
+
+        if !output.status.success() || output.stdout.is_empty() {
+            return Err(
+                "ffmpeg no pudo decodificar el archivo. Puede estar corrupto o usar un códec no soportado."
+                    .to_string(),
+            );
+        }
+
+        let cursor = std::io::Cursor::new(output.stdout);
+        let decoder = rodio::Decoder::new(cursor)
+            .map_err(|e| format!("Error al leer salida de ffmpeg: {e}"))?;
+
+        let channels = decoder.channels();
+        let sample_rate = decoder.sample_rate();
+        let samples: Vec<f32> = decoder.convert_samples().collect();
+
+        if samples.is_empty() {
+            return Err("No se decodificaron muestras de audio desde ffmpeg".to_string());
+        }
+
+        Ok((samples, channels, sample_rate))
+    }
+
     fn play_stream_blocking(&mut self, url: &str, station_name: &str) -> Result<(), String> {
         // New approach: streaming decode using Symphonia + a blocking shared buffer.
-        use symphonia::core::audio::{AudioBufferRef, SampleBuffer};
+use symphonia::core::audio::SampleBuffer;
         use symphonia::core::codecs::DecoderOptions;
         use symphonia::core::formats::FormatOptions;
         use symphonia::core::io::MediaSourceStream;
