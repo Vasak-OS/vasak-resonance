@@ -346,30 +346,6 @@ export const usePlayerStore = defineStore('player', () => {
 		}, durationMs);
 	};
 
-	const shouldAutoAdvancePlayback = (payload: PlaybackProgressEvent): boolean => {
-		if (isAdvancingQueue.value) {
-			return false;
-		}
-
-		if (!payload.path || payload.is_playing || payload.is_paused) {
-			return false;
-		}
-
-		if (payload.duration_seconds === null) {
-			return false;
-		}
-
-		if (payload.position_seconds < payload.duration_seconds) {
-			return false;
-		}
-
-		if (!hasNextTrack.value) {
-			return false;
-		}
-
-		return lastAutoAdvancedPath.value !== payload.path;
-	};
-
 	const playNextInQueue = async () => {
 		if (isAdvancingQueue.value) {
 			return;
@@ -412,9 +388,23 @@ export const usePlayerStore = defineStore('player', () => {
 		await playSuggestedTrack();
 	};
 
+	const tryAutoAdvance = (payload: PlaybackProgressEvent) => {
+		if (isAdvancingQueue.value) return;
+		if (!payload.path || !hasNextTrack.value) return;
+		if (lastAutoAdvancedPath.value === payload.path) return;
+
+		const effectiveDuration = payload.duration_seconds ?? durationSeconds.value;
+		if (!effectiveDuration || effectiveDuration <= 0) return;
+		if (payload.position_seconds < effectiveDuration) return;
+
+		lastAutoAdvancedPath.value = payload.path;
+		void advancePlayback();
+	};
+
 	const applyProgress = (payload: PlaybackProgressEvent) => {
 		currentPath.value = payload.path;
-		positionSeconds.value = payload.position_seconds;
+		const dur = payload.duration_seconds ?? durationSeconds.value;
+		positionSeconds.value = dur ? Math.min(payload.position_seconds, dur) : payload.position_seconds;
 		if (payload.duration_seconds !== null) {
 			durationSeconds.value = payload.duration_seconds;
 		}
@@ -442,13 +432,9 @@ export const usePlayerStore = defineStore('player', () => {
 
 		if (payload.is_playing) {
 			lastAutoAdvancedPath.value = null;
-			return;
 		}
 
-		if (shouldAutoAdvancePlayback(payload)) {
-			lastAutoAdvancedPath.value = payload.path;
-			void advancePlayback();
-		}
+		tryAutoAdvance(payload);
 	};
 
 	const initProgressListener = async () => {
@@ -546,21 +532,11 @@ export const usePlayerStore = defineStore('player', () => {
 		busy.value = true;
 		error.value = '';
 		try {
-			devLog('[playDropped] Llamando handleDroppedFile...');
-			const track = await handleDroppedFile(filePath);
-			devLog('[playDropped] Track obtenido:', track);
+			const cached = trackCacheByPath.value[filePath];
+			const track = cached ?? await handleDroppedFile(filePath);
+			devLog('[playDropped] Track obtenido:', cached ? '(desde cache)' : track);
 
-			// Si el track ya existe en la BD, usar los datos existentes y solo actualizar visuals
-			const existingInCache = trackCacheByPath.value[filePath];
-			if (existingInCache?.album && existingInCache.album !== 'Unknown Album') {
-				// Mantener información correcta de album de la BD
-				track.album = existingInCache.album;
-				track.artist = existingInCache.artist || track.artist;
-				track.title = existingInCache.title || track.title;
-			}
-
-			// Solo guardar en BD si es un track nuevo (no estaba en cache)
-			if (!existingInCache) {
+			if (!cached) {
 				await saveLibraryTrack(track);
 				console.log('[playDropped] Track sincronizado en SQLite');
 			}

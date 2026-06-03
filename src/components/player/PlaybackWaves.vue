@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { usePlayerStore } from '@/stores/player';
+import { devLog } from '@/composables/useDevLog';
 
 const props = withDefaults(
 	defineProps<{
@@ -33,6 +34,20 @@ const progressPercent = computed(() => {
 	return Math.min(100, Math.max(0, playerStore.progressPercent));
 });
 
+const totalDuration = computed(() => playerStore.durationSeconds ?? 0);
+
+const onClick = (e: MouseEvent) => {
+	const target = e.currentTarget as HTMLElement;
+	if (!target) return;
+	const dur = totalDuration.value;
+	if (dur <= 0) return;
+	const rect = target.getBoundingClientRect();
+	const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+	const seconds = Math.round(pct * dur);
+	devLog('[PlaybackWaves] click seek:', { dur, pct, seconds });
+	playerStore.seekTo(seconds);
+};
+
 const bars = computed(() => {
 	const steps = props.steps;
 	const amp = props.amplitude;
@@ -59,7 +74,11 @@ const bars = computed(() => {
 </script>
 
 <template>
-	<div class="flex w-full items-end gap-0.5 overflow-hidden" :class="barHeight">
+	<div
+		class="flex w-full cursor-pointer items-end gap-0.5 overflow-hidden"
+		:class="barHeight"
+		@click="onClick"
+	>
 		<span
 			v-for="(bar, step) in bars"
 			:key="step"
