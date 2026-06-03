@@ -415,7 +415,9 @@ export const usePlayerStore = defineStore('player', () => {
 	const applyProgress = (payload: PlaybackProgressEvent) => {
 		currentPath.value = payload.path;
 		positionSeconds.value = payload.position_seconds;
-		durationSeconds.value = payload.duration_seconds;
+		if (payload.duration_seconds !== null) {
+			durationSeconds.value = payload.duration_seconds;
+		}
 		isPlaying.value = payload.is_playing;
 		isPaused.value = payload.is_paused;
 		volume.value = payload.volume;
