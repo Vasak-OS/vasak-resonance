@@ -1,10 +1,10 @@
 use rodio::{OutputStream, OutputStreamHandle, Sink, Source};
 use rodio::buffer::SamplesBuffer;
 use std::collections::HashMap;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -265,6 +265,7 @@ struct AudioManager {
     // streaming management
     stream_writer_handle: Option<thread::JoinHandle<()>>,
     stream_decoder_handle: Option<thread::JoinHandle<()>>,
+    ffmpeg_process: Option<std::process::Child>,
     streaming_active: Arc<AtomicBool>,
 }
 
@@ -292,6 +293,7 @@ impl AudioManager {
             cached_samples: None,
             stream_writer_handle: None,
             stream_decoder_handle: None,
+            ffmpeg_process: None,
             streaming_active: Arc::new(AtomicBool::new(false)),
         })
     }
@@ -377,188 +379,50 @@ impl AudioManager {
     }
 
     fn play_stream_blocking(&mut self, url: &str, station_name: &str) -> Result<(), String> {
-        // New approach: streaming decode using Symphonia + a blocking shared buffer.
-use symphonia::core::audio::SampleBuffer;
-        use symphonia::core::codecs::DecoderOptions;
-        use symphonia::core::formats::FormatOptions;
-        use symphonia::core::io::MediaSourceStream;
-        use symphonia::core::meta::MetadataOptions;
-        use symphonia::core::probe::Hint;
-        use symphonia::default::{get_codecs, get_probe};
-
-        let client = reqwest::blocking::Client::new();
-        let mut resp = client
-            .get(url)
-            .header("User-Agent", "vasak-resonance/1.0")
-            .send()
-            .map_err(|e| format!("Error connecting to stream: {}", e))?;
-
-        if !resp.status().is_success() {
-            return Err(format!("Stream returned status: {}", resp.status()));
-        }
-
-        let buffer: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
-        let condvar = Arc::new(Condvar::new());
-        let eof = Arc::new(AtomicBool::new(false));
         self.streaming_active.store(true, Ordering::SeqCst);
 
-        // Writer thread
-        let buffer_writer = Arc::clone(&buffer);
-        let condvar_writer = Arc::clone(&condvar);
-        let eof_writer = Arc::clone(&eof);
-        let mut resp_for_writer = resp;
-        let writer_handle = thread::spawn(move || {
-            let mut tmp = [0u8; 8192];
-            loop {
-                match resp_for_writer.read(&mut tmp) {
-                    Ok(0) => {
-                        eof_writer.store(true, Ordering::SeqCst);
-                        condvar_writer.notify_all();
-                        break;
-                    }
-                    Ok(n) => {
-                        {
-                            let mut guard = buffer_writer.lock().unwrap();
-                            guard.extend_from_slice(&tmp[..n]);
-                        }
-                        condvar_writer.notify_all();
-                    }
-                    Err(_) => {
-                        eof_writer.store(true, Ordering::SeqCst);
-                        condvar_writer.notify_all();
-                        break;
-                    }
+        let mut child = std::process::Command::new("ffmpeg")
+            .args(["-v", "quiet", "-i", url, "-f", "wav", "-acodec", "pcm_f32le", "-"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    "ffmpeg no está instalado. Instálelo para reproducir radio (ej: sudo apt install ffmpeg)".to_string()
+                } else {
+                    format!("Error al ejecutar ffmpeg: {e}")
                 }
-            }
-        });
+            })?;
 
-        // StreamingSource that implements Read + Seek
-        struct StreamingSource {
-            buf: Arc<Mutex<Vec<u8>>>,
-            condvar: Arc<Condvar>,
-            eof: Arc<AtomicBool>,
-            pos: u64,
-        }
+        let stdout = child.stdout.take()
+            .ok_or_else(|| "No se pudo obtener stdout de ffmpeg".to_string())?;
+        let mut reader = std::io::BufReader::new(stdout);
 
-        impl Read for StreamingSource {
-            fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
-                let mut guard = self.buf.lock().unwrap();
-                loop {
-                    let available = guard.len() as i64 - self.pos as i64;
-                    if available > 0 {
-                        let n = std::cmp::min(available as usize, out.len());
-                        let start = self.pos as usize;
-                        out[..n].copy_from_slice(&guard[start..start + n]);
-                        self.pos += n as u64;
-                        return Ok(n);
-                    }
-                    if self.eof.load(Ordering::SeqCst) {
-                        return Ok(0);
-                    }
-                    guard = self.condvar.wait(guard).unwrap();
-                }
-            }
-        }
+        let (channels, sample_rate) = Self::read_wav_header(&mut reader)?;
 
-        impl Seek for StreamingSource {
-            fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
-                let mut guard = self.buf.lock().unwrap();
-                match pos {
-                    SeekFrom::Start(off) => {
-                        while guard.len() as u64 <= off && !self.eof.load(Ordering::SeqCst) {
-                            guard = self.condvar.wait(guard).unwrap();
-                        }
-                        let max = guard.len() as u64;
-                        self.pos = std::cmp::min(off, max);
-                        Ok(self.pos)
-                    }
-                    SeekFrom::Current(off) => {
-                        let target = if off < 0 {
-                            self.pos.saturating_sub((-off) as u64)
-                        } else {
-                            self.pos.saturating_add(off as u64)
-                        };
-                        while guard.len() as u64 <= target && !self.eof.load(Ordering::SeqCst) {
-                            guard = self.condvar.wait(guard).unwrap();
-                        }
-                        let max = guard.len() as u64;
-                        self.pos = std::cmp::min(target, max);
-                        Ok(self.pos)
-                    }
-                    SeekFrom::End(off) => {
-                        while !self.eof.load(Ordering::SeqCst) {
-                            guard = self.condvar.wait(guard).unwrap();
-                        }
-                        let len = guard.len() as i64;
-                        let target = len + off;
-                        let target_u = if target < 0 { 0 } else { target as u64 };
-                        self.pos = std::cmp::min(target_u, guard.len() as u64);
-                        Ok(self.pos)
-                    }
-                }
-            }
-        }
-
-        let streaming_source = StreamingSource {
-            buf: Arc::clone(&buffer),
-            condvar: Arc::clone(&condvar),
-            eof: Arc::clone(&eof),
-            pos: 0,
-        };
-
-        use symphonia::core::io::ReadOnlySource;
-        let mss = MediaSourceStream::new(Box::new(ReadOnlySource::new(streaming_source)), Default::default());
-        let mut hint = Hint::new();
-        if let Some(ext) = url.split('.').last() {
-            hint.with_extension(ext);
-        }
-
-        let probed = get_probe()
-            .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
-            .map_err(|e| format!("Error probing stream format: {}", e))?;
-        let mut format = probed.format;
-
-        let track = format
-            .tracks()
-            .get(0)
-            .ok_or_else(|| "No se encontró pista de audio en el stream".to_string())?;
-
-        // Clone codec params to create decoder inside the decoder thread and to
-        // read channels/sample_rate here for rodio source.
-        let codec_params = track.codec_params.clone();
-        let channels = codec_params.channels.as_ref().map(|c| c.count() as u16).unwrap_or(2);
-        let sample_rate = codec_params.sample_rate.unwrap_or(44100);
-
-        // Channel for PCM frames
         let (pcm_tx, pcm_rx) = mpsc::channel::<Vec<f32>>();
 
-        use symphonia::core::audio::Signal;
-        // Decoder thread: create decoder inside the thread using cloned codec_params
         let decoder_handle = thread::spawn(move || {
-            let mut decoder = match get_codecs().make(&codec_params, &DecoderOptions::default()) {
-                Ok(d) => d,
-                Err(_) => return,
-            };
+            let mut buf = [0u8; 65536];
             loop {
-                match format.next_packet() {
-                    Ok(packet) => match decoder.decode(&packet) {
-                        Ok(audio_buf) => {
-                            let frames = audio_buf.frames();
-                            let spec = audio_buf.spec().clone();
-                            let mut sb = SampleBuffer::<f32>::new(frames as u64, spec);
-                            sb.copy_interleaved_ref(audio_buf);
-                            let out = sb.samples().to_vec();
-                            let _ = pcm_tx.send(out);
+                match reader.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let samples: Vec<f32> = buf[..n / 4 * 4]
+                            .chunks_exact(4)
+                            .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+                            .collect();
+                        if pcm_tx.send(samples).is_err() {
+                            break;
                         }
-                        Err(_) => break,
-                    },
+                    }
                     Err(_) => break,
                 }
             }
         });
 
-        // Rodio source
-        struct RodioSymphoniaSource {
+        // Rodio source for streaming PCM
+        struct StreamSource {
             rx: mpsc::Receiver<Vec<f32>>,
             current: Vec<f32>,
             pos: usize,
@@ -566,7 +430,7 @@ use symphonia::core::audio::SampleBuffer;
             sample_rate: u32,
         }
 
-        impl Iterator for RodioSymphoniaSource {
+        impl Iterator for StreamSource {
             type Item = f32;
             fn next(&mut self) -> Option<f32> {
                 if self.pos >= self.current.len() {
@@ -584,16 +448,14 @@ use symphonia::core::audio::SampleBuffer;
             }
         }
 
-        impl Source for RodioSymphoniaSource {
+        impl Source for StreamSource {
             fn current_frame_len(&self) -> Option<usize> { None }
             fn channels(&self) -> u16 { self.channels }
             fn sample_rate(&self) -> u32 { self.sample_rate }
             fn total_duration(&self) -> Option<Duration> { None }
         }
 
-        
-
-        let rodio_src = RodioSymphoniaSource {
+        let rodio_src = StreamSource {
             rx: pcm_rx,
             current: Vec::new(),
             pos: 0,
@@ -608,6 +470,7 @@ use symphonia::core::audio::SampleBuffer;
 
         self.sink.stop();
         self.sink = new_sink;
+        self.ffmpeg_process = Some(child);
         self.current_path = None;
         self.current_metadata = Some(NowPlayingMetadata {
             title: station_name.to_string(),
@@ -623,10 +486,56 @@ use symphonia::core::audio::SampleBuffer;
         self.paused_position = Duration::from_secs(0);
         self.is_paused = false;
 
-        self.stream_writer_handle = Some(writer_handle);
+        self.stream_writer_handle = None;
         self.stream_decoder_handle = Some(decoder_handle);
 
         Ok(())
+    }
+
+    fn read_wav_header<R: std::io::Read>(reader: &mut std::io::BufReader<R>) -> Result<(u16, u32), String> {
+        let mut riff = [0u8; 12];
+        reader.read_exact(&mut riff).map_err(|e| format!("Error leyendo header WAV: {e}"))?;
+
+        if &riff[..4] != b"RIFF" || &riff[8..12] != b"WAVE" {
+            return Err("ffmpeg no produjo un WAV válido".to_string());
+        }
+
+        let mut channels = 2u16;
+        let mut sample_rate = 44100u32;
+
+        loop {
+            let mut chunk_id = [0u8; 4];
+            let mut chunk_size_raw = [0u8; 4];
+
+            reader.read_exact(&mut chunk_id).map_err(|e| format!("Error leyendo chunk WAV: {e}"))?;
+            reader.read_exact(&mut chunk_size_raw).map_err(|e| format!("Error leyendo tamaño chunk: {e}"))?;
+
+            let chunk_size = u32::from_le_bytes(chunk_size_raw) as usize;
+
+            match &chunk_id {
+                b"fmt " => {
+                    let mut fmt_data = vec![0u8; chunk_size.max(16)];
+                    reader.read_exact(&mut fmt_data[..chunk_size.min(16)])
+                        .map_err(|e| format!("Error leyendo fmt chunk: {e}"))?;
+                    if chunk_size > 16 {
+                        let mut skip = vec![0u8; chunk_size - 16];
+                        reader.read_exact(&mut skip).map_err(|e| format!("Error saltando fmt extra: {e}"))?;
+                    }
+
+                    channels = u16::from_le_bytes([fmt_data[2], fmt_data[3]]);
+                    sample_rate = u32::from_le_bytes([fmt_data[4], fmt_data[5], fmt_data[6], fmt_data[7]]);
+                }
+                b"data" => {
+                    return Ok((channels, sample_rate));
+                }
+                _ => {
+                    let mut skip = vec![0u8; chunk_size];
+                    if chunk_size > 0 {
+                        let _ = reader.read_exact(&mut skip);
+                    }
+                }
+            }
+        }
     }
 
     fn pause(&mut self) -> Result<(), String> {
@@ -671,6 +580,10 @@ use symphonia::core::audio::SampleBuffer;
         self.is_paused = false;
         // Stop streaming threads if active
         self.streaming_active.store(false, Ordering::SeqCst);
+        if let Some(mut child) = self.ffmpeg_process.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
         if let Some(handle) = self.stream_writer_handle.take() {
             let _ = handle.join();
         }

@@ -38,7 +38,6 @@ futures-util = "0.3"
 tokio = { version = "1", features = ["net", "macros", "rt-multi-thread"] }
 tokio-tungstenite = "0.24"
 urlencoding = "2"
-symphonia = { version = "0.5", default-features = false, features = ["aac", "mp3", "vorbis", "flac", "wav", "isomp4", "pcm", "adpcm", "ogg"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus = "4"
