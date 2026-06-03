@@ -1,4 +1,5 @@
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
+use rodio::buffer::SamplesBuffer;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom, Write};
@@ -260,6 +261,8 @@ struct AudioManager {
     paused_position: Duration,
     is_paused: bool,
     volume: f32,
+    // cached decoded PCM samples for instant seeking
+    cached_samples: Option<(Vec<f32>, u16, u32)>,
     // streaming management
     stream_writer_handle: Option<thread::JoinHandle<()>>,
     stream_decoder_handle: Option<thread::JoinHandle<()>>,
@@ -287,6 +290,7 @@ impl AudioManager {
             paused_position: Duration::from_secs(0),
             is_paused: false,
             volume: 1.0,
+            cached_samples: None,
             stream_writer_handle: None,
             stream_decoder_handle: None,
             streaming_active: Arc::new(AtomicBool::new(false)),
@@ -305,23 +309,23 @@ impl AudioManager {
         let decoder = Decoder::new(BufReader::new(file))
             .map_err(|e| format!("No se pudo decodificar audio: {e}"))?;
         let duration = decoder.total_duration();
+        let channels = decoder.channels();
+        let sample_rate = decoder.sample_rate();
 
-        let target = seek_to.unwrap_or(0);
-        let clamped = if let Some(d) = duration {
-            target.min(d.as_secs())
-        } else {
-            target
-        };
+        // Decode and cache all PCM samples for instant seeking
+        let all_samples: Vec<f32> = decoder.convert_samples().collect();
+        let total_dur = (all_samples.len() as u64) / (sample_rate as u64 * channels as u64);
+        self.cached_samples = Some((all_samples.clone(), channels, sample_rate));
 
+        let target = seek_to.unwrap_or(0).min(total_dur);
+        let skip_samples = target * sample_rate as u64 * channels as u64;
+        let offset = (skip_samples as usize).min(all_samples.len());
+
+        let source = SamplesBuffer::new(channels, sample_rate, all_samples[offset..].to_vec());
         let new_sink = Sink::try_new(&self.stream_handle)
             .map_err(|e| format!("No se pudo crear sink: {e}"))?;
         new_sink.set_volume(self.volume);
-
-        if clamped > 0 {
-            new_sink.append(decoder.skip_duration(Duration::from_secs(clamped)));
-        } else {
-            new_sink.append(decoder);
-        }
+        new_sink.append(source);
         new_sink.play();
 
         self.sink.stop();
@@ -335,9 +339,9 @@ impl AudioManager {
             )
             .ok()
         });
-        self.current_duration = duration;
+        self.current_duration = Some(Duration::from_secs(total_dur));
         self.started_at = Some(Instant::now());
-        self.paused_position = Duration::from_secs(clamped);
+        self.paused_position = Duration::from_secs(target);
         self.is_paused = false;
 
         Ok(())
@@ -632,6 +636,7 @@ impl AudioManager {
         self.current_path = None;
         self.current_metadata = None;
         self.current_duration = None;
+        self.cached_samples = None;
         self.started_at = None;
         self.paused_position = Duration::from_secs(0);
         self.is_paused = false;
@@ -647,44 +652,32 @@ impl AudioManager {
     }
 
     fn seek(&mut self, second: u64) -> Result<(), String> {
-        let path = self
-            .current_path
-            .clone()
-            .ok_or_else(|| "No hay ninguna canción cargada".to_string())?;
+        let (samples, channels, sample_rate) = self
+            .cached_samples
+            .as_ref()
+            .ok_or_else(|| "No hay datos de audio en caché".to_string())?;
 
-        let target = if let Some(duration) = self.current_duration {
-            second.min(duration.as_secs())
-        } else {
-            second
-        };
+        let total_secs = samples.len() as u64 / (*sample_rate as u64 * *channels as u64);
+        let target = second.min(total_secs);
+        let skip_samples = target * *sample_rate as u64 * *channels as u64;
+        let offset = (skip_samples as usize).min(samples.len());
 
-        let file =
-            File::open(&path).map_err(|e| format!("No se pudo abrir archivo de audio: {e}"))?;
-        let decoder = Decoder::new(BufReader::new(file))
-            .map_err(|e| format!("No se pudo decodificar audio: {e}"))?;
-        let duration = decoder.total_duration();
-
+        let source = SamplesBuffer::new(*channels, *sample_rate, samples[offset..].to_vec());
         let new_sink = Sink::try_new(&self.stream_handle)
             .map_err(|e| format!("No se pudo crear sink: {e}"))?;
         new_sink.set_volume(self.volume);
-
-        if target > 0 {
-            new_sink.append(decoder.skip_duration(Duration::from_secs(target)));
-        } else {
-            new_sink.append(decoder);
-        }
+        new_sink.append(source);
+        new_sink.play();
 
         if self.is_paused {
             new_sink.pause();
             self.started_at = None;
         } else {
-            new_sink.play();
             self.started_at = Some(Instant::now());
         }
 
         self.sink.stop();
         self.sink = new_sink;
-        self.current_duration = duration;
         self.paused_position = Duration::from_secs(target);
 
         Ok(())

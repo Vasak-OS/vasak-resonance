@@ -93,7 +93,6 @@ const openMainWindow = async () => {
 
 onMounted(async () => {
 	await playerStore.initProgressListener();
-	await playerStore.syncPlaybackSnapshot();
 });
 
 onUnmounted(() => {
