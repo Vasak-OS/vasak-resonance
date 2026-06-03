@@ -63,9 +63,9 @@ export interface LibraryTrack {
 	created_at: string;
 }
 
-export const playFile = (filePath: string): Promise<void> => {
-	devLog('[player.service] playFile invoke:', filePath);
-	return invoke<void>('play_file', { filePath, file_path: filePath });
+export const playFile = (filePath: string, seekTo?: number): Promise<void> => {
+	devLog('[player.service] playFile invoke:', filePath, seekTo);
+	return invoke<void>('play_file', { filePath, seekTo });
 };
 
 export const pausePlayback = (): Promise<void> => {

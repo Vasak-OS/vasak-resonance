@@ -22,6 +22,7 @@ struct RuntimeStatus {
 enum AudioCommand {
     PlayFile {
         file_path: String,
+        seek_to: Option<u64>,
         respond_to: Sender<Result<(), String>>,
     },
     PlayStream {
@@ -73,10 +74,11 @@ impl AudioState {
         }
     }
 
-    pub fn play_file(&self, file_path: String) -> Result<(), String> {
+    pub fn play_file(&self, file_path: String, seek_to: Option<u64>) -> Result<(), String> {
         let (tx, rx) = mpsc::channel::<Result<(), String>>();
         self.send(AudioCommand::PlayFile {
             file_path,
+            seek_to,
             respond_to: tx,
         })?;
         let response = rx
@@ -291,7 +293,7 @@ impl AudioManager {
         })
     }
 
-    fn play_file(&mut self, file_path: String) -> Result<(), String> {
+    fn play_file(&mut self, file_path: String, seek_to: Option<u64>) -> Result<(), String> {
         let path = PathBuf::from(file_path);
         if !path.exists() || !path.is_file() {
             return Err("El archivo no existe o no es válido".to_string());
@@ -304,10 +306,22 @@ impl AudioManager {
             .map_err(|e| format!("No se pudo decodificar audio: {e}"))?;
         let duration = decoder.total_duration();
 
+        let target = seek_to.unwrap_or(0);
+        let clamped = if let Some(d) = duration {
+            target.min(d.as_secs())
+        } else {
+            target
+        };
+
         let new_sink = Sink::try_new(&self.stream_handle)
             .map_err(|e| format!("No se pudo crear sink: {e}"))?;
         new_sink.set_volume(self.volume);
-        new_sink.append(decoder);
+
+        if clamped > 0 {
+            new_sink.append(decoder.skip_duration(Duration::from_secs(clamped)));
+        } else {
+            new_sink.append(decoder);
+        }
         new_sink.play();
 
         self.sink.stop();
@@ -323,7 +337,7 @@ impl AudioManager {
         });
         self.current_duration = duration;
         self.started_at = Some(Instant::now());
-        self.paused_position = Duration::from_secs(0);
+        self.paused_position = Duration::from_secs(clamped);
         self.is_paused = false;
 
         Ok(())
@@ -753,9 +767,10 @@ fn run_audio_loop(
         match command_rx.recv_timeout(Duration::from_millis(500)) {
             Ok(AudioCommand::PlayFile {
                 file_path,
+                seek_to,
                 respond_to,
             }) => {
-                let _ = respond_to.send(manager.play_file(file_path));
+                let _ = respond_to.send(manager.play_file(file_path, seek_to));
                 publish_snapshot(&app_handle, &playback_snapshot, manager.progress_snapshot());
             }
             Ok(AudioCommand::PlayStream {

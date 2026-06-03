@@ -62,7 +62,7 @@ pub fn run() {
                             let audio_clone = audio_state.clone();
                             // Spawn so setup doesn't block; play_file will queue into audio thread.
                             std::thread::spawn(move || {
-                                let _ = audio_clone.play_file(play_path);
+                                let _ = audio_clone.play_file(play_path, None);
                             });
                             break;
                         }

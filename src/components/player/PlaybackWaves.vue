@@ -36,16 +36,24 @@ const progressPercent = computed(() => {
 
 const totalDuration = computed(() => playerStore.durationSeconds ?? 0);
 
-const onClick = (e: MouseEvent) => {
-	const target = e.currentTarget as HTMLElement;
-	if (!target) return;
-	const dur = totalDuration.value;
-	if (dur <= 0) return;
-	const rect = target.getBoundingClientRect();
-	const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-	const seconds = Math.round(pct * dur);
-	devLog('[PlaybackWaves] click seek:', { dur, pct, seconds });
+const sliderValue = computed(() =>
+	totalDuration.value > 0 ? Math.round((progressPercent.value / 100) * totalDuration.value) : 0
+);
+
+const commitSeek = (seconds: number) => {
+	devLog('[PlaybackWaves] seek:', seconds);
+	playerStore.positionSeconds = seconds;
 	playerStore.seekTo(seconds);
+};
+
+const onSliderInput = (e: Event) => {
+	const target = e.target as HTMLInputElement;
+	playerStore.positionSeconds = Number(target.value);
+};
+
+const onSliderChange = (e: Event) => {
+	const target = e.target as HTMLInputElement;
+	commitSeek(Number(target.value));
 };
 
 const bars = computed(() => {
@@ -75,9 +83,8 @@ const bars = computed(() => {
 
 <template>
 	<div
-		class="flex w-full cursor-pointer items-end gap-0.5 overflow-hidden"
+		class="flex w-full items-end gap-0.5 overflow-hidden"
 		:class="barHeight"
-		@click="onClick"
 	>
 		<span
 			v-for="(bar, step) in bars"
@@ -87,4 +94,14 @@ const bars = computed(() => {
 			:style="{ height: `${bar.height}px` }"
 		/>
 	</div>
+	<input
+		v-if="totalDuration > 0"
+		type="range"
+		class="mt-1 w-full cursor-pointer accent-secondary"
+		:min="0"
+		:max="totalDuration"
+		:value="sliderValue"
+		@input="onSliderInput"
+		@change="onSliderChange"
+	>
 </template>

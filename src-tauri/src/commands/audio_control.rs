@@ -4,8 +4,8 @@ use crate::audio_manager::AudioState;
 use crate::structs::PlaybackProgressEvent;
 
 #[tauri::command]
-pub fn play_file(file_path: String, state: State<AudioState>) -> Result<(), String> {
-    state.play_file(file_path)
+pub fn play_file(file_path: String, seek_to: Option<u64>, state: State<AudioState>) -> Result<(), String> {
+    state.play_file(file_path, seek_to)
 }
 
 #[tauri::command]

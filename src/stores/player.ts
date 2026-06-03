@@ -258,10 +258,11 @@ export const usePlayerStore = defineStore('player', () => {
 
 			if (parsed.currentPath) {
 				await ensureMetadataForPath(parsed.currentPath);
-				await playDropped(parsed.currentPath);
-				if (typeof parsed.positionSeconds === 'number' && parsed.positionSeconds > 0) {
-					await seekPlayback(parsed.positionSeconds);
-				}
+				const restorePos =
+					typeof parsed.positionSeconds === 'number' && parsed.positionSeconds > 0
+						? parsed.positionSeconds
+						: undefined;
+				await playDropped(parsed.currentPath, true, restorePos);
 				if (!parsed.isPlaying) {
 					await pausePlayback();
 				}
@@ -527,7 +528,7 @@ export const usePlayerStore = defineStore('player', () => {
 		}
 	};
 
-	const playDropped = async (filePath: string, recordHistory = true) => {
+	const playDropped = async (filePath: string, recordHistory = true, seekTo_seconds?: number) => {
 		devLog('[playDropped] Iniciando reproducción de:', filePath);
 		busy.value = true;
 		error.value = '';
@@ -548,8 +549,8 @@ export const usePlayerStore = defineStore('player', () => {
 			cacheTrackMetadata(track);
 			currentPath.value = track.path;
 			durationSeconds.value = track.duration_seconds;
-			devLog('[playDropped] Llamando playFile con:', track.path);
-			await playFile(track.path);
+			devLog('[playDropped] Llamando playFile con:', track.path, seekTo_seconds);
+			await playFile(track.path, seekTo_seconds);
 			devLog('[playDropped] playFile completado exitosamente');
 		} catch (dropError: unknown) {
 			console.error('[playDropped] Error:', dropError);
