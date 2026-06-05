@@ -2,6 +2,8 @@ mod audio;
 mod audio_manager;
 mod commands;
 mod db;
+#[cfg(target_os = "linux")]
+mod layer_shell;
 mod lyrics;
 mod metadata_fetcher;
 #[cfg(target_os = "linux")]
@@ -38,6 +40,14 @@ pub fn run() {
             let audio_state = AudioState::new(app.handle().clone());
             #[cfg(target_os = "linux")]
             mpris::start_mpris_service(app.handle().clone(), audio_state.clone());
+
+            #[cfg(target_os = "linux")]
+            if let Some(mini_window) = app.get_webview_window("mini-player") {
+                if let Ok(gtk_win) = mini_window.as_ref().window().gtk_window() {
+                    layer_shell::setup_mini_player(gtk_win);
+                }
+            }
+
             remote_control::start_remote_control_service(app.handle().clone(), audio_state.clone());
                 app.manage(audio_state.clone());
 

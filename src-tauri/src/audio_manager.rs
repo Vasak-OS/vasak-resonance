@@ -339,12 +339,116 @@ impl AudioManager {
         Ok(())
     }
 
+    fn parse_wav(data: &[u8]) -> Result<(Vec<f32>, u16, u32), String> {
+        if data.len() < 44 || &data[0..4] != b"RIFF" || &data[8..12] != b"WAVE" {
+            return Err("ffmpeg no produjo un WAV válido".to_string());
+        }
+
+        let mut channels = 0u16;
+        let mut sample_rate = 0u32;
+        let mut bits_per_sample = 0u16;
+        let mut audio_format = 0u16;
+        let mut data_start = 0usize;
+        let mut data_size = 0usize;
+
+        let mut offset: usize = 12;
+        while offset + 8 <= data.len() {
+            let chunk_len = u32::from_le_bytes(
+                data[offset + 4..offset + 8].try_into().unwrap(),
+            ) as usize;
+            let chunk_id = &data[offset..offset + 4];
+            offset += 8;
+
+            match chunk_id {
+                b"fmt " if chunk_len >= 16 => {
+                    audio_format = u16::from_le_bytes(
+                        data[offset..offset + 2].try_into().unwrap(),
+                    );
+                    channels = u16::from_le_bytes(
+                        data[offset + 2..offset + 4].try_into().unwrap(),
+                    );
+                    sample_rate = u32::from_le_bytes(
+                        data[offset + 4..offset + 8].try_into().unwrap(),
+                    );
+                    bits_per_sample = u16::from_le_bytes(
+                        data[offset + 14..offset + 16].try_into().unwrap(),
+                    );
+                }
+                b"data" => {
+                    data_start = offset;
+                    data_size = chunk_len;
+                }
+                _ => {}
+            }
+
+            offset += chunk_len;
+            if chunk_len % 2 != 0 {
+                offset += 1;
+            }
+        }
+
+        if data_start == 0 || data_size == 0 {
+            return Err("No se encontró chunk data en el WAV".to_string());
+        }
+
+        if channels == 0 || sample_rate == 0 {
+            return Err("Cabecera WAV inválida (channels/sample_rate 0)".to_string());
+        }
+
+        let raw = &data[data_start..data_start + data_size.min(data.len() - data_start)];
+        let samples: Vec<f32> = match (audio_format, bits_per_sample) {
+            (3, 32) => raw
+                .chunks_exact(4)
+                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                .collect(),
+            (1, 32) => raw
+                .chunks_exact(4)
+                .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as f32 / 2147483648.0)
+                .collect(),
+            (1, 16) => raw
+                .chunks_exact(2)
+                .map(|c| i16::from_le_bytes([c[0], c[1]]) as f32 / 32768.0)
+                .collect(),
+            (1, 24) => raw
+                .chunks_exact(3)
+                .map(|c| {
+                    let lo = c[0] as i32;
+                    let mid = c[1] as i32;
+                    let hi = c[2] as i32;
+                    let val = lo | (mid << 8) | (hi << 16);
+                    let val = if hi & 0x80 != 0 {
+                        val | (-16777216)
+                    } else {
+                        val
+                    };
+                    val as f32 / 8388608.0
+                })
+                .collect(),
+            _ => {
+                return Err(format!(
+                    "Formato WAV no soportado: format={audio_format} bits={bits_per_sample}"
+                ))
+            }
+        };
+
+        if samples.is_empty() {
+            return Err("No se decodificaron muestras desde ffmpeg".to_string());
+        }
+
+        Ok((samples, channels, sample_rate))
+    }
+
     fn decode_file(path: &Path) -> Result<(Vec<f32>, u16, u32), String> {
         let output = std::process::Command::new("ffmpeg")
             .args([
-                "-v", "quiet",
-                "-i", &path.to_string_lossy(),
-                "-f", "wav",
+                "-v",
+                "quiet",
+                "-i",
+                &path.to_string_lossy(),
+                "-f",
+                "wav",
+                "-acodec",
+                "pcm_f32le",
                 "pipe:1",
             ])
             .output()
@@ -363,19 +467,7 @@ impl AudioManager {
             );
         }
 
-        let cursor = std::io::Cursor::new(output.stdout);
-        let decoder = rodio::Decoder::new(cursor)
-            .map_err(|e| format!("Error al leer salida de ffmpeg: {e}"))?;
-
-        let channels = decoder.channels();
-        let sample_rate = decoder.sample_rate();
-        let samples: Vec<f32> = decoder.convert_samples().collect();
-
-        if samples.is_empty() {
-            return Err("No se decodificaron muestras de audio desde ffmpeg".to_string());
-        }
-
-        Ok((samples, channels, sample_rate))
+        Self::parse_wav(&output.stdout)
     }
 
     fn play_stream_blocking(&mut self, url: &str, station_name: &str) -> Result<(), String> {
