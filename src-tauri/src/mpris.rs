@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Listener};
 use zbus::fdo;
 use zbus::zvariant::{OwnedValue, Value};
 use zbus::ConnectionBuilder;
@@ -21,11 +21,11 @@ pub fn start_mpris_service(app_handle: AppHandle, audio_state: AudioState) {
 async fn run_mpris_service(app_handle: AppHandle, audio_state: AudioState) -> Result<(), String> {
     let root_iface = MprisRootInterface;
     let player_iface = MprisPlayerInterface {
-        app_handle,
-        audio_state,
+        app_handle: app_handle.clone(),
+        audio_state: audio_state.clone(),
     };
 
-    let _connection = ConnectionBuilder::session()
+    let connection = ConnectionBuilder::session()
         .map_err(|e| format!("No se pudo abrir bus de sesión: {e}"))?
         .name(MPRIS_BUS_NAME)
         .map_err(|e| format!("No se pudo registrar nombre MPRIS: {e}"))?
@@ -37,8 +37,64 @@ async fn run_mpris_service(app_handle: AppHandle, audio_state: AudioState) -> Re
         .await
         .map_err(|e| format!("No se pudo construir conexión MPRIS: {e}"))?;
 
-    std::future::pending::<()>().await;
-    #[allow(unreachable_code)]
+    // Emit PropertiesChanged when playback state changes so panels reflect
+    // play/pause, track and volume live instead of a frozen initial snapshot.
+    let iface_ref = connection
+        .object_server()
+        .interface::<_, MprisPlayerInterface>(MPRIS_OBJECT_PATH)
+        .await
+        .map_err(|e| format!("No se pudo obtener la interfaz MPRIS: {e}"))?;
+    let ctxt = iface_ref.signal_context().clone();
+
+    // The audio loop emits `audio-playback-progress` every 500ms and on every
+    // state change. Bridge it to an async channel and only signal the
+    // properties that actually changed (position is polled by clients, not
+    // signalled, so we skip it to avoid twice-a-second PropertiesChanged spam).
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<()>();
+    app_handle.listen("audio-playback-progress", move |_| {
+        let _ = tx.send(());
+    });
+
+    fn status_of(s: &crate::structs::PlaybackProgressEvent) -> &'static str {
+        if s.is_playing {
+            "Playing"
+        } else if s.is_paused {
+            "Paused"
+        } else {
+            "Stopped"
+        }
+    }
+
+    let mut last_status: Option<&'static str> = None;
+    let mut last_track: Option<Option<String>> = None;
+    let mut last_volume: Option<i64> = None;
+
+    while rx.recv().await.is_some() {
+        let Ok(snapshot) = audio_state.playback_snapshot() else {
+            continue;
+        };
+        let status = status_of(&snapshot);
+        let track = snapshot.path.clone();
+        let volume = (snapshot.volume as f64 * 1000.0).round() as i64;
+
+        let iface = iface_ref.get().await;
+        if last_status != Some(status) {
+            let _ = iface.playback_status_changed(&ctxt).await;
+            last_status = Some(status);
+        }
+        if last_track.as_ref() != Some(&track) {
+            let _ = iface.metadata_changed(&ctxt).await;
+            let _ = iface.can_seek_changed(&ctxt).await;
+            last_track = Some(track);
+        }
+        if last_volume != Some(volume) {
+            let _ = iface.volume_changed(&ctxt).await;
+            last_volume = Some(volume);
+        }
+    }
+
+    // Keep the connection (and bus name) alive for the task's lifetime.
+    drop(connection);
     Ok(())
 }
 
