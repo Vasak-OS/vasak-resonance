@@ -1,5 +1,4 @@
 use rodio::{OutputStream, OutputStreamHandle, Sink, Source};
-use rodio::buffer::SamplesBuffer;
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -247,6 +246,53 @@ impl AudioState {
     }
 }
 
+/// Rodio source backed by a channel of PCM (f32) chunks produced by a decoder
+/// thread. Used for all playback (local files and radio) so audio is streamed,
+/// never fully decoded into memory.
+struct StreamSource {
+    rx: mpsc::Receiver<Vec<f32>>,
+    current: Vec<f32>,
+    pos: usize,
+    channels: u16,
+    sample_rate: u32,
+}
+
+impl Iterator for StreamSource {
+    type Item = f32;
+    fn next(&mut self) -> Option<f32> {
+        if self.pos >= self.current.len() {
+            match self.rx.recv() {
+                Ok(v) => {
+                    self.current = v;
+                    self.pos = 0;
+                }
+                Err(_) => return None,
+            }
+            if self.current.is_empty() {
+                return None;
+            }
+        }
+        let v = self.current[self.pos];
+        self.pos += 1;
+        Some(v)
+    }
+}
+
+impl Source for StreamSource {
+    fn current_frame_len(&self) -> Option<usize> {
+        None
+    }
+    fn channels(&self) -> u16 {
+        self.channels
+    }
+    fn sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
+    fn total_duration(&self) -> Option<Duration> {
+        None
+    }
+}
+
 struct AudioManager {
     _stream: OutputStream,
     stream_handle: OutputStreamHandle,
@@ -260,8 +306,6 @@ struct AudioManager {
     paused_position: Duration,
     is_paused: bool,
     volume: f32,
-    // cached decoded PCM samples for instant seeking
-    cached_samples: Option<(Vec<f32>, u16, u32)>,
     // streaming management
     stream_writer_handle: Option<thread::JoinHandle<()>>,
     stream_decoder_handle: Option<thread::JoinHandle<()>>,
@@ -290,7 +334,6 @@ impl AudioManager {
             paused_position: Duration::from_secs(0),
             is_paused: false,
             volume: 1.0,
-            cached_samples: None,
             stream_writer_handle: None,
             stream_decoder_handle: None,
             ffmpeg_process: None,
@@ -303,17 +346,129 @@ impl AudioManager {
         if !path.exists() || !path.is_file() {
             return Err("El archivo no existe o no es válido".to_string());
         }
-
         let canonical_path = std::fs::canonicalize(&path).unwrap_or(path);
-        let (all_samples, channels, sample_rate) = Self::decode_file(&canonical_path)?;
-        let total_dur = (all_samples.len() as u64) / (sample_rate as u64 * channels as u64);
-        self.cached_samples = Some((all_samples.clone(), channels, sample_rate));
 
-        let target = seek_to.unwrap_or(0).min(total_dur);
-        let skip_samples = target * sample_rate as u64 * channels as u64;
-        let offset = (skip_samples as usize).min(all_samples.len());
+        // Duration/metadata come from tags — the file is streamed, not decoded
+        // into memory.
+        let metadata = extract_now_playing_metadata_with_cover_cache(
+            &canonical_path,
+            &mut self.cover_cache_by_path,
+            &mut self.dominant_color_cache_by_path,
+        )
+        .ok();
+        let total_dur = metadata.as_ref().map(|m| m.duration_seconds).unwrap_or(0);
+        let target = if total_dur > 0 {
+            seek_to.unwrap_or(0).min(total_dur)
+        } else {
+            seek_to.unwrap_or(0)
+        };
 
-        let source = SamplesBuffer::new(channels, sample_rate, all_samples[offset..].to_vec());
+        self.stop_stream_child();
+        let (child, decoder_handle) =
+            self.play_ffmpeg_stream(&Self::file_ffmpeg_args(&canonical_path, target))?;
+
+        self.ffmpeg_process = Some(child);
+        self.stream_decoder_handle = Some(decoder_handle);
+        self.current_path = Some(canonical_path);
+        self.current_metadata = metadata;
+        self.current_duration = Some(Duration::from_secs(total_dur));
+        self.started_at = Some(Instant::now());
+        self.paused_position = Duration::from_secs(target);
+        self.is_paused = false;
+        Ok(())
+    }
+
+    /// ffmpeg args to stream a local file to stdout as PCM f32 WAV, seeking to
+    /// `seek_secs` first (fast input seeking).
+    fn file_ffmpeg_args(path: &Path, seek_secs: u64) -> Vec<String> {
+        let mut args: Vec<String> = vec!["-v".into(), "quiet".into()];
+        if seek_secs > 0 {
+            args.push("-ss".into());
+            args.push(seek_secs.to_string());
+        }
+        args.push("-i".into());
+        args.push(path.to_string_lossy().to_string());
+        for a in ["-f", "wav", "-acodec", "pcm_f32le", "pipe:1"] {
+            args.push(a.to_string());
+        }
+        args
+    }
+
+    /// Spawn ffmpeg with `args`, stream its PCM output through a decoder thread
+    /// into a fresh sink, and swap it in. A bounded channel provides backpressure
+    /// so ffmpeg is paced to playback speed instead of buffering the whole file;
+    /// the `streaming_active` flag makes the decoder abortable. Returns the child
+    /// and the decoder thread handle.
+    fn play_ffmpeg_stream(
+        &mut self,
+        args: &[String],
+    ) -> Result<(std::process::Child, thread::JoinHandle<()>), String> {
+        let mut child = std::process::Command::new("ffmpeg")
+            .args(args)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    "ffmpeg no está instalado. Instálelo para reproducir audio (ej: sudo pacman -S ffmpeg)".to_string()
+                } else {
+                    format!("Error al ejecutar ffmpeg: {e}")
+                }
+            })?;
+
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| "No se pudo obtener stdout de ffmpeg".to_string())?;
+        let mut reader = std::io::BufReader::new(stdout);
+        let (channels, sample_rate) = Self::read_wav_header(&mut reader)?;
+
+        self.streaming_active.store(true, Ordering::SeqCst);
+        let active = self.streaming_active.clone();
+        // ~32 chunks of up to 64 KiB ≈ a few seconds of audio buffered.
+        let (pcm_tx, pcm_rx) = mpsc::sync_channel::<Vec<f32>>(32);
+
+        let decoder_handle = thread::spawn(move || {
+            let mut buf = [0u8; 65536];
+            'read: loop {
+                if !active.load(Ordering::SeqCst) {
+                    break;
+                }
+                match reader.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let samples: Vec<f32> = buf[..n / 4 * 4]
+                            .chunks_exact(4)
+                            .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+                            .collect();
+                        // Backpressure with an abort check so stop() never blocks.
+                        let mut pending = samples;
+                        loop {
+                            match pcm_tx.try_send(pending) {
+                                Ok(()) => break,
+                                Err(mpsc::TrySendError::Full(s)) => {
+                                    if !active.load(Ordering::SeqCst) {
+                                        break 'read;
+                                    }
+                                    pending = s;
+                                    thread::sleep(Duration::from_millis(5));
+                                }
+                                Err(mpsc::TrySendError::Disconnected(_)) => break 'read,
+                            }
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        let source = StreamSource {
+            rx: pcm_rx,
+            current: Vec::new(),
+            pos: 0,
+            channels,
+            sample_rate,
+        };
         let new_sink = Sink::try_new(&self.stream_handle)
             .map_err(|e| format!("No se pudo crear sink: {e}"))?;
         new_sink.set_volume(self.volume);
@@ -322,247 +477,38 @@ impl AudioManager {
 
         self.sink.stop();
         self.sink = new_sink;
-        self.current_path = Some(canonical_path);
-        self.current_metadata = self.current_path.as_ref().and_then(|path| {
-            extract_now_playing_metadata_with_cover_cache(
-                path,
-                &mut self.cover_cache_by_path,
-                &mut self.dominant_color_cache_by_path,
-            )
-            .ok()
-        });
-        self.current_duration = Some(Duration::from_secs(total_dur));
-        self.started_at = Some(Instant::now());
-        self.paused_position = Duration::from_secs(target);
-        self.is_paused = false;
-
-        Ok(())
+        Ok((child, decoder_handle))
     }
 
-    fn parse_wav(data: &[u8]) -> Result<(Vec<f32>, u16, u32), String> {
-        if data.len() < 44 || &data[0..4] != b"RIFF" || &data[8..12] != b"WAVE" {
-            return Err("ffmpeg no produjo un WAV válido".to_string());
+    /// Kill the current ffmpeg process (if any) and join the stream threads.
+    fn stop_stream_child(&mut self) {
+        self.streaming_active.store(false, Ordering::SeqCst);
+        if let Some(mut child) = self.ffmpeg_process.take() {
+            let _ = child.kill();
+            let _ = child.wait();
         }
-
-        let mut channels = 0u16;
-        let mut sample_rate = 0u32;
-        let mut bits_per_sample = 0u16;
-        let mut audio_format = 0u16;
-        let mut data_start = 0usize;
-        let mut data_size = 0usize;
-
-        let mut offset: usize = 12;
-        while offset + 8 <= data.len() {
-            let chunk_len = u32::from_le_bytes(
-                data[offset + 4..offset + 8].try_into().unwrap(),
-            ) as usize;
-            let chunk_id = &data[offset..offset + 4];
-            offset += 8;
-
-            match chunk_id {
-                b"fmt " if chunk_len >= 16 => {
-                    audio_format = u16::from_le_bytes(
-                        data[offset..offset + 2].try_into().unwrap(),
-                    );
-                    channels = u16::from_le_bytes(
-                        data[offset + 2..offset + 4].try_into().unwrap(),
-                    );
-                    sample_rate = u32::from_le_bytes(
-                        data[offset + 4..offset + 8].try_into().unwrap(),
-                    );
-                    bits_per_sample = u16::from_le_bytes(
-                        data[offset + 14..offset + 16].try_into().unwrap(),
-                    );
-                }
-                b"data" => {
-                    data_start = offset;
-                    data_size = chunk_len;
-                }
-                _ => {}
-            }
-
-            offset += chunk_len;
-            if chunk_len % 2 != 0 {
-                offset += 1;
-            }
+        if let Some(handle) = self.stream_writer_handle.take() {
+            let _ = handle.join();
         }
-
-        if data_start == 0 || data_size == 0 {
-            return Err("No se encontró chunk data en el WAV".to_string());
+        if let Some(handle) = self.stream_decoder_handle.take() {
+            let _ = handle.join();
         }
-
-        if channels == 0 || sample_rate == 0 {
-            return Err("Cabecera WAV inválida (channels/sample_rate 0)".to_string());
-        }
-
-        let raw = &data[data_start..data_start + data_size.min(data.len() - data_start)];
-        let samples: Vec<f32> = match (audio_format, bits_per_sample) {
-            (3, 32) => raw
-                .chunks_exact(4)
-                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-                .collect(),
-            (1, 32) => raw
-                .chunks_exact(4)
-                .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as f32 / 2147483648.0)
-                .collect(),
-            (1, 16) => raw
-                .chunks_exact(2)
-                .map(|c| i16::from_le_bytes([c[0], c[1]]) as f32 / 32768.0)
-                .collect(),
-            (1, 24) => raw
-                .chunks_exact(3)
-                .map(|c| {
-                    let lo = c[0] as i32;
-                    let mid = c[1] as i32;
-                    let hi = c[2] as i32;
-                    let val = lo | (mid << 8) | (hi << 16);
-                    let val = if hi & 0x80 != 0 {
-                        val | (-16777216)
-                    } else {
-                        val
-                    };
-                    val as f32 / 8388608.0
-                })
-                .collect(),
-            _ => {
-                return Err(format!(
-                    "Formato WAV no soportado: format={audio_format} bits={bits_per_sample}"
-                ))
-            }
-        };
-
-        if samples.is_empty() {
-            return Err("No se decodificaron muestras desde ffmpeg".to_string());
-        }
-
-        Ok((samples, channels, sample_rate))
     }
 
-    fn decode_file(path: &Path) -> Result<(Vec<f32>, u16, u32), String> {
-        let output = std::process::Command::new("ffmpeg")
-            .args([
-                "-v",
-                "quiet",
-                "-i",
-                &path.to_string_lossy(),
-                "-f",
-                "wav",
-                "-acodec",
-                "pcm_f32le",
-                "pipe:1",
-            ])
-            .output()
-            .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    "ffmpeg no está instalado. Instálelo para reproducir este formato (ej: sudo apt install ffmpeg)".to_string()
-                } else {
-                    format!("Error al ejecutar ffmpeg: {e}")
-                }
-            })?;
-
-        if !output.status.success() || output.stdout.is_empty() {
-            return Err(
-                "ffmpeg no pudo decodificar el archivo. Puede estar corrupto o usar un códec no soportado."
-                    .to_string(),
-            );
-        }
-
-        Self::parse_wav(&output.stdout)
-    }
 
     fn play_stream_blocking(&mut self, url: &str, station_name: &str) -> Result<(), String> {
-        self.streaming_active.store(true, Ordering::SeqCst);
+        self.stop_stream_child();
 
-        let mut child = std::process::Command::new("ffmpeg")
-            .args(["-v", "quiet", "-i", url, "-f", "wav", "-acodec", "pcm_f32le", "-"])
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    "ffmpeg no está instalado. Instálelo para reproducir radio (ej: sudo apt install ffmpeg)".to_string()
-                } else {
-                    format!("Error al ejecutar ffmpeg: {e}")
-                }
-            })?;
+        let args: Vec<String> = [
+            "-v", "quiet", "-i", url, "-f", "wav", "-acodec", "pcm_f32le", "pipe:1",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let (child, decoder_handle) = self.play_ffmpeg_stream(&args)?;
 
-        let stdout = child.stdout.take()
-            .ok_or_else(|| "No se pudo obtener stdout de ffmpeg".to_string())?;
-        let mut reader = std::io::BufReader::new(stdout);
-
-        let (channels, sample_rate) = Self::read_wav_header(&mut reader)?;
-
-        let (pcm_tx, pcm_rx) = mpsc::channel::<Vec<f32>>();
-
-        let decoder_handle = thread::spawn(move || {
-            let mut buf = [0u8; 65536];
-            loop {
-                match reader.read(&mut buf) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        let samples: Vec<f32> = buf[..n / 4 * 4]
-                            .chunks_exact(4)
-                            .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
-                            .collect();
-                        if pcm_tx.send(samples).is_err() {
-                            break;
-                        }
-                    }
-                    Err(_) => break,
-                }
-            }
-        });
-
-        // Rodio source for streaming PCM
-        struct StreamSource {
-            rx: mpsc::Receiver<Vec<f32>>,
-            current: Vec<f32>,
-            pos: usize,
-            channels: u16,
-            sample_rate: u32,
-        }
-
-        impl Iterator for StreamSource {
-            type Item = f32;
-            fn next(&mut self) -> Option<f32> {
-                if self.pos >= self.current.len() {
-                    match self.rx.recv() {
-                        Ok(v) => {
-                            self.current = v;
-                            self.pos = 0;
-                        }
-                        Err(_) => return None,
-                    }
-                }
-                let v = self.current[self.pos];
-                self.pos += 1;
-                Some(v)
-            }
-        }
-
-        impl Source for StreamSource {
-            fn current_frame_len(&self) -> Option<usize> { None }
-            fn channels(&self) -> u16 { self.channels }
-            fn sample_rate(&self) -> u32 { self.sample_rate }
-            fn total_duration(&self) -> Option<Duration> { None }
-        }
-
-        let rodio_src = StreamSource {
-            rx: pcm_rx,
-            current: Vec::new(),
-            pos: 0,
-            channels,
-            sample_rate,
-        };
-
-        let new_sink = Sink::try_new(&self.stream_handle).map_err(|e| format!("No se pudo crear sink: {e}"))?;
-        new_sink.set_volume(self.volume);
-        new_sink.append(rodio_src);
-        new_sink.play();
-
-        self.sink.stop();
-        self.sink = new_sink;
         self.ffmpeg_process = Some(child);
+        self.stream_decoder_handle = Some(decoder_handle);
         self.current_path = None;
         self.current_metadata = Some(NowPlayingMetadata {
             title: station_name.to_string(),
@@ -577,10 +523,6 @@ impl AudioManager {
         self.started_at = Some(Instant::now());
         self.paused_position = Duration::from_secs(0);
         self.is_paused = false;
-
-        self.stream_writer_handle = None;
-        self.stream_decoder_handle = Some(decoder_handle);
-
         Ok(())
     }
 
@@ -662,58 +604,45 @@ impl AudioManager {
     }
 
     fn stop(&mut self) -> Result<(), String> {
+        self.stop_stream_child();
         self.sink.stop();
         self.current_path = None;
         self.current_metadata = None;
         self.current_duration = None;
-        self.cached_samples = None;
         self.started_at = None;
         self.paused_position = Duration::from_secs(0);
         self.is_paused = false;
-        // Stop streaming threads if active
-        self.streaming_active.store(false, Ordering::SeqCst);
-        if let Some(mut child) = self.ffmpeg_process.take() {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-        if let Some(handle) = self.stream_writer_handle.take() {
-            let _ = handle.join();
-        }
-        if let Some(handle) = self.stream_decoder_handle.take() {
-            let _ = handle.join();
-        }
         Ok(())
     }
 
     fn seek(&mut self, second: u64) -> Result<(), String> {
-        let (samples, channels, sample_rate) = self
-            .cached_samples
-            .as_ref()
-            .ok_or_else(|| "No hay datos de audio en caché".to_string())?;
+        // Streaming: re-spawn ffmpeg from the target offset (fast input seek).
+        let path = self
+            .current_path
+            .clone()
+            .ok_or_else(|| "No hay ninguna canción cargada".to_string())?;
 
-        let total_secs = samples.len() as u64 / (*sample_rate as u64 * *channels as u64);
-        let target = second.min(total_secs);
-        let skip_samples = target * *sample_rate as u64 * *channels as u64;
-        let offset = (skip_samples as usize).min(samples.len());
+        let target = match self.current_duration {
+            Some(dur) if dur.as_secs() > 0 => second.min(dur.as_secs()),
+            _ => second,
+        };
+        let was_paused = self.is_paused;
 
-        let source = SamplesBuffer::new(*channels, *sample_rate, samples[offset..].to_vec());
-        let new_sink = Sink::try_new(&self.stream_handle)
-            .map_err(|e| format!("No se pudo crear sink: {e}"))?;
-        new_sink.set_volume(self.volume);
-        new_sink.append(source);
-        new_sink.play();
-
-        if self.is_paused {
-            new_sink.pause();
-            self.started_at = None;
-        } else {
-            self.started_at = Some(Instant::now());
-        }
-
-        self.sink.stop();
-        self.sink = new_sink;
+        self.stop_stream_child();
+        let (child, decoder_handle) =
+            self.play_ffmpeg_stream(&Self::file_ffmpeg_args(&path, target))?;
+        self.ffmpeg_process = Some(child);
+        self.stream_decoder_handle = Some(decoder_handle);
         self.paused_position = Duration::from_secs(target);
 
+        if was_paused {
+            self.sink.pause();
+            self.started_at = None;
+            self.is_paused = true;
+        } else {
+            self.started_at = Some(Instant::now());
+            self.is_paused = false;
+        }
         Ok(())
     }
 
