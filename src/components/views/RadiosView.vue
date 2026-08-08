@@ -10,9 +10,7 @@ import {
 	playRadioStation,
 	setCachedStations,
 } from '@/services/radio.service';
-import { usePlayerStore } from '@/stores/player';
 
-const playerStore = usePlayerStore();
 const playIcon = useReactiveIcon('media-playback-start');
 const searchIcon = useReactiveIcon('file-search');
 const stations: Ref<RadioStation[]> = ref([]);
