@@ -186,12 +186,50 @@ export const usePlayerStore = defineStore('player', () => {
 		}
 	};
 
+	/**
+	 * How many tracks keep their metadata between runs.
+	 *
+	 * Each entry holds a base64 cover, so a handful of them is already
+	 * megabytes. localStorage grants about 5 MB per origin, and an unbounded
+	 * cache eventually fills it — at which point `setItem` throws and, before
+	 * this was handled, took the playback update with it.
+	 */
+	const TRACK_CACHE_LIMIT = 40;
+
 	const persistTrackCache = () => {
 		if (typeof window === 'undefined') {
 			return;
 		}
 
-		window.localStorage.setItem('resonance.track-cache', JSON.stringify(trackCacheByPath.value));
+		// Oldest entries first, so dropping from the front discards what was
+		// added longest ago.
+		let entries = Object.entries(trackCacheByPath.value);
+		if (entries.length > TRACK_CACHE_LIMIT) {
+			entries = entries.slice(-TRACK_CACHE_LIMIT);
+			trackCacheByPath.value = Object.fromEntries(entries);
+		}
+
+		while (entries.length > 0) {
+			try {
+				window.localStorage.setItem(
+					'resonance.track-cache',
+					JSON.stringify(Object.fromEntries(entries))
+				);
+				return;
+			} catch {
+				// Out of quota: halve the cache and try again rather than losing
+				// every cover, which would make the player flash blank artwork on
+				// each track change.
+				entries = entries.slice(Math.ceil(entries.length / 2));
+				trackCacheByPath.value = Object.fromEntries(entries);
+			}
+		}
+
+		try {
+			window.localStorage.removeItem('resonance.track-cache');
+		} catch {
+			// Nothing further to do; the cache is a convenience.
+		}
 	};
 
 	const persistPlaybackState = async () => {
@@ -278,12 +316,29 @@ export const usePlayerStore = defineStore('player', () => {
 			return;
 		}
 
+		// Skip identical rewrites. Playback ticks arrive twice a second and used
+		// to land here every time, so the whole cache — every cover ever seen,
+		// base64-encoded — was re-serialised and written to localStorage 120
+		// times a minute, on the main thread, for as long as music played.
+		const cached = trackCacheByPath.value[track.path];
+		if (cached && sameTrackMetadata(cached, track)) {
+			return;
+		}
+
 		trackCacheByPath.value = {
 			...trackCacheByPath.value,
 			[track.path]: track,
 		};
 		persistTrackCache();
 	};
+
+	const sameTrackMetadata = (a: DroppedPlaybackTrack, b: DroppedPlaybackTrack): boolean =>
+		a.title === b.title &&
+		a.artist === b.artist &&
+		a.album === b.album &&
+		a.duration_seconds === b.duration_seconds &&
+		a.cover_data_url === b.cover_data_url &&
+		a.dominant_color === b.dominant_color;
 
 	const setCurrentTrackVisuals = (coverDataUrl: string | null, dominantColor: string | null) => {
 		if (!currentTrack.value?.path) {

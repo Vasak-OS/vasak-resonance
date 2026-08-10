@@ -5711,6 +5711,7 @@ dependencies = [
  "tauri-plugin-shell",
  "tauri-plugin-store",
  "tauri-plugin-vicons",
+ "tempfile",
  "tokio",
  "tokio-tungstenite",
  "urlencoding",

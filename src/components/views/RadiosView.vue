@@ -116,8 +116,10 @@ onMounted(async () => {
 	unlistenPlayback = await listen('audio-playback-progress', (event) => {
 		const payload = (event as any).payload;
 		if (!payload) return;
-		const now = payload.now_playing as any;
-		if (now?.path && lastRequestedUrl.value && now.path === lastRequestedUrl.value) {
+		// `path` and not `now_playing.path`: the metadata only rides along on the
+		// tick where the track changes, and a stream is usually still buffering
+		// at that point — reading it from there left the spinner up forever.
+		if (payload.path && lastRequestedUrl.value && payload.path === lastRequestedUrl.value) {
 			if (payload.is_playing) {
 				bufferingStationUuid.value = null;
 			}

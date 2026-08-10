@@ -39,6 +39,17 @@ pub fn get_database_path() -> Result<PathBuf, String> {
     Ok(new_path)
 }
 
+/// Databases whose schema this process has already set up.
+///
+/// Creating the tables and reindexing used to happen on *every* connection, and
+/// a connection is opened per command — so a search reindexed the whole library
+/// on each keystroke. The schema lives on disk; once per database is enough.
+fn initialised_databases() -> &'static std::sync::Mutex<std::collections::HashSet<PathBuf>> {
+    static PATHS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<PathBuf>>> =
+        std::sync::OnceLock::new();
+    PATHS.get_or_init(Default::default)
+}
+
 pub fn open_database(db_path: &Path) -> Result<Connection, String> {
     if let Some(parent) = db_path.parent() {
         fs::create_dir_all(parent)
@@ -48,9 +59,30 @@ pub fn open_database(db_path: &Path) -> Result<Connection, String> {
     let conn = Connection::open(db_path)
         .map_err(|e| format!("No se pudo abrir la base de datos SQLite: {e}"))?;
 
-    conn.execute_batch("PRAGMA foreign_keys = ON;")
-        .map_err(|e| format!("No se pudo habilitar foreign_keys en SQLite: {e}"))?;
+    conn.execute_batch(
+        "
+        PRAGMA foreign_keys = ON;
+        -- Write-ahead logging so a scan writing tracks does not block the
+        -- searches and listings the interface is doing at the same time.
+        PRAGMA journal_mode = WAL;
+        PRAGMA synchronous = NORMAL;
+        ",
+    )
+    .map_err(|e| format!("No se pudieron aplicar los PRAGMA de SQLite: {e}"))?;
 
+    let mut initialised = initialised_databases()
+        .lock()
+        .map_err(|_| "No se pudo comprobar el estado del esquema".to_string())?;
+
+    if !initialised.contains(db_path) {
+        ensure_schema(&conn)?;
+        initialised.insert(db_path.to_path_buf());
+    }
+
+    Ok(conn)
+}
+
+fn ensure_schema(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
         "
         CREATE TABLE IF NOT EXISTS tracks (
@@ -114,10 +146,28 @@ pub fn open_database(db_path: &Path) -> Result<Connection, String> {
     )
     .map_err(|e| format!("No se pudo inicializar el esquema SQLite: {e}"))?;
 
-    conn.execute("INSERT INTO tracks_fts(tracks_fts) VALUES ('rebuild')", [])
-        .map_err(|e| format!("No se pudo reconstruir índice FTS5: {e}"))?;
+    // The triggers above keep the index current, so a rebuild is only needed
+    // for a library indexed before they existed. Rebuilding reads every track
+    // in the database, which is why it must not be routine.
+    //
+    // The count has to come from `tracks_fts_docsize`, the index's own storage.
+    // Selecting from `tracks_fts` reads the *content* table it mirrors, so it
+    // reports rows even when nothing has been indexed at all.
+    let needs_rebuild: bool = conn
+        .query_row(
+            "SELECT (SELECT count(*) FROM tracks) > 0
+                AND (SELECT count(*) FROM tracks_fts_docsize) = 0",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("No se pudo comprobar el índice FTS5: {e}"))?;
 
-    Ok(conn)
+    if needs_rebuild {
+        conn.execute("INSERT INTO tracks_fts(tracks_fts) VALUES ('rebuild')", [])
+            .map_err(|e| format!("No se pudo reconstruir índice FTS5: {e}"))?;
+    }
+
+    Ok(())
 }
 
 pub fn insert_track_if_not_exists(conn: &Connection, track: &Track) -> Result<bool, String> {
@@ -505,4 +555,193 @@ fn get_playlist_by_id(conn: &Connection, playlist_id: i64) -> Result<Playlist, S
         },
     )
     .map_err(|e| format!("No se pudo obtener playlist creada: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn track(path: &str, title: &str, artist: &str, album: &str) -> Track {
+        Track {
+            id: None,
+            path: path.to_string(),
+            title: title.to_string(),
+            artist: artist.to_string(),
+            album: album.to_string(),
+            duration_seconds: 180,
+        }
+    }
+
+    fn temp_database() -> (tempfile::TempDir, Connection) {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_database(&dir.path().join("resonance.db")).expect("open");
+        (dir, conn)
+    }
+
+    #[test]
+    fn a_new_track_is_searchable_immediately() {
+        let (_dir, conn) = temp_database();
+        insert_track_if_not_exists(&conn, &track("/m/a.mp3", "Bohemian Rhapsody", "Queen", "A Night at the Opera"))
+            .expect("insert");
+
+        let by_title = search_tracks_fts(&conn, "bohemian", 10).expect("search");
+        assert_eq!(by_title.len(), 1);
+        assert_eq!(by_title[0].title, "Bohemian Rhapsody");
+
+        assert_eq!(search_tracks_fts(&conn, "queen", 10).expect("search").len(), 1);
+        assert!(search_tracks_fts(&conn, "nothingmatchesthis", 10).expect("search").is_empty());
+    }
+
+    /// The FTS triggers have to follow edits, or a renamed track keeps being
+    /// found under its old title and not its new one.
+    #[test]
+    fn editing_a_track_updates_what_it_is_found_by() {
+        let (_dir, conn) = temp_database();
+        insert_track_if_not_exists(&conn, &track("/m/a.mp3", "Old Title", "Artist", "Album"))
+            .expect("insert");
+
+        upsert_track(&conn, &track("/m/a.mp3", "New Title", "Artist", "Album")).expect("upsert");
+
+        assert!(search_tracks_fts(&conn, "old", 10).expect("search").is_empty());
+        assert_eq!(search_tracks_fts(&conn, "new", 10).expect("search").len(), 1);
+        assert_eq!(list_tracks(&conn).expect("list").len(), 1, "no duplicate row");
+    }
+
+    #[test]
+    fn the_same_file_is_only_indexed_once() {
+        let (_dir, conn) = temp_database();
+        let same = track("/m/a.mp3", "Title", "Artist", "Album");
+
+        assert!(insert_track_if_not_exists(&conn, &same).expect("first"));
+        assert!(!insert_track_if_not_exists(&conn, &same).expect("second"));
+        assert_eq!(list_tracks(&conn).expect("list").len(), 1);
+    }
+
+    /// Reopening must neither fail nor lose anything: a connection is opened
+    /// per command, so this happens constantly.
+    #[test]
+    fn reopening_the_database_preserves_the_library() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("resonance.db");
+
+        {
+            let conn = open_database(&path).expect("open");
+            insert_track_if_not_exists(&conn, &track("/m/a.mp3", "Title", "Artist", "Album"))
+                .expect("insert");
+        }
+
+        let conn = open_database(&path).expect("reopen");
+        assert_eq!(list_tracks(&conn).expect("list").len(), 1);
+        assert_eq!(search_tracks_fts(&conn, "title", 10).expect("search").len(), 1);
+    }
+
+    /// A library indexed before the search index existed has tracks but nothing
+    /// indexed; that is the only case where a full rebuild is warranted.
+    #[test]
+    fn a_library_from_before_the_search_index_is_rebuilt() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("resonance.db");
+
+        // Exactly what an old database looks like: the tracks table with rows
+        // in it, and no index or triggers at all.
+        {
+            let legacy = Connection::open(&path).expect("legacy open");
+            legacy
+                .execute_batch(
+                    "CREATE TABLE tracks (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        path TEXT NOT NULL UNIQUE,
+                        title TEXT NOT NULL,
+                        artist TEXT NOT NULL,
+                        album TEXT NOT NULL,
+                        duration_seconds INTEGER NOT NULL,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    INSERT INTO tracks (path, title, artist, album, duration_seconds)
+                    VALUES ('/m/a.mp3', 'Findable', 'Artist', 'Album', 180);",
+                )
+                .expect("legacy schema");
+        }
+
+        let conn = open_database(&path).expect("open");
+        assert_eq!(
+            search_tracks_fts(&conn, "findable", 10).expect("search").len(),
+            1,
+            "the pre-existing library should have been indexed"
+        );
+    }
+
+    /// The counterpart: an up-to-date library must not pay for a rebuild. This
+    /// used to run on every single connection, and a connection is opened per
+    /// command — so every keystroke in the search box reindexed everything.
+    #[test]
+    fn an_up_to_date_library_is_not_reindexed() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("resonance.db");
+
+        {
+            let conn = open_database(&path).expect("open");
+            insert_track_if_not_exists(&conn, &track("/m/a.mp3", "Findable", "Artist", "Album"))
+                .expect("insert");
+        }
+
+        // As a fresh process would see it.
+        initialised_databases().lock().unwrap().remove(&path);
+
+        let conn = open_database(&path).expect("reopen");
+        let needs_rebuild: bool = conn
+            .query_row(
+                "SELECT (SELECT count(*) FROM tracks) > 0
+                    AND (SELECT count(*) FROM tracks_fts_docsize) = 0",
+                [],
+                |row| row.get(0),
+            )
+            .expect("check");
+
+        assert!(!needs_rebuild, "the triggers already keep the index current");
+        assert_eq!(search_tracks_fts(&conn, "findable", 10).expect("search").len(), 1);
+    }
+
+    #[test]
+    fn playlists_hold_their_tracks_in_order() {
+        let (_dir, conn) = temp_database();
+        insert_track_if_not_exists(&conn, &track("/m/a.mp3", "First", "Artist", "Album")).unwrap();
+        insert_track_if_not_exists(&conn, &track("/m/b.mp3", "Second", "Artist", "Album")).unwrap();
+
+        let tracks = list_tracks(&conn).expect("list");
+        let playlist = create_playlist(&conn, "Road trip").expect("create");
+
+        for entry in &tracks {
+            add_track_to_playlist(&conn, playlist.id, entry.id).expect("add");
+        }
+
+        let contents = list_playlist_tracks(&conn, playlist.id).expect("contents");
+        assert_eq!(contents.len(), 2);
+
+        remove_track_from_playlist(&conn, playlist.id, tracks[0].id).expect("remove");
+        assert_eq!(list_playlist_tracks(&conn, playlist.id).expect("contents").len(), 1);
+
+        // Deleting the playlist must not take the tracks with it.
+        delete_playlist(&conn, playlist.id).expect("delete");
+        assert!(list_playlists(&conn).expect("list").is_empty());
+        assert_eq!(list_tracks(&conn).expect("tracks").len(), 2);
+    }
+
+    /// Deleting a track has to clear it from the index and from any playlist,
+    /// or searches keep returning a row that no longer exists.
+    #[test]
+    fn deleting_a_track_removes_it_everywhere() {
+        let (_dir, conn) = temp_database();
+        insert_track_if_not_exists(&conn, &track("/m/a.mp3", "Doomed", "Artist", "Album")).unwrap();
+        let entry = list_tracks(&conn).expect("list").remove(0);
+
+        let playlist = create_playlist(&conn, "List").expect("create");
+        add_track_to_playlist(&conn, playlist.id, entry.id).expect("add");
+
+        conn.execute("DELETE FROM tracks WHERE id = ?1", params![entry.id])
+            .expect("delete");
+
+        assert!(search_tracks_fts(&conn, "doomed", 10).expect("search").is_empty());
+        assert!(list_playlist_tracks(&conn, playlist.id).expect("contents").is_empty());
+    }
 }

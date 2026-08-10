@@ -108,9 +108,20 @@ fn resolve_default_music_folders() -> Vec<String> {
         .collect()
 }
 
+/// Walks the folders on a worker thread.
+///
+/// Scanning reads and decodes the tags of every audio file it finds — minutes
+/// of work on a real library. Running it on the main thread left the window
+/// frozen and unrepainted for the whole scan.
+async fn scan_off_main_thread(folders: Vec<String>) -> Result<ScanSummary, String> {
+    tauri::async_runtime::spawn_blocking(move || scan_folders_internal(&folders))
+        .await
+        .map_err(|e| format!("El escaneo falló: {e}"))?
+}
+
 #[tauri::command]
-pub fn scan_music_folders(folders: Vec<String>) -> Result<ScanSummary, String> {
-    scan_folders_internal(&folders)
+pub async fn scan_music_folders(folders: Vec<String>) -> Result<ScanSummary, String> {
+    scan_off_main_thread(folders).await
 }
 
 #[tauri::command]
@@ -118,7 +129,7 @@ pub async fn scan_default_music_folder(
     app_handle: tauri::AppHandle,
 ) -> Result<ScanSummary, String> {
     let folders = resolve_default_music_folders();
-    let result = scan_folders_internal(&folders)?;
+    let result = scan_off_main_thread(folders).await?;
 
     // Emit scan complete event
     let _ = app_handle.emit("scan-complete", &result);

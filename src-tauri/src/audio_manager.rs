@@ -719,6 +719,9 @@ fn run_audio_loop(
 
     // No separate Tokio runtime needed for blocking stream playback.
 
+    // Which track's metadata the frontend already has.
+    let mut last_published_track: Option<String> = None;
+
     loop {
         match command_rx.recv_timeout(Duration::from_millis(500)) {
             Ok(AudioCommand::PlayFile {
@@ -727,7 +730,12 @@ fn run_audio_loop(
                 respond_to,
             }) => {
                 let _ = respond_to.send(manager.play_file(file_path, seek_to));
-                publish_snapshot(&app_handle, &playback_snapshot, manager.progress_snapshot());
+                publish_snapshot(
+                    &app_handle,
+                    &playback_snapshot,
+                    &mut last_published_track,
+                    manager.progress_snapshot(),
+                );
             }
             Ok(AudioCommand::PlayStream {
                 url,
@@ -737,48 +745,110 @@ fn run_audio_loop(
                 // Use blocking playback on the audio thread to stream without downloading entire data.
                 let result = manager.play_stream_blocking(&url, &station_name);
                 let _ = respond_to.send(result);
-                publish_snapshot(&app_handle, &playback_snapshot, manager.progress_snapshot());
+                publish_snapshot(
+                    &app_handle,
+                    &playback_snapshot,
+                    &mut last_published_track,
+                    manager.progress_snapshot(),
+                );
             }
             Ok(AudioCommand::Pause { respond_to }) => {
                 let _ = respond_to.send(manager.pause());
-                publish_snapshot(&app_handle, &playback_snapshot, manager.progress_snapshot());
+                publish_snapshot(
+                    &app_handle,
+                    &playback_snapshot,
+                    &mut last_published_track,
+                    manager.progress_snapshot(),
+                );
             }
             Ok(AudioCommand::Stop { respond_to }) => {
                 let _ = respond_to.send(manager.stop());
-                publish_snapshot(&app_handle, &playback_snapshot, manager.progress_snapshot());
+                publish_snapshot(
+                    &app_handle,
+                    &playback_snapshot,
+                    &mut last_published_track,
+                    manager.progress_snapshot(),
+                );
             }
             Ok(AudioCommand::Resume { respond_to }) => {
                 let _ = respond_to.send(manager.resume());
-                publish_snapshot(&app_handle, &playback_snapshot, manager.progress_snapshot());
+                publish_snapshot(
+                    &app_handle,
+                    &playback_snapshot,
+                    &mut last_published_track,
+                    manager.progress_snapshot(),
+                );
             }
             Ok(AudioCommand::Seek { second, respond_to }) => {
                 let _ = respond_to.send(manager.seek(second));
-                publish_snapshot(&app_handle, &playback_snapshot, manager.progress_snapshot());
+                publish_snapshot(
+                    &app_handle,
+                    &playback_snapshot,
+                    &mut last_published_track,
+                    manager.progress_snapshot(),
+                );
             }
             Ok(AudioCommand::SetVolume { volume, respond_to }) => {
                 let _ = respond_to.send(manager.set_volume(volume));
-                publish_snapshot(&app_handle, &playback_snapshot, manager.progress_snapshot());
+                publish_snapshot(
+                    &app_handle,
+                    &playback_snapshot,
+                    &mut last_published_track,
+                    manager.progress_snapshot(),
+                );
             }
             Ok(AudioCommand::Shutdown) => {
                 let _ = manager.stop();
                 break;
             }
             Err(RecvTimeoutError::Timeout) => {
-                publish_snapshot(&app_handle, &playback_snapshot, manager.progress_snapshot());
+                publish_snapshot(
+                    &app_handle,
+                    &playback_snapshot,
+                    &mut last_published_track,
+                    manager.progress_snapshot(),
+                );
             }
             Err(RecvTimeoutError::Disconnected) => break,
         }
     }
 }
 
+/// Identifies the track a snapshot is describing, for deciding whether the
+/// heavy metadata has to travel again.
+fn now_playing_identity(snapshot: &PlaybackProgressEvent) -> Option<String> {
+    snapshot
+        .now_playing
+        .as_ref()
+        .map(|metadata| metadata.path.clone())
+}
+
 fn publish_snapshot(
     app_handle: &AppHandle,
     playback_snapshot: &Arc<Mutex<PlaybackProgressEvent>>,
+    last_published_track: &mut Option<String>,
     snapshot: PlaybackProgressEvent,
 ) {
+    // The shared snapshot always keeps the full metadata: it is what
+    // `get_playback_state` and the MPRIS bridge read.
     if let Ok(mut shared_snapshot) = playback_snapshot.lock() {
         *shared_snapshot = snapshot.clone();
     }
 
-    let _ = app_handle.emit("audio-playback-progress", snapshot);
+    // Strip the metadata from the twice-a-second tick unless the track changed.
+    //
+    // `now_playing` carries the album art as a base64 data URL — routinely
+    // hundreds of kilobytes. Sending it on every tick meant serialising and
+    // pushing the cover across the IPC bridge twice per second for as long as
+    // music played, which the receiving side then re-parsed and wrote to disk.
+    // The cover only ever changes when the track does.
+    let mut event = snapshot;
+    let identity = now_playing_identity(&event);
+    if identity.is_some() && identity == *last_published_track {
+        event.now_playing = None;
+    } else {
+        *last_published_track = identity;
+    }
+
+    let _ = app_handle.emit("audio-playback-progress", event);
 }
