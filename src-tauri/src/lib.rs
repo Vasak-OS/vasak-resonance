@@ -29,8 +29,26 @@ use commands::radio::{fetch_radio_stations, play_radio_stream};
 use commands::window::{toggle_main_and_miniplayer, close_app};
 use tauri::Manager;
 
+/// Makes sure the shared VasakOS configuration directory exists.
+///
+/// The config-manager plugin watches it and fails initialisation if it is
+/// missing, which aborts startup: on a machine where nothing had created
+/// `~/.config/vasak` yet, the player panicked before opening a window.
+fn ensure_vasak_config_dir() {
+    let Some(base) = std::env::var_os("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| dirs::home_dir().map(|home| home.join(".config")))
+    else {
+        return;
+    };
+
+    let _ = std::fs::create_dir_all(base.join("vasak"));
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    ensure_vasak_config_dir();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_shell::init())

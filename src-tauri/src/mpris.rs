@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use tauri::{AppHandle, Emitter, Listener};
+use tauri::{AppHandle, Emitter, Listener, Manager};
 use zbus::fdo;
 use zbus::zvariant::{OwnedValue, Value};
 use zbus::ConnectionBuilder;
@@ -19,7 +19,9 @@ pub fn start_mpris_service(app_handle: AppHandle, audio_state: AudioState) {
 }
 
 async fn run_mpris_service(app_handle: AppHandle, audio_state: AudioState) -> Result<(), String> {
-    let root_iface = MprisRootInterface;
+    let root_iface = MprisRootInterface {
+        app_handle: app_handle.clone(),
+    };
     let player_iface = MprisPlayerInterface {
         app_handle: app_handle.clone(),
         audio_state: audio_state.clone(),
@@ -98,7 +100,9 @@ async fn run_mpris_service(app_handle: AppHandle, audio_state: AudioState) -> Re
     Ok(())
 }
 
-struct MprisRootInterface;
+struct MprisRootInterface {
+    app_handle: AppHandle,
+}
 
 struct MprisPlayerInterface {
     app_handle: AppHandle,
@@ -107,18 +111,30 @@ struct MprisPlayerInterface {
 
 #[zbus::interface(name = "org.mpris.MediaPlayer2")]
 impl MprisRootInterface {
-    fn raise(&self) {}
+    /// Brings the player to the front.
+    ///
+    /// This is what clicking the track name in the desktop's music widget does.
+    /// It was an empty function, so the click did nothing.
+    fn raise(&self) {
+        if let Some(window) = self.app_handle.get_webview_window("main") {
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
+    }
 
-    fn quit(&self) {}
+    fn quit(&self) {
+        self.app_handle.exit(0);
+    }
 
     #[zbus(property)]
     fn can_quit(&self) -> bool {
-        false
+        true
     }
 
     #[zbus(property)]
     fn can_raise(&self) -> bool {
-        false
+        true
     }
 
     #[zbus(property)]
@@ -185,6 +201,80 @@ impl MprisPlayerInterface {
             .map_err(|e| fdo::Error::Failed(e.to_string()))
     }
 
+    /// Moves by `offset` microseconds, negative to go back.
+    ///
+    /// Missing entirely before, so dragging the progress bar in the desktop's
+    /// music widget did nothing at all.
+    async fn seek(
+        &self,
+        offset: i64,
+        #[zbus(signal_context)] ctxt: zbus::SignalContext<'_>,
+    ) -> fdo::Result<()> {
+        let snapshot = self
+            .audio_state
+            .playback_snapshot()
+            .map_err(fdo::Error::Failed)?;
+
+        // "If the CanSeek property is false, this has no effect." Panels fire
+        // this from a scrub bar without checking, and answering with an error
+        // makes them show a failure for something the user cannot control.
+        let Some(duration) = snapshot.duration_seconds.filter(|d| *d > 0) else {
+            return Ok(());
+        };
+
+        // Clamp at the ends rather than fail, as the spec requires.
+        let current = snapshot.position_seconds as i64;
+        let target = current
+            .saturating_add(offset / 1_000_000)
+            .clamp(0, duration as i64);
+
+        self.audio_state
+            .seek(target as u64)
+            .map_err(fdo::Error::Failed)?;
+
+        let _ = Self::seeked(&ctxt, target.saturating_mul(1_000_000)).await;
+        Ok(())
+    }
+
+    /// Jumps to an absolute position, which is how most panels scrub.
+    async fn set_position(
+        &self,
+        track_id: zbus::zvariant::OwnedObjectPath,
+        position: i64,
+        #[zbus(signal_context)] ctxt: zbus::SignalContext<'_>,
+    ) -> fdo::Result<()> {
+        // Only one track exists at a time here, so the id is not used to look
+        // anything up — but it is part of the signature clients call.
+        let _ = track_id;
+
+        let snapshot = self
+            .audio_state
+            .playback_snapshot()
+            .map_err(fdo::Error::Failed)?;
+
+        // A request outside the track, or for something with no length at all,
+        // is ignored rather than refused — that is what the spec asks for.
+        let seconds = position / 1_000_000;
+        let Some(duration) = snapshot.duration_seconds.filter(|d| *d > 0) else {
+            return Ok(());
+        };
+        if !(0..=duration as i64).contains(&seconds) {
+            return Ok(());
+        }
+
+        self.audio_state
+            .seek(seconds as u64)
+            .map_err(fdo::Error::Failed)?;
+
+        let _ = Self::seeked(&ctxt, seconds.saturating_mul(1_000_000)).await;
+        Ok(())
+    }
+
+    /// Announces a jump. Clients poll `Position` while playing and rely on this
+    /// to notice anything that is not the clock simply advancing.
+    #[zbus(signal)]
+    async fn seeked(ctxt: &zbus::SignalContext<'_>, position: i64) -> zbus::Result<()>;
+
     #[zbus(property)]
     fn playback_status(&self) -> fdo::Result<String> {
         self.audio_state
@@ -231,6 +321,21 @@ impl MprisPlayerInterface {
         snapshot.volume as f64
     }
 
+    /// The property was read-only, so the volume slider in the desktop's music
+    /// widget moved and changed nothing.
+    #[zbus(property)]
+    fn set_volume(&self, volume: f64) -> zbus::Result<()> {
+        if !volume.is_finite() {
+            return Err(zbus::Error::from(fdo::Error::InvalidArgs(
+                "volumen inválido".to_string(),
+            )));
+        }
+
+        self.audio_state
+            .set_volume(volume.clamp(0.0, 1.0) as f32)
+            .map_err(|e| zbus::Error::from(fdo::Error::Failed(e)))
+    }
+
     #[zbus(property)]
     fn shuffle(&self) -> bool {
         false
@@ -261,11 +366,16 @@ impl MprisPlayerInterface {
         true
     }
 
+    /// Only a track with a known length can be sought. A live station has no
+    /// duration, and offering a scrub bar for one is just a control that
+    /// cannot work.
     #[zbus(property)]
     fn can_seek(&self) -> bool {
         self.audio_state
             .playback_snapshot()
-            .map(|snapshot| snapshot.path.is_some())
+            .map(|snapshot| {
+                snapshot.path.is_some() && snapshot.duration_seconds.is_some_and(|d| d > 0)
+            })
             .unwrap_or(false)
     }
 
