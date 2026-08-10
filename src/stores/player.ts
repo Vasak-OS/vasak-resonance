@@ -39,6 +39,7 @@ export const usePlayerStore = defineStore('player', () => {
 	const isScanning = ref(false);
 	let globalBadgeTimeout: number | null = null;
 	let unlistenProgress: UnlistenFn | null = null;
+	let unlistenTrackFinished: UnlistenFn | null = null;
 	let unlistenMprisNext: UnlistenFn | null = null;
 	let unlistenMprisPrevious: UnlistenFn | null = null;
 	let unlistenMprisStop: UnlistenFn | null = null;
@@ -73,7 +74,13 @@ export const usePlayerStore = defineStore('player', () => {
 	});
 
 	const hasTrack = computed(() => Boolean(currentPath.value));
-	const isStream = computed(() => !currentPath.value && Boolean(currentTrack.value?.path?.startsWith('http')));
+	// A station is identified by its URL, which is now what the backend reports
+	// as the current path — it used to report nothing at all for radio, which is
+	// why the transport controls did not work while one played.
+	const isStream = computed(() => {
+		const path = currentPath.value ?? currentTrack.value?.path ?? '';
+		return path.startsWith('http://') || path.startsWith('https://');
+	});
 	const queuedCount = computed(() => queue.value.length);
 	const trackCacheList = computed(() => Object.values(trackCacheByPath.value));
 	const favoriteEntries = computed(() =>
@@ -458,6 +465,27 @@ export const usePlayerStore = defineStore('player', () => {
 		void advancePlayback();
 	};
 
+	/**
+	 * The backend saw the track play out.
+	 *
+	 * This is the authoritative end-of-track signal. Inferring it from the
+	 * position reaching the duration only works when the file's tags declare
+	 * one; without it, the track ended and the player just sat there — and at
+	 * the end of the queue nothing ever cleared the playing state.
+	 */
+	const handleTrackFinished = (finishedPath: string | null) => {
+		if (isAdvancingQueue.value) return;
+		if (finishedPath && lastAutoAdvancedPath.value === finishedPath) return;
+		lastAutoAdvancedPath.value = finishedPath;
+
+		if (hasNextTrack.value) {
+			void advancePlayback();
+			return;
+		}
+
+		void stopPlayback();
+	};
+
 	const applyProgress = (payload: PlaybackProgressEvent) => {
 		const prevPath = currentPath.value;
 		currentPath.value = payload.path;
@@ -505,6 +533,10 @@ export const usePlayerStore = defineStore('player', () => {
 		unlistenProgress = await listen<PlaybackProgressEvent>('audio-playback-progress', (event) => {
 			applyProgress(event.payload);
 		});
+
+		unlistenTrackFinished = await listen<string | null>('audio-track-finished', (event) => {
+			handleTrackFinished(event.payload);
+		});
 	};
 
 	const syncPlaybackSnapshot = async () => {
@@ -550,6 +582,10 @@ export const usePlayerStore = defineStore('player', () => {
 		if (unlistenProgress) {
 			unlistenProgress();
 			unlistenProgress = null;
+		}
+		if (unlistenTrackFinished) {
+			unlistenTrackFinished();
+			unlistenTrackFinished = null;
 		}
 	};
 

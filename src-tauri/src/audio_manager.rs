@@ -297,7 +297,15 @@ struct AudioManager {
     _stream: OutputStream,
     stream_handle: OutputStreamHandle,
     sink: Sink,
+    /// What is loaded: a file path, or a station URL when `stream_url` is set.
+    ///
+    /// Radio used to leave this empty, and every transport method starts by
+    /// checking it — so pause, resume and the play/pause state were all dead
+    /// while a station played.
     current_path: Option<PathBuf>,
+    /// Set only for radio; a live stream cannot be sought and pausing it has to
+    /// tear the connection down rather than accumulate stale audio.
+    stream_url: Option<String>,
     current_metadata: Option<NowPlayingMetadata>,
     cover_cache_by_path: HashMap<String, Option<String>>,
     dominant_color_cache_by_path: HashMap<String, Option<String>>,
@@ -326,6 +334,7 @@ impl AudioManager {
             stream_handle,
             sink,
             current_path: None,
+            stream_url: None,
             current_metadata: None,
             cover_cache_by_path: HashMap::new(),
             dominant_color_cache_by_path: HashMap::new(),
@@ -370,6 +379,7 @@ impl AudioManager {
         self.ffmpeg_process = Some(child);
         self.stream_decoder_handle = Some(decoder_handle);
         self.current_path = Some(canonical_path);
+        self.stream_url = None;
         self.current_metadata = metadata;
         self.current_duration = Some(Duration::from_secs(total_dur));
         self.started_at = Some(Instant::now());
@@ -496,20 +506,26 @@ impl AudioManager {
     }
 
 
+    /// ffmpeg args to pull a live stream to stdout as PCM f32 WAV.
+    fn stream_ffmpeg_args(url: &str) -> Vec<String> {
+        ["-v", "quiet", "-i", url, "-f", "wav", "-acodec", "pcm_f32le", "pipe:1"]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect()
+    }
+
     fn play_stream_blocking(&mut self, url: &str, station_name: &str) -> Result<(), String> {
         self.stop_stream_child();
 
-        let args: Vec<String> = [
-            "-v", "quiet", "-i", url, "-f", "wav", "-acodec", "pcm_f32le", "pipe:1",
-        ]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-        let (child, decoder_handle) = self.play_ffmpeg_stream(&args)?;
+        let (child, decoder_handle) = self.play_ffmpeg_stream(&Self::stream_ffmpeg_args(url))?;
 
         self.ffmpeg_process = Some(child);
         self.stream_decoder_handle = Some(decoder_handle);
-        self.current_path = None;
+        // The URL stands in for the path so the transport controls, the
+        // play/pause state and the events all recognise that something is
+        // loaded.
+        self.current_path = Some(PathBuf::from(url));
+        self.stream_url = Some(url.to_string());
         self.current_metadata = Some(NowPlayingMetadata {
             title: station_name.to_string(),
             artist: "Radio Stream".to_string(),
@@ -584,7 +600,21 @@ impl AudioManager {
         self.paused_position = self.current_position_duration();
         self.started_at = None;
         self.is_paused = true;
-        self.sink.pause();
+
+        if self.stream_url.is_some() {
+            // A live stream has to be disconnected, not held. Keeping ffmpeg
+            // running against a paused sink just fills the buffer, so resuming
+            // would play minutes-old audio and keep drifting further behind.
+            self.stop_stream_child();
+            self.sink.stop();
+            self.sink = Sink::try_new(&self.stream_handle)
+                .map_err(|e| format!("No se pudo crear sink de audio: {e}"))?;
+            self.sink.set_volume(self.volume);
+            self.sink.pause();
+        } else {
+            self.sink.pause();
+        }
+
         Ok(())
     }
 
@@ -597,9 +627,20 @@ impl AudioManager {
             return Ok(());
         }
 
+        // Reconnect rather than resume: the stream was torn down on pause, and
+        // a station is live anyway — the listener wants what is on air now.
+        if let Some(url) = self.stream_url.clone() {
+            self.stop_stream_child();
+            let (child, decoder_handle) =
+                self.play_ffmpeg_stream(&Self::stream_ffmpeg_args(&url))?;
+            self.ffmpeg_process = Some(child);
+            self.stream_decoder_handle = Some(decoder_handle);
+        } else {
+            self.sink.play();
+        }
+
         self.started_at = Some(Instant::now());
         self.is_paused = false;
-        self.sink.play();
         Ok(())
     }
 
@@ -607,6 +648,7 @@ impl AudioManager {
         self.stop_stream_child();
         self.sink.stop();
         self.current_path = None;
+        self.stream_url = None;
         self.current_metadata = None;
         self.current_duration = None;
         self.started_at = None;
@@ -616,6 +658,10 @@ impl AudioManager {
     }
 
     fn seek(&mut self, second: u64) -> Result<(), String> {
+        if self.stream_url.is_some() {
+            return Err("No se puede avanzar ni retroceder en una radio en vivo".to_string());
+        }
+
         // Streaming: re-spawn ffmpeg from the target offset (fast input seek).
         let path = self
             .current_path
@@ -655,6 +701,28 @@ impl AudioManager {
         self.volume = normalized;
         self.sink.set_volume(normalized);
         Ok(())
+    }
+
+    /// Whether the loaded track has played to its end.
+    ///
+    /// ffmpeg having exited *and* the sink having drained means every decoded
+    /// sample has been heard. Checking the sink alone would fire at the moment
+    /// playback starts, before the first buffer arrives.
+    ///
+    /// The frontend used to infer this from the position reaching the duration,
+    /// which never happened for a file whose tags carry no duration — those
+    /// tracks ended and the player simply sat there instead of moving on.
+    fn track_finished(&mut self) -> bool {
+        if self.current_path.is_none() || self.is_paused || self.stream_url.is_some() {
+            return false;
+        }
+
+        let ffmpeg_exited = match self.ffmpeg_process.as_mut() {
+            Some(child) => matches!(child.try_wait(), Ok(Some(_))),
+            None => false,
+        };
+
+        ffmpeg_exited && self.sink.empty()
     }
 
     fn current_position_duration(&self) -> Duration {
@@ -802,6 +870,18 @@ fn run_audio_loop(
                 break;
             }
             Err(RecvTimeoutError::Timeout) => {
+                // Announce the end of a track before publishing, so the
+                // frontend gets the finished path rather than an already
+                // cleared state.
+                if manager.track_finished() {
+                    let finished = manager
+                        .current_path
+                        .as_ref()
+                        .map(|path| path.to_string_lossy().to_string());
+                    let _ = manager.stop();
+                    let _ = app_handle.emit("audio-track-finished", finished);
+                }
+
                 publish_snapshot(
                     &app_handle,
                     &playback_snapshot,
