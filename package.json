@@ -14,24 +14,24 @@
     "format": "bunx --bun biome format --write ."
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.11.0",
-    "@tauri-apps/plugin-store": "~2.4.3",
-    "@tailwindcss/vite": "^4.3.0",
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-store": "~2.4.4",
+    "@tailwindcss/vite": "^4.3.3",
     "@vasakgroup/plugin-config-manager": "^2.2.6",
     "@vasakgroup/plugin-vicons": "^2.1.2",
     "pinia": "^3.0.4",
-    "vue": "^3.5.35",
-    "vue-router": "^5.1.0",
+    "vue": "^3.5.41",
+    "vue-router": "^5.2.0",
     "vue-virtual-scroller": "^2.0.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.16",
-    "@tauri-apps/cli": "^2.11.2",
-    "@types/node": "^25.9.1",
-    "@vitejs/plugin-vue": "^6.0.7",
-    "tailwindcss": "^4.3.0",
+    "@biomejs/biome": "^2.5.8",
+    "@tauri-apps/cli": "^2.11.4",
+    "@types/node": "^25.9.5",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
-    "vite": "^7.3.5",
-    "vue-tsc": "^3.3.3"
+    "vite": "^7.3.6",
+    "vue-tsc": "^3.3.9"
   }
 }
