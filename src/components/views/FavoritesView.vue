@@ -186,7 +186,7 @@ onMounted(async () => {
 		</ul>
 
 		<p v-if="currentPath" class="mt-3 text-xs text-tx-muted">
-			{{ t('favorites.current').replace('{0}', extractTrackName(currentPath)) }}
+			{{ t('favorites.current').replace('{0}', () => extractTrackName(currentPath)) }}
 		</p>
 	</section>
 </template>

@@ -161,7 +161,7 @@ const onQueueAlbum = (paths: string[]) => {
 	if (firstPath) {
 		const metadata = playerStore.getTrackMetadata(firstPath);
 		playerStore.showGlobalBadge(
-			t('albums.queuedAlbum').replace('{0}', albumLabel(metadata?.album))
+			t('albums.queuedAlbum').replace('{0}', () => albumLabel(metadata?.album))
 		);
 	}
 
@@ -173,7 +173,7 @@ const onPlayAlbum = async (paths: string[]) => {
 	if (firstPath) {
 		const metadata = playerStore.getTrackMetadata(firstPath);
 		playerStore.showGlobalBadge(
-			t('albums.playingAlbum').replace('{0}', albumLabel(metadata?.album))
+			t('albums.playingAlbum').replace('{0}', () => albumLabel(metadata?.album))
 		);
 	}
 

@@ -57,7 +57,9 @@ favorites:
 home:
   eyebrow: Biblioteca
   title: Todas las canciones de la base de datos
-  visibleCount: "{0} pistas visibles de {1} totales"
+  visibleCountOneOfOne: "{0} pista visible de {1} total"
+  visibleCountOneOfOther: "{0} pista visible de {1} totales"
+  visibleCountOther: "{0} pistas visibles de {1} totales"
   searchPlaceholder: Título, artista, álbum o ruta
   shuffle: Aleatorio
   shuffleHint: Reproducir al azar respetando los filtros aplicados
@@ -89,7 +91,8 @@ playlists:
   create: Crear
   empty: Todavía no tenés ninguna lista. Creá una para guardar canciones y volver a escucharlas cuando quieras.
   deleteList: Eliminar lista
-  trackSummary: "{0} canciones · {1}"
+  trackSummaryOne: "{0} canción · {1}"
+  trackSummaryOther: "{0} canciones · {1}"
   enqueue: Agregar a la cola
   emptyList: Esta lista está vacía. Agregá canciones desde tu biblioteca, abajo.
   removeFromList: Quitar de la lista

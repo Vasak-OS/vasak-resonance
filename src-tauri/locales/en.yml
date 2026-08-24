@@ -57,7 +57,12 @@ favorites:
 home:
   eyebrow: Library
   title: Every song in the database
-  visibleCount: "{0} tracks shown out of {1}"
+  # The first two are identical on purpose: English does not inflect after
+  # "out of", but Spanish does ("de 1 total" / "de 12 totales"), and the view
+  # picks the same key in both languages. Merging them here would break that.
+  visibleCountOneOfOne: "{0} track shown out of {1}"
+  visibleCountOneOfOther: "{0} track shown out of {1}"
+  visibleCountOther: "{0} tracks shown out of {1}"
   searchPlaceholder: Title, artist, album or path
   shuffle: Shuffle
   shuffleHint: Play at random, honouring the filters in use
@@ -89,7 +94,8 @@ playlists:
   create: Create
   empty: You have no playlists yet. Create one to save songs and come back to them whenever you like.
   deleteList: Delete playlist
-  trackSummary: "{0} songs · {1}"
+  trackSummaryOne: "{0} song · {1}"
+  trackSummaryOther: "{0} songs · {1}"
   enqueue: Add to queue
   emptyList: This playlist is empty. Add songs from your library, below.
   removeFromList: Remove from playlist

@@ -48,6 +48,15 @@ const totalDuration = computed(() =>
 	playlistTracks.value.reduce((sum, track) => sum + (track.duration_seconds || 0), 0)
 );
 
+// Una lista con una sola canción decía «1 canciones».
+const trackSummaryLabel = computed(() => {
+	const count = playlistTracks.value.length;
+
+	return t(count === 1 ? 'playlists.trackSummaryOne' : 'playlists.trackSummaryOther')
+		.replace('{0}', String(count))
+		.replace('{1}', () => formatSeconds(totalDuration.value));
+});
+
 const run = async (action: () => Promise<void>) => {
 	busy.value = true;
 	error.value = '';
@@ -226,9 +235,7 @@ onMounted(() =>
 							{{ selectedPlaylist.name }}
 						</h3>
 						<p class="text-xs text-tx-muted">
-							{{ t('playlists.trackSummary')
-								.replace('{0}', String(playlistTracks.length))
-								.replace('{1}', formatSeconds(totalDuration)) }}
+							{{ trackSummaryLabel }}
 						</p>
 					</div>
 					<button

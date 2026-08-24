@@ -81,14 +81,14 @@ async function loadStations() {
 		setCachedStations(freshStations);
 	} catch (err) {
 		const errorMsg = err instanceof Error ? err.message : String(err);
-		error.value = t('radios.loadError').replace('{0}', errorMsg);
+		error.value = t('radios.loadError').replace('{0}', () => errorMsg);
 		console.error('Radio stations error:', err);
 
 		// If we have cached stations, keep them available
 		const cached = getCachedStations();
 		if (cached && cached.length > 0) {
 			stations.value = cached;
-			error.value = t('radios.usingCache').replace('{0}', errorMsg);
+			error.value = t('radios.usingCache').replace('{0}', () => errorMsg);
 		}
 	} finally {
 		loading.value = false;
@@ -103,7 +103,7 @@ async function handlePlayStation(station: RadioStation) {
 		// keep buffering indicator until playback event arrives
 	} catch (err) {
 		bufferingStationUuid.value = null;
-		error.value = t('radios.playError').replace('{0}', String(err));
+		error.value = t('radios.playError').replace('{0}', () => String(err));
 		console.error(err);
 	}
 }

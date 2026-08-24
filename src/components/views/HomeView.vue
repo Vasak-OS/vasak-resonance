@@ -82,7 +82,7 @@ const loadLibrary = async () => {
 	try {
 		libraryTracks.value = await listLibraryTracks();
 	} catch (error) {
-		errorMessage.value = t('home.libraryLoadError').replace('{0}', String(error));
+		errorMessage.value = t('home.libraryLoadError').replace('{0}', () => String(error));
 	} finally {
 		isLoading.value = false;
 	}
@@ -231,6 +231,22 @@ onUnmounted(() => {
 		searchDebounceTimer = null;
 	}
 });
+
+// Con una sola pista, una única cadena decía «1 pistas visibles de 1 totales».
+// Las dos mitades concuerdan por separado, y como no se pueden mostrar cinco
+// pistas de un total de una, sólo tres de las cuatro combinaciones existen.
+const visibleCountLabel = computed(() => {
+	const visible = sortedTracks.value.length;
+	const total = librarySourceTracks.value.length;
+	const key =
+		visible === 1
+			? total === 1
+				? 'home.visibleCountOneOfOne'
+				: 'home.visibleCountOneOfOther'
+			: 'home.visibleCountOther';
+
+	return t(key).replace('{0}', String(visible)).replace('{1}', String(total));
+});
 </script>
 
 <template>
@@ -242,9 +258,7 @@ onUnmounted(() => {
 					<h2 class="text-lg font-semibold text-tx-main">{{ t('home.title') }}</h2>
 				</div>
 				<div class="text-xs text-tx-muted">
-					{{ t('home.visibleCount')
-						.replace('{0}', String(sortedTracks.length))
-						.replace('{1}', String(librarySourceTracks.length)) }}
+					{{ visibleCountLabel }}
 				</div>
 			</div>
 

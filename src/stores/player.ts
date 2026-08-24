@@ -648,7 +648,7 @@ export const usePlayerStore = defineStore('player', () => {
 			await playFile(filePath);
 			currentPath.value = filePath;
 		} catch (playError: unknown) {
-			error.value = t('player.playError').replace('{0}', String(playError));
+			error.value = t('player.playError').replace('{0}', () => String(playError));
 		} finally {
 			busy.value = false;
 		}
@@ -680,7 +680,7 @@ export const usePlayerStore = defineStore('player', () => {
 			devLog('[playDropped] playFile completado exitosamente');
 		} catch (dropError: unknown) {
 			console.error('[playDropped] Error:', dropError);
-			error.value = t('player.dropError').replace('{0}', String(dropError));
+			error.value = t('player.dropError').replace('{0}', () => String(dropError));
 		} finally {
 			busy.value = false;
 		}
@@ -691,7 +691,7 @@ export const usePlayerStore = defineStore('player', () => {
 			error.value = '';
 			await pausePlayback();
 		} catch (pauseError: unknown) {
-			error.value = t('player.pauseError').replace('{0}', String(pauseError));
+			error.value = t('player.pauseError').replace('{0}', () => String(pauseError));
 		}
 	};
 
@@ -700,7 +700,7 @@ export const usePlayerStore = defineStore('player', () => {
 			error.value = '';
 			await resumePlayback();
 		} catch (resumeError: unknown) {
-			error.value = t('player.resumeError').replace('{0}', String(resumeError));
+			error.value = t('player.resumeError').replace('{0}', () => String(resumeError));
 		}
 	};
 
@@ -720,7 +720,7 @@ export const usePlayerStore = defineStore('player', () => {
 			error.value = '';
 			await seekPlayback(seconds);
 		} catch (seekError: unknown) {
-			error.value = t('player.seekError').replace('{0}', String(seekError));
+			error.value = t('player.seekError').replace('{0}', () => String(seekError));
 		}
 	};
 
@@ -731,7 +731,7 @@ export const usePlayerStore = defineStore('player', () => {
 			error.value = '';
 			await setPlaybackVolume(normalized);
 		} catch (volumeError: unknown) {
-			error.value = t('player.volumeError').replace('{0}', String(volumeError));
+			error.value = t('player.volumeError').replace('{0}', () => String(volumeError));
 		}
 	};
 
@@ -740,7 +740,7 @@ export const usePlayerStore = defineStore('player', () => {
 			error.value = '';
 			await stopPlaybackCommand();
 		} catch (stopError: unknown) {
-			error.value = t('player.stopError').replace('{0}', String(stopError));
+			error.value = t('player.stopError').replace('{0}', () => String(stopError));
 		}
 	};
 
@@ -781,10 +781,10 @@ export const usePlayerStore = defineStore('player', () => {
 
 		if (isFavoritePath(path)) {
 			favoritePaths.value = favoritePaths.value.filter((entry) => entry !== path);
-			showGlobalBadge(t('favorites.removedBadge').replace('{0}', trackLabel));
+			showGlobalBadge(t('favorites.removedBadge').replace('{0}', () => trackLabel));
 		} else {
 			favoritePaths.value = [...favoritePaths.value, path];
-			showGlobalBadge(t('favorites.addedBadge').replace('{0}', trackLabel));
+			showGlobalBadge(t('favorites.addedBadge').replace('{0}', () => trackLabel));
 		}
 
 		persistFavorites();

@@ -66,7 +66,7 @@ const loadLyricsForCurrentTrack = async () => {
 		lyrics.value = null;
 		plainLines.value = [];
 		console.error('[LyricsView] fetchLyrics error:', lyricsError);
-		error.value = t('lyrics.loadError').replace('{0}', String(lyricsError));
+		error.value = t('lyrics.loadError').replace('{0}', () => String(lyricsError));
 	} finally {
 		loading.value = false;
 	}
