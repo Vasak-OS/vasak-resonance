@@ -6,4 +6,5 @@ pub mod metadata;
 pub mod playback;
 pub mod playlists;
 pub mod radio;
+pub mod reveal;
 pub mod window;

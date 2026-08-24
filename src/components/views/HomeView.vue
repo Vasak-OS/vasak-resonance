@@ -4,6 +4,7 @@ import 'vue-virtual-scroller/dist/vue-virtual-scroller.css';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import LabeledField from '@/components/layout/LabeledField.vue';
 import { useReactiveIcon } from '@/composables/useReactiveIcon';
+import { useTrackContextMenu } from '@/composables/useTrackContextMenu';
 import {
 	type DroppedPlaybackTrack,
 	type LibraryTrack,
@@ -14,6 +15,7 @@ import {
 import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
+const { onTrackContextMenu } = useTrackContextMenu();
 const libraryTracks = ref<LibraryTrack[]>([]);
 const isLoading = ref(false);
 const errorMessage = ref('');
@@ -317,7 +319,14 @@ onUnmounted(() => {
 			No hay resultados con esos filtros.
 		</div>
 
-		<div v-else class="min-h-0 flex-1 overflow-hidden rounded-corner border border-ui-border bg-ui-bg/80">
+		<!-- El menú es uno para toda la lista; cada fila dice cuál es la suya
+		     con `data-track-path`. Así el `RecycleScroller` puede reciclar las
+		     filas sin crear y destruir un menú por cada una. -->
+		<div
+			v-else
+			class="min-h-0 flex-1 overflow-hidden rounded-corner border border-ui-border bg-ui-bg/80"
+			@contextmenu="onTrackContextMenu"
+		>
 			<RecycleScroller
 				:items="sortedTracks"
 				:key-field="'path'"
@@ -326,6 +335,7 @@ onUnmounted(() => {
 				v-slot="{ item: track }"
 			>
 				<article
+					:data-track-path="track.path"
 					class="mb-2 flex h-[84px] items-center gap-3 rounded-corner border border-ui-border bg-ui-surface/45 px-3 py-2.5 transition-colors duration-200 hover:border-primary/35 hover:bg-ui-surface/70"
 				>
 					<div class="min-w-0 flex-1">

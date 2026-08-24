@@ -4,7 +4,8 @@
   "description": "Capability for main and mini-player windows",
   "windows": [
     "main",
-    "mini-player"
+    "mini-player",
+    "vsk_context_menu"
   ],
   "permissions": [
     "core:default",
@@ -16,6 +17,13 @@
     "core:window:allow-close",
     "vicons:default",
     "config-manager:default",
-    "store:default"
+    "store:default",
+    "vsk-contextual-menu:default",
+    "i18n:allow-load-translations",
+    "i18n:allow-get-available-locales",
+    "i18n:allow-get-locale",
+    "i18n:allow-set-locale",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text"
   ]
 }

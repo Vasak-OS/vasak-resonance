@@ -26,6 +26,7 @@ use commands::playlists::{
     list_playlist_tracks_command, list_playlists_command, remove_track_from_playlist_command,
 };
 use commands::radio::{fetch_radio_stations, play_radio_stream};
+use commands::reveal::show_in_file_manager;
 use commands::window::{toggle_main_and_miniplayer, close_app};
 use tauri::Manager;
 
@@ -45,6 +46,50 @@ fn ensure_vasak_config_dir() {
     let _ = std::fs::create_dir_all(base.join("vasak"));
 }
 
+/// Dónde viven las traducciones.
+///
+/// El plugin de i18n sólo prueba rutas relativas al ejecutable y al directorio
+/// de trabajo, y ninguna de esas existe cuando el binario está instalado en
+/// `/usr/bin` — un build empaquetado mostraría las claves crudas. Resolverla
+/// acá y pasarla explícitamente cubre el árbol de desarrollo y la ubicación
+/// instalada. Es el mismo patrón que usa vasak-settings.
+fn locales_dir() -> Option<String> {
+    let candidates = [
+        std::path::PathBuf::from("locales"),
+        std::path::PathBuf::from("src-tauri/locales"),
+        std::path::PathBuf::from("/usr/share/vasak-resonance/locales"),
+    ];
+
+    candidates
+        .into_iter()
+        .find(|path| path.is_dir())
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
+/// Elige el idioma inicial según el de la sesión, con español por omisión:
+/// es el idioma con el que la interfaz venía escrita antes de ser traducible.
+fn default_locale() -> String {
+    let raw = std::env::var("LC_ALL")
+        .or_else(|_| std::env::var("LC_MESSAGES"))
+        .or_else(|_| std::env::var("LANG"))
+        .unwrap_or_default();
+
+    let code = raw
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .split('_')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    if code == "en" {
+        "en".to_string()
+    } else {
+        "es".to_string()
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     ensure_vasak_config_dir();
@@ -53,6 +98,15 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_config_manager::init())
+        .plugin(tauri_plugin_i18n_vsk::init_with_path(
+            Some(default_locale()),
+            locales_dir(),
+        ))
+        // Sólo para que «Copiar», «Cortar» y «Pegar» del menú hagan de verdad lo
+        // que dicen: el motor del navegador no da acceso al portapapeles desde
+        // la página.
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_vsk_contextual_menu::init())
         .plugin(tauri_plugin_vicons::init())
         .setup(move |app| {
             let audio_state = AudioState::new(app.handle().clone());
@@ -124,6 +178,7 @@ pub fn run() {
             play_radio_stream,
             toggle_main_and_miniplayer,
             close_app,
+            show_in_file_manager,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

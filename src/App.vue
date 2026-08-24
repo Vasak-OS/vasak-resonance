@@ -5,6 +5,7 @@ import { onMounted } from 'vue';
 import ScanningIndicator from '@/components/layout/ScanningIndicator.vue';
 import MiniPlayer from '@/components/player/MiniPlayer.vue';
 import { useConfigSync } from '@/composables/useConfigSync';
+import { useTextFieldContextMenu } from '@/composables/useTextFieldContextMenu';
 import { scanDefaultMusicFolder } from '@/services/player.service';
 import { usePlayerStore } from '@/stores/player';
 
@@ -14,6 +15,10 @@ const AUTO_SCAN_INTERVAL_MS = 30 * 60 * 1000;
 const playerStore = usePlayerStore();
 
 useConfigSync({ useViewTransition: true });
+
+// El clic derecho de todos los campos de texto de la ventana, enganchado una
+// sola vez.
+useTextFieldContextMenu();
 
 onMounted(() => {
 	if (isMiniPlayerWindow) {

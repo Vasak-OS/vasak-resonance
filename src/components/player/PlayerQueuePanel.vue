@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { type MenuEntry, useContextMenu } from '@vasakgroup/plugin-vsk-contextual-menu';
+import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { ref } from 'vue';
 import { useReactiveIcon } from '@/composables/useReactiveIcon';
 
@@ -8,9 +10,57 @@ const props = defineProps<{
 
 const emit = defineEmits<{
 	clear: [];
+	play: [index: number];
 	remove: [index: number];
 	reorder: [fromIndex: number, toIndex: number];
 }>();
+
+const { t } = useI18n();
+const { show } = useContextMenu();
+
+/**
+ * El clic derecho sobre la cola. Se pregunta por el índice y no por la ruta
+ * porque la misma canción puede estar dos veces, y quitar «la otra» no sería lo
+ * que pidió nadie.
+ */
+async function onQueueContextMenu(event: MouseEvent) {
+	const target = event.target;
+	const row = target instanceof Element ? target.closest<HTMLElement>('[data-queue-index]') : null;
+	const raw = row?.dataset.queueIndex;
+
+	if (raw === undefined) {
+		return;
+	}
+
+	event.stopPropagation();
+	const index = Number(raw);
+
+	const entries: MenuEntry[] = [
+		{ id: 'play', label: t('contextMenu.playNow'), icon: 'media-playback-start' },
+		{ id: 'remove', label: t('contextMenu.removeFromQueue'), icon: 'list-remove' },
+		{ type: 'separator' },
+		{
+			id: 'clear',
+			label: t('contextMenu.clearQueue'),
+			icon: 'edit-clear-all',
+			danger: true,
+		},
+	];
+
+	const chosen = await show(entries, event);
+
+	switch (chosen?.id) {
+		case 'play':
+			emit('play', index);
+			break;
+		case 'remove':
+			emit('remove', index);
+			break;
+		case 'clear':
+			emit('clear');
+			break;
+	}
+}
 
 const draggingQueueIndex = ref<number | null>(null);
 const dropTargetIndex = ref<number | null>(null);
@@ -76,9 +126,12 @@ const onQueueDrop = (targetIndex: number) => {
 			</button>
 		</div>
 
+		<!-- Un solo menú para toda la cola; cada elemento dice cuál es el suyo
+		     con `data-queue-index`. -->
 		<TransitionGroup
 			tag="ul"
 			class="grid gap-2"
+			@contextmenu="onQueueContextMenu"
 			move-class="transition-transform duration-200 ease-out"
 			enter-active-class="transition-all duration-200 ease-out"
 			leave-active-class="transition-all duration-150 ease-in"
@@ -88,6 +141,7 @@ const onQueueDrop = (targetIndex: number) => {
 			<li
 				v-for="(path, index) in props.queueItems"
 				:key="`${path}-${index}`"
+				:data-queue-index="index"
 				class="group flex items-center gap-3 rounded-corner border border-ui-border/80 bg-ui-surface/45 px-3 py-2.5 text-sm transition-all duration-200 hover:border-primary/35 hover:bg-ui-surface/70"
 				:class="{
 					'border-primary/55 bg-primary/10': dropTargetIndex === index,

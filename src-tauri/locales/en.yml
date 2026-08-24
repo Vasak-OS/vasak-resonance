@@ -1,0 +1,17 @@
+_version: 1
+contextMenu:
+  play: Play
+  playNow: Play now
+  addToQueue: Add to queue
+  addedToQueue: Added to the queue
+  alreadyInQueue: Already in the queue
+  removeFromQueue: Remove from queue
+  clearQueue: Clear queue
+  addToFavorites: Add to favourites
+  removeFromFavorites: Remove from favourites
+  showInFileManager: Show in file manager
+  couldNotShowInFileManager: The folder for this song could not be opened
+  copy: Copy
+  cut: Cut
+  paste: Paste
+  selectAll: Select all
