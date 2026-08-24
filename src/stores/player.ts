@@ -2,6 +2,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { defineStore } from 'pinia';
 import { computed, ref, shallowRef, watch } from 'vue';
 import { devLog } from '@/composables/useDevLog';
+import { enviarPresencia, limpiarPresencia } from '@/services/discord.service';
 import {
 	type DroppedPlaybackTrack,
 	getPlaybackSnapshot,
@@ -25,6 +26,7 @@ import {
 	queuePaths,
 	removeQueueEntry,
 } from '@/stores/playerQueue';
+import { type EstadoParaDiscord, hayQueAvisar } from '@/tools/discordPresence';
 
 export const usePlayerStore = defineStore('player', () => {
 	const currentTrack = ref<DroppedPlaybackTrack | null>(null);
@@ -66,7 +68,7 @@ export const usePlayerStore = defineStore('player', () => {
 			if (!playbackStorage.value) {
 				const filePath = 'resonance-playback.json';
 				try {
-					const plugin = await import("@tauri-apps/plugin-store");
+					const plugin = await import('@tauri-apps/plugin-store');
 					playbackStorage.value = await new plugin.LazyStore(filePath);
 					await playbackStorage.value.save();
 				} catch (err) {
@@ -511,7 +513,9 @@ export const usePlayerStore = defineStore('player', () => {
 		const prevPath = currentPath.value;
 		currentPath.value = payload.path;
 		const dur = payload.duration_seconds ?? durationSeconds.value;
-		positionSeconds.value = dur ? Math.min(payload.position_seconds, dur) : payload.position_seconds;
+		positionSeconds.value = dur
+			? Math.min(payload.position_seconds, dur)
+			: payload.position_seconds;
 		if (prevPath !== payload.path) {
 			durationSeconds.value = payload.duration_seconds;
 		} else if (payload.duration_seconds !== null) {
@@ -543,7 +547,56 @@ export const usePlayerStore = defineStore('player', () => {
 			lastAutoAdvancedPath.value = null;
 		}
 
+		avisarADiscord();
+
 		tryAutoAdvance(payload);
+	};
+
+	/** Lo último que se le mandó a Discord, y cuándo. */
+	let ultimoAvisoADiscord: { estado: EstadoParaDiscord; momento: number } | null = null;
+
+	/**
+	 * Le cuenta a Discord lo que está sonando.
+	 *
+	 * Se llama desde el mismo lugar por donde pasa todo el estado del
+	 * reproductor, o sea una vez por segundo, pero casi nunca manda nada:
+	 * Discord dibuja la barra solo a partir de las marcas de tiempo, así que
+	 * sólo hace falta hablarle cuando cambia la canción, cuando se pausa o
+	 * reanuda, y cuando alguien salta a otro punto.
+	 */
+	const avisarADiscord = () => {
+		const pista = currentTrack.value;
+
+		if (!pista || !currentPath.value) {
+			if (ultimoAvisoADiscord) {
+				ultimoAvisoADiscord = null;
+				void limpiarPresencia();
+			}
+			return;
+		}
+
+		const estado: EstadoParaDiscord = {
+			path: currentPath.value,
+			title: pista.title || pista.path.split('/').pop() || '',
+			artist: pista.artist,
+			// Sólo sirve una dirección que Discord pueda ver desde su lado; una
+			// tapa incrustada en el archivo no lo es, y el backend lo resuelve
+			// cayendo al logo del sistema.
+			albumArtUrl: null,
+			isPaused: isPaused.value || !isPlaying.value,
+			positionSeconds: positionSeconds.value,
+			durationSeconds: durationSeconds.value ?? 0,
+		};
+
+		const ahora = Date.now();
+		const segundos = ultimoAvisoADiscord ? (ahora - ultimoAvisoADiscord.momento) / 1000 : 0;
+
+		if (!hayQueAvisar(ultimoAvisoADiscord?.estado ?? null, estado, segundos)) {
+			return;
+		}
+
+		ultimoAvisoADiscord = { estado, momento: ahora };
+		void enviarPresencia(estado);
 	};
 
 	const initProgressListener = async () => {
@@ -650,7 +703,7 @@ export const usePlayerStore = defineStore('player', () => {
 		error.value = '';
 		try {
 			const cached = trackCacheByPath.value[filePath];
-			const track = cached ?? await handleDroppedFile(filePath);
+			const track = cached ?? (await handleDroppedFile(filePath));
 			devLog('[playDropped] Track obtenido:', cached ? '(desde cache)' : track);
 
 			if (!cached) {
@@ -728,6 +781,8 @@ export const usePlayerStore = defineStore('player', () => {
 	const stopPlayback = async () => {
 		try {
 			error.value = '';
+			ultimoAvisoADiscord = null;
+			void limpiarPresencia();
 			await stopPlaybackCommand();
 		} catch (stopError: unknown) {
 			error.value = `No se pudo detener la reproducción: ${String(stopError)}`;

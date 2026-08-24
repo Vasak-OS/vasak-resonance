@@ -14,3 +14,32 @@ Since TypeScript cannot handle type information for `.vue` imports, they are shi
 2. Reload the VS Code window by running `Developer: Reload Window` from the command palette.
 
 You can learn more about Take Over mode [here](https://github.com/johnsoncodehk/volar/discussions/471).
+
+## La presencia en Discord
+
+Resonance puede mostrar en tu perfil de Discord lo que estás escuchando: el
+título, el artista, la barra con lo que falta, y la tapa del disco cuando hay una
+que Discord pueda ver.
+
+Hace falta una aplicación de Discord propia, porque la presencia se asocia a una:
+
+1. Creá una aplicación en <https://discord.com/developers/applications>.
+2. En **Rich Presence → Art Assets**, subí dos imágenes con estos nombres:
+   `vasakos` (el logo del sistema, que se usa cuando no hay tapa) y `pausa` (el
+   icono chico que se superpone con la música detenida).
+3. Poné el identificador de esa aplicación en la configuración:
+
+   ```json
+   { "resonance": { "discord_app_id": "123456789012345678" } }
+   ```
+
+   en `~/.config/vasak/vasak.conf`, o en la variable de entorno
+   `VASAK_DISCORD_APP_ID`, que gana sobre la anterior y sirve para probar.
+
+Sin identificador la función queda apagada y el reproductor no cambia en nada.
+Si Discord no está abierto tampoco pasa nada: se reintenta cada tanto, y el que
+espera es un hilo aparte, nunca la interfaz ni el audio.
+
+**La tapa del disco sale del archivo**, así que Discord no la puede ver: dibuja
+la imagen desde su lado y sólo llega a direcciones web. Mientras las tapas sean
+locales, se muestra el logo del sistema.
