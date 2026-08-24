@@ -17,11 +17,26 @@ import {
 	setPlaybackVolume,
 	stopPlayback as stopPlaybackCommand,
 } from '@/services/player.service';
+import {
+	createQueueEntries,
+	findQueueEntry,
+	moveQueueEntry,
+	type QueueEntry,
+	queuePaths,
+	removeQueueEntry,
+} from '@/stores/playerQueue';
 
 export const usePlayerStore = defineStore('player', () => {
 	const currentTrack = ref<DroppedPlaybackTrack | null>(null);
 	const currentPath = ref<string | null>(null);
-	const queue = ref<string[]>([]);
+	/**
+	 * La cola de verdad. Cada entrada tiene identidad propia para que el menú
+	 * del clic derecho siga apuntando a la canción que se señaló aunque la cola
+	 * avance mientras el menú está abierto.
+	 */
+	const queueEntries = ref<QueueEntry[]>([]);
+	/** Las rutas de la cola, para todo lo que sólo necesita saber qué suena. */
+	const queue = computed(() => queuePaths(queueEntries.value));
 	const history = ref<string[]>([]);
 	const favoritePaths = ref<string[]>([]);
 	const trackCacheByPath = shallowRef<Record<string, DroppedPlaybackTrack>>({});
@@ -290,11 +305,13 @@ export const usePlayerStore = defineStore('player', () => {
 
 			if (!parsed) return;
 
-			queue.value = Array.isArray(parsed.queue)
-				? (parsed.queue.filter(
-						(p: unknown) => typeof p === 'string' && (p as string).length > 0
-					) as string[])
-				: [];
+			queueEntries.value = createQueueEntries(
+				Array.isArray(parsed.queue)
+					? (parsed.queue.filter(
+							(p: unknown) => typeof p === 'string' && (p as string).length > 0
+						) as string[])
+					: []
+			);
 			void ensureMetadataForPaths(queue.value);
 
 			if (typeof parsed.volume === 'number') {
@@ -415,12 +432,16 @@ export const usePlayerStore = defineStore('player', () => {
 			return;
 		}
 
-		const [nextPath, ...rest] = queue.value;
-		if (!nextPath) {
+		// Se saca la primera entrada y las demás siguen siendo las mismas, con su
+		// identificador intacto: si hay un menú abierto sobre alguna, sigue
+		// hablando de esa canción y no de la que le quedó el lugar.
+		const [nextEntry, ...rest] = queueEntries.value;
+		if (!nextEntry) {
 			return;
 		}
 
-		queue.value = rest;
+		const nextPath = nextEntry.path;
+		queueEntries.value = rest;
 		isAdvancingQueue.value = true;
 		try {
 			await playDropped(nextPath);
@@ -733,7 +754,7 @@ export const usePlayerStore = defineStore('player', () => {
 	};
 
 	const clearQueue = () => {
-		queue.value = [];
+		queueEntries.value = [];
 	};
 
 	const isFavoritePath = (path: string) => {
@@ -767,30 +788,22 @@ export const usePlayerStore = defineStore('player', () => {
 		toggleFavoritePath(currentPath.value);
 	};
 
-	const removeQueueItem = (index: number) => {
-		if (index < 0 || index >= queue.value.length) {
-			return;
-		}
-
-		queue.value = queue.value.filter((_, itemIndex) => itemIndex !== index);
+	/**
+	 * Quitar de la cola por identificador y no por posición: entre que se abre
+	 * el menú y se elige «quitar», la canción que termina puede haber corrido
+	 * toda la lista un lugar hacia arriba.
+	 */
+	const removeQueueItem = (id: string) => {
+		queueEntries.value = removeQueueEntry(queueEntries.value, id);
 	};
 
-	const moveQueueItem = (fromIndex: number, toIndex: number) => {
-		if (
-			fromIndex < 0 ||
-			fromIndex >= queue.value.length ||
-			toIndex < 0 ||
-			toIndex >= queue.value.length ||
-			fromIndex === toIndex
-		) {
-			return;
-		}
-
-		const nextQueue = [...queue.value];
-		const [movedItem] = nextQueue.splice(fromIndex, 1);
-		nextQueue.splice(toIndex, 0, movedItem);
-		queue.value = nextQueue;
+	/** Reordenar, también por identificador y por el mismo motivo. */
+	const moveQueueItem = (fromId: string, toId: string) => {
+		queueEntries.value = moveQueueEntry(queueEntries.value, fromId, toId);
 	};
+
+	/** La entrada señalada, o nada si ya no está en la cola. */
+	const getQueueEntry = (id: string) => findQueueEntry(queueEntries.value, id);
 
 	const handleDroppedPaths = async (paths: string[]) => {
 		devLog('[handleDroppedPaths] Paths recibidos:', paths);
@@ -804,7 +817,7 @@ export const usePlayerStore = defineStore('player', () => {
 			return;
 		}
 
-		queue.value = rest;
+		queueEntries.value = createQueueEntries(rest);
 		void ensureMetadataForPaths(normalized);
 		devLog('[handleDroppedPaths] Llamando playDropped con:', firstPath);
 		await playDropped(firstPath);
@@ -904,7 +917,7 @@ export const usePlayerStore = defineStore('player', () => {
 			return;
 		}
 
-		queue.value = [...queue.value, ...nextItems];
+		queueEntries.value = [...queueEntries.value, ...createQueueEntries(nextItems)];
 		void ensureMetadataForPaths(nextItems);
 	};
 
@@ -917,8 +930,10 @@ export const usePlayerStore = defineStore('player', () => {
 			return;
 		}
 
-		const existingAfterAlbum = queue.value.filter((path) => !restPaths.includes(path));
-		queue.value = [...restPaths, ...existingAfterAlbum];
+		const existingAfterAlbum = queueEntries.value.filter(
+			(entry) => !restPaths.includes(entry.path)
+		);
+		queueEntries.value = [...createQueueEntries(restPaths), ...existingAfterAlbum];
 		void ensureMetadataForPaths(normalized);
 		await playDropped(firstPath);
 	};
@@ -1000,7 +1015,9 @@ export const usePlayerStore = defineStore('player', () => {
 		isFavoritePath,
 		isScanning,
 		queue,
+		queueEntries,
 		queuedCount,
+		getQueueEntry,
 		nextActionLabel,
 		nextSuggestionPath,
 		trackCacheList,

@@ -2,9 +2,11 @@
 import { computed, onMounted, ref } from 'vue';
 import LabeledField from '@/components/layout/LabeledField.vue';
 import { useReactiveIcon } from '@/composables/useReactiveIcon';
+import { useTrackContextMenu } from '@/composables/useTrackContextMenu';
 import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
+const { onTrackContextMenu } = useTrackContextMenu();
 const playIcon = useReactiveIcon('media-playback-start');
 const addFavoriteIcon = useReactiveIcon('new-star');
 const removeIcon = useReactiveIcon('remove');
@@ -130,10 +132,11 @@ onMounted(async () => {
 			Aun no tienes canciones en favoritos.
 		</div>
 
-		<ul v-else class="grid gap-2">
+		<ul v-else class="grid gap-2" @contextmenu="onTrackContextMenu">
 			<li
 				v-for="entry in filteredFavoriteEntries"
 				:key="entry.path"
+				:data-track-path="entry.path"
 				class="flex items-center gap-3 rounded-corner border border-ui-border bg-ui-bg/70 px-3 py-2"
 			>
 				<div class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-corner border border-ui-border bg-ui-surface/45">

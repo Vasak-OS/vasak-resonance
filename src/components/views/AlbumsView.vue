@@ -2,10 +2,12 @@
 import { computed, onMounted, type Ref, ref } from 'vue';
 import LabeledField from '@/components/layout/LabeledField.vue';
 import { useReactiveIcon } from '@/composables/useReactiveIcon';
+import { useTrackContextMenu } from '@/composables/useTrackContextMenu';
 import { fetchAlbumCover } from '@/services/album-cover.service';
 import { usePlayerStore } from '@/stores/player';
 
 const playerStore = usePlayerStore();
+const { onTrackContextMenu } = useTrackContextMenu();
 const playIcon = useReactiveIcon('media-playback-start');
 const addAlbumIcon = useReactiveIcon('media-track-add-amarok');
 const searchQuery = ref('');
@@ -211,7 +213,9 @@ const onPlayAlbum = async (paths: string[]) => {
 			No hay albumes en cache todavia. Reproduce o marca canciones como favoritas para construir la biblioteca.
 		</div>
 
-		<div v-else class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+		<!-- Un solo menú para toda la cuadrícula; cada canción de la vista previa
+		     dice cuál es la suya con `data-track-path`. -->
+		<div v-else class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" @contextmenu="onTrackContextMenu">
 			<article
 				v-for="album in filteredAlbums"
 				:key="album.key"
@@ -254,6 +258,7 @@ const onPlayAlbum = async (paths: string[]) => {
 					<li
 						v-for="track in album.tracksPreview"
 						:key="track.path"
+						:data-track-path="track.path"
 						class="flex min-w-0 items-center gap-2 rounded-corner border border-transparent px-2 py-1 hover:border-ui-border hover:bg-ui-surface/45"
 					>
 						<p class="min-w-0 flex-1 truncate text-xs text-tx-muted">

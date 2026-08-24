@@ -1,0 +1,18 @@
+_version: 1
+contextMenu:
+  play: Reproducir
+  playNow: Reproducir ahora
+  addToQueue: Agregar a la cola
+  addedToQueue: Agregada a la cola
+  alreadyInQueue: Ya estaba en la cola
+  removeFromQueue: Quitar de la cola
+  clearQueue: Vaciar la cola
+  addToFavorites: Agregar a favoritos
+  removeFromFavorites: Quitar de favoritos
+  showInFileManager: Mostrar en el gestor de archivos
+  couldNotShowInFileManager: No se pudo abrir la carpeta de la canción
+  songFileMissing: La canción ya no está en el disco
+  copy: Copiar
+  cut: Cortar
+  paste: Pegar
+  selectAll: Seleccionar todo
