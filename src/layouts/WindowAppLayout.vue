@@ -1,4 +1,5 @@
 <script lang="ts" setup>
+import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { onMounted, onUnmounted } from 'vue';
 import { RouterView } from 'vue-router';
 import AppWindowShell from '@/components/layout/AppWindowShell.vue';
@@ -11,6 +12,7 @@ import { useAudioDrop } from '@/composables/useAudioDrop';
 import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import { usePlayerStore } from '@/stores/player';
 
+const { t } = useI18n();
 const playerStore = usePlayerStore();
 const appIcon = useReactiveIcon('music-app', 'icon');
 
@@ -36,7 +38,7 @@ onUnmounted(() => {
 <template>
 	<AppWindowShell>
 		<TopBarComponent>
-			<div><img :src="appIcon" class="w-8 h-8" alt="Icono de la aplicación"></div>
+			<div><img :src="appIcon" class="w-8 h-8" :alt="t('window.appIconAlt')"></div>
 			<div class="text-lg font-semibold">Resonance</div>
 			<div></div>
 		</TopBarComponent>

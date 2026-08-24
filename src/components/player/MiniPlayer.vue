@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import PlaybackWaves from '@/components/player/PlaybackWaves.vue';
 import PlayerBackground from '@/components/player/PlayerBackground.vue';
@@ -11,6 +12,7 @@ import { extractDominantColorFromDataUrl, fetchAlbumCover } from '@/services/alb
 import { toggleMainAndMiniPlayer } from '@/services/window.service';
 import { usePlayerStore } from '@/stores/player';
 
+const { t } = useI18n();
 const playerStore = usePlayerStore();
 const fetchedCoverUrl = ref<string>('');
 
@@ -121,8 +123,8 @@ onUnmounted(() => {
 					:is-playing="playerStore.isPlaying"
 					:is-paused="playerStore.isPaused"
 					:busy="playerStore.busy"
-					next-label="Next"
-					open-label="Volver"
+					:next-label="t('transport.next')"
+					:open-label="t('miniPlayer.backToWindow')"
 					@toggle="togglePlayback"
 					@next="playerStore.advanceQueue"
 					@open="openMainWindow"

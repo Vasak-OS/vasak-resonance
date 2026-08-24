@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { computed, ref, watch } from 'vue';
 import { fetchLyrics, type LyricsLine, type TrackLyricsPayload } from '@/services/player.service';
 import { usePlayerStore } from '@/stores/player';
 
+const { t } = useI18n();
 const playerStore = usePlayerStore();
 
 const loading = ref(false);
@@ -64,7 +66,7 @@ const loadLyricsForCurrentTrack = async () => {
 		lyrics.value = null;
 		plainLines.value = [];
 		console.error('[LyricsView] fetchLyrics error:', lyricsError);
-		error.value = `No se pudo cargar la letra: ${String(lyricsError)}`;
+		error.value = t('lyrics.loadError').replace('{0}', String(lyricsError));
 	} finally {
 		loading.value = false;
 	}
@@ -82,13 +84,13 @@ watch(
 <template>
 	<section class="rounded-corner border border-primary/20 bg-ui-surface/40 px-3 py-2">
 		<div class="mb-1 flex items-center justify-between gap-2">
-			<p class="text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">Lyrics</p>
-			<p v-if="loading" class="text-[10px] text-tx-muted">Buscando...</p>
+			<p class="text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">{{ t('lyrics.title') }}</p>
+			<p v-if="loading" class="text-[10px] text-tx-muted">{{ t('lyrics.searching') }}</p>
 		</div>
 
 		<div class="max-h-36 overflow-y-auto pr-1 text-sm leading-relaxed">
 			<p v-if="error" class="text-xs text-tx-muted">{{ error }}</p>
-			<p v-else-if="!lyrics && !loading" class="text-xs text-tx-muted">Sin letra disponible.</p>
+			<p v-else-if="!lyrics && !loading" class="text-xs text-tx-muted">{{ t('lyrics.unavailable') }}</p>
 
 			<template v-else-if="isSynced">
 				<Transition name="lyrics-line" mode="out-in">
@@ -100,7 +102,7 @@ watch(
 						{{ syncedLines[currentLineIndex]?.text || '...' }}
 					</p>
 					<p v-else :key="-1" class="text-center text-tx-muted text-xs">
-						Esperando sincronización...
+						{{ t('lyrics.waitingSync') }}
 					</p>
 				</Transition>
 			</template>

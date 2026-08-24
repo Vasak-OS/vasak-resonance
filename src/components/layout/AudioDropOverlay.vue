@@ -1,8 +1,12 @@
 <script setup lang="ts">
+import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
+
 defineProps<{
 	isActive: boolean;
 	message?: string;
 }>();
+
+const { t } = useI18n();
 </script>
 
 <template>
@@ -17,7 +21,7 @@ defineProps<{
 			class="pointer-events-none absolute inset-3 z-20 flex items-center justify-center rounded-corner border-2 border-dashed border-primary/60 bg-primary/10"
 		>
 			<p class="px-4 text-center text-sm font-medium tracking-wide text-tx-main sm:text-base">
-				{{ message || 'Suelta un archivo de audio para reproducir' }}
+				{{ message || t('audioDrop.hint') }}
 			</p>
 		</div>
 	</Transition>

@@ -1,4 +1,32 @@
 _version: 1
+albums:
+  eyebrow: Álbumes
+  title: Biblioteca por álbum
+  searchPlaceholder: Álbum, artista o pista
+  empty: Todavía no hay álbumes en el cache. Reproducí o marcá canciones como favoritas para armar la biblioteca.
+  trackCountOne: "{0} pista"
+  trackCountOther: "{0} pistas"
+  playAlbum: Reproducir álbum
+  queueAlbum: Encolar álbum
+  playingAlbum: "Reproduciendo álbum: {0}"
+  queuedAlbum: "Álbum encolado: {0}"
+audioDrop:
+  hint: Soltá un archivo de audio para reproducirlo
+common:
+  play: Reproducir
+  remove: Quitar
+  search: Buscar
+  artist: Artista
+  album: Álbum
+  sortBy: Ordenar
+  all: Todos
+  favorite: Favorito
+  addFavorite: Agregar a favoritos
+  removeFavorite: Quitar de favoritos
+  noCover: Sin portada
+  unknownArtist: Artista desconocido
+  unknownAlbum: Álbum desconocido
+  unknownTrack: Pista desconocida
 contextMenu:
   play: Reproducir
   playNow: Reproducir ahora
@@ -16,3 +44,114 @@ contextMenu:
   cut: Cortar
   paste: Pegar
   selectAll: Seleccionar todo
+favorites:
+  eyebrow: Favoritos
+  title: Tus canciones guardadas
+  empty: Todavía no tenés canciones en favoritos.
+  coverPlaceholder: Fav
+  saveCurrent: Guardar actual
+  removeCurrent: Quitar actual
+  current: "Actual: {0}"
+  addedBadge: "Añadida a favoritos: {0}"
+  removedBadge: "Quitada de favoritos: {0}"
+home:
+  eyebrow: Biblioteca
+  title: Todas las canciones de la base de datos
+  visibleCount: "{0} pistas visibles de {1} totales"
+  searchPlaceholder: Título, artista, álbum o ruta
+  shuffle: Aleatorio
+  shuffleHint: Reproducir al azar respetando los filtros aplicados
+  loading: Cargando la biblioteca...
+  noResults: No hay resultados con esos filtros.
+  nothingToPlay: No hay canciones para reproducir
+  libraryLoadError: "No se pudo cargar la biblioteca: {0}"
+lyrics:
+  title: Letra
+  searching: Buscando...
+  unavailable: No hay letra disponible.
+  waitingSync: Esperando la sincronización...
+  loadError: "No se pudo cargar la letra: {0}"
+miniPlayer:
+  backToWindow: Volver
+player:
+  noTrack: Sin reproducción
+  playError: "No se pudo reproducir el archivo: {0}"
+  dropError: "No se pudo cargar el archivo arrastrado: {0}"
+  pauseError: "No se pudo pausar: {0}"
+  resumeError: "No se pudo reanudar: {0}"
+  seekError: "No se pudo mover la reproducción: {0}"
+  volumeError: "No se pudo ajustar el volumen: {0}"
+  stopError: "No se pudo detener la reproducción: {0}"
+playlists:
+  eyebrow: Listas
+  title: Tus listas de reproducción
+  namePlaceholder: Nombre de la lista
+  create: Crear
+  empty: Todavía no tenés ninguna lista. Creá una para guardar canciones y volver a escucharlas cuando quieras.
+  deleteList: Eliminar lista
+  trackSummary: "{0} canciones · {1}"
+  enqueue: Agregar a la cola
+  emptyList: Esta lista está vacía. Agregá canciones desde tu biblioteca, abajo.
+  removeFromList: Quitar de la lista
+  addFromLibrary: Agregar de tu biblioteca
+  addSearchPlaceholder: Buscar por título, artista o álbum
+  libraryEmpty: Tu biblioteca está vacía. Escaneá tu carpeta de música primero.
+  noMatches: No hay canciones que coincidan.
+queue:
+  eyebrow: Cola
+  subtitle: Próximos temas
+  heading: Cola de reproducción
+  clear: Limpiar la cola
+  dragToReorder: Arrastrá para reordenar
+  nextUp: Siguiente
+radios:
+  title: Radios
+  searchPlaceholder: Buscar emisoras...
+  loading: Cargando emisoras...
+  empty: No se encontraron emisoras
+  retry: Reintentar
+  retrying: Reintentando...
+  unknownCountry: País desconocido
+  stationIconAlt: Radio
+  loadError: "No se pudieron cargar las emisoras: {0}"
+  usingCache: "Se muestran las emisoras de la última carga. Error: {0}"
+  playError: "No se pudo reproducir la emisora: {0}"
+scanning:
+  title: Indexando la biblioteca musical...
+  subtitle: Esperá un momento...
+sidebar:
+  sectionTitle: Navegación
+  library: Biblioteca
+  home: Inicio
+  albums: Álbumes
+  favorites: Favoritos
+  playlists: Listas
+  radios: Radios
+sort:
+  recent: Recientes primero
+  titleAsc: Título A-Z
+  titleDesc: Título Z-A
+  artistAsc: Artista A-Z
+  artistDesc: Artista Z-A
+  albumAsc: Álbum A-Z
+  albumDesc: Álbum Z-A
+  durationShort: Duración corta
+  durationLong: Duración larga
+  mostTracks: Más pistas
+  fewestTracks: Menos pistas
+transport:
+  play: Reproducir
+  pause: Pausar
+  previous: Anterior
+  next: Siguiente
+  suggested: Sugerida
+  open: Abrir
+volume:
+  label: Volumen
+window:
+  appIconAlt: Icono de la aplicación
+windowControls:
+  miniPlayer: Mini reproductor
+  minimize: Minimizar
+  maximize: Maximizar
+  close: Cerrar

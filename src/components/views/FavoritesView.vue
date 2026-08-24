@@ -1,10 +1,14 @@
 <script setup lang="ts">
+import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { computed, onMounted, ref } from 'vue';
 import LabeledField from '@/components/layout/LabeledField.vue';
+import { useMetadataLabels } from '@/composables/useMetadataLabels';
 import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import { useTrackContextMenu } from '@/composables/useTrackContextMenu';
 import { usePlayerStore } from '@/stores/player';
 
+const { t } = useI18n();
+const { artistLabel, albumLabel } = useMetadataLabels();
 const playerStore = usePlayerStore();
 const { onTrackContextMenu } = useTrackContextMenu();
 const playIcon = useReactiveIcon('media-playback-start');
@@ -81,55 +85,55 @@ onMounted(async () => {
 	<section class="h-full overflow-y-auto p-4">
 		<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
 			<div>
-				<p class="text-xs uppercase tracking-[0.16em] text-tx-muted">Favoritos</p>
-				<h2 class="text-lg font-semibold text-tx-main">Tus canciones guardadas</h2>
+				<p class="text-xs uppercase tracking-[0.16em] text-tx-muted">{{ t('favorites.eyebrow') }}</p>
+				<h2 class="text-lg font-semibold text-tx-main">{{ t('favorites.title') }}</h2>
 			</div>
 			<button
 				type="button"
 				class="inline-flex items-center gap-1 rounded-corner border border-primary/45 bg-primary px-3 py-2 text-xs font-semibold text-tx-on-primary transition-colors duration-200 hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
 				:disabled="!playerStore.hasTrack"
-				:title="playerStore.isCurrentFavorite ? 'Quitar actual' : 'Agregar a favorito'"
-				:aria-label="playerStore.isCurrentFavorite ? 'Quitar actual' : 'Agregar a favorito'"
+				:title="playerStore.isCurrentFavorite ? t('favorites.removeCurrent') : t('common.addFavorite')"
+				:aria-label="playerStore.isCurrentFavorite ? t('favorites.removeCurrent') : t('common.addFavorite')"
 				@click="playerStore.toggleCurrentFavorite"
 			>
 				<img
 					v-if="playerStore.isCurrentFavorite ? removeIcon : addFavoriteIcon"
 					:src="playerStore.isCurrentFavorite ? removeIcon : addFavoriteIcon"
-					:alt="playerStore.isCurrentFavorite ? 'Quitar actual' : 'Agregar a favorito'"
+					:alt="playerStore.isCurrentFavorite ? t('favorites.removeCurrent') : t('common.addFavorite')"
 					class="h-4 w-4"
 				>
-				{{ playerStore.isCurrentFavorite ? 'Quitar actual' : 'Guardar actual' }}
+				{{ playerStore.isCurrentFavorite ? t('favorites.removeCurrent') : t('favorites.saveCurrent') }}
 			</button>
 		</div>
 
 		<div class="mb-4 grid gap-3 lg:grid-cols-[1.4fr_0.8fr_0.8fr]">
-			<LabeledField label="Buscar">
+			<LabeledField :label="t('common.search')">
 				<input
 					v-model="searchQuery"
 					type="search"
-					placeholder="Título, artista, album o ruta"
+					:placeholder="t('home.searchPlaceholder')"
 					class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 placeholder:text-tx-muted/70 focus:border-primary/50"
 				/>
 			</LabeledField>
 
-			<LabeledField label="Artista">
+			<LabeledField :label="t('common.artist')">
 				<select v-model="artistFilter" class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
-					<option value="all">Todos</option>
-					<option v-for="artist in favoriteArtistOptions" :key="artist" :value="artist">{{ artist }}</option>
+					<option value="all">{{ t('common.all') }}</option>
+					<option v-for="artist in favoriteArtistOptions" :key="artist" :value="artist">{{ artistLabel(artist) }}</option>
 				</select>
 			</LabeledField>
 
-			<LabeledField label="Ordenar">
+			<LabeledField :label="t('common.sortBy')">
 				<select v-model="sortBy" class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
-					<option value="recent">Recientes</option>
-					<option value="title-asc">Título A-Z</option>
-					<option value="artist-asc">Artista A-Z</option>
+					<option value="recent">{{ t('sort.recent') }}</option>
+					<option value="title-asc">{{ t('sort.titleAsc') }}</option>
+					<option value="artist-asc">{{ t('sort.artistAsc') }}</option>
 				</select>
 			</LabeledField>
 		</div>
 
 		<div v-if="filteredFavoriteEntries.length === 0" class="rounded-corner border border-dashed border-ui-border bg-ui-surface/35 p-4 text-sm text-tx-muted">
-			Aun no tienes canciones en favoritos.
+			{{ t('favorites.empty') }}
 		</div>
 
 		<ul v-else class="grid gap-2" @contextmenu="onTrackContextMenu">
@@ -146,7 +150,7 @@ onMounted(async () => {
 						:alt="entry.metadata.title || extractTrackName(entry.path)"
 						class="h-full w-full object-cover"
 					/>
-					<div v-else class="text-[10px] font-semibold uppercase tracking-[0.14em] text-tx-muted">Fav</div>
+					<div v-else class="text-[10px] font-semibold uppercase tracking-[0.14em] text-tx-muted">{{ t('favorites.coverPlaceholder') }}</div>
 				</div>
 
 				<div class="min-w-0 flex-1">
@@ -154,35 +158,35 @@ onMounted(async () => {
 						{{ entry.metadata?.title || extractTrackName(entry.path) }}
 					</p>
 					<p class="truncate text-xs text-tx-muted">
-						{{ entry.metadata?.artist || 'Unknown Artist' }} • {{ entry.metadata?.album || 'Unknown Album' }}
+						{{ artistLabel(entry.metadata?.artist) }} • {{ albumLabel(entry.metadata?.album) }}
 					</p>
 					<p class="truncate text-[11px] text-tx-muted/80">{{ entry.path }}</p>
 				</div>
 				<button
 					type="button"
 					class="inline-flex items-center gap-1 rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-1.5 text-xs font-medium text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
-					title="Reproducir"
-					aria-label="Reproducir"
+					:title="t('common.play')"
+					:aria-label="t('common.play')"
 					@click="playerStore.playDropped(entry.path)"
 				>
-					<img v-if="playIcon" :src="playIcon" alt="Reproducir" class="h-4 w-4">
-					Reproducir
+					<img v-if="playIcon" :src="playIcon" :alt="t('common.play')" class="h-4 w-4">
+					{{ t('common.play') }}
 				</button>
 				<button
 					type="button"
 					class="inline-flex items-center gap-1 rounded-corner border border-status-error/35 bg-status-error/10 px-3 py-1.5 text-xs font-medium text-status-error transition-colors duration-200 hover:bg-status-error/20"
-					title="Quitar"
-					aria-label="Quitar"
+					:title="t('common.remove')"
+					:aria-label="t('common.remove')"
 					@click="playerStore.toggleFavoritePath(entry.path)"
 				>
-					<img v-if="removeIcon" :src="removeIcon" alt="Quitar" class="h-4 w-4">
-					Quitar
+					<img v-if="removeIcon" :src="removeIcon" :alt="t('common.remove')" class="h-4 w-4">
+					{{ t('common.remove') }}
 				</button>
 			</li>
 		</ul>
 
 		<p v-if="currentPath" class="mt-3 text-xs text-tx-muted">
-			Actual: {{ extractTrackName(currentPath) }}
+			{{ t('favorites.current').replace('{0}', extractTrackName(currentPath)) }}
 		</p>
 	</section>
 </template>

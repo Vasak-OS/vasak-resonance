@@ -117,18 +117,18 @@ const onQueueDrop = (targetId: string) => {
 	<section class="rounded-corner border border-ui-border bg-ui-bg/80 p-4">
 		<div class="flex items-center justify-between gap-3 pb-3">
 			<div>
-				<p class="text-xs uppercase tracking-[0.18em] text-tx-muted">Cola</p>
-				<p class="text-sm font-medium text-tx-main">Próximos temas</p>
+				<p class="text-xs uppercase tracking-[0.18em] text-tx-muted">{{ t('queue.eyebrow') }}</p>
+				<p class="text-sm font-medium text-tx-main">{{ t('queue.subtitle') }}</p>
 			</div>
 			<button
 				type="button"
 				class="inline-flex items-center gap-1 rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-1.5 text-xs font-medium text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
-				title="Limpiar cola"
-				aria-label="Limpiar cola"
+				:title="t('queue.clear')"
+				:aria-label="t('queue.clear')"
 				@click="emit('clear')"
 			>
-				<img v-if="clearAllIcon" :src="clearAllIcon" alt="Limpiar cola" class="h-4 w-4">
-				Limpiar cola
+				<img v-if="clearAllIcon" :src="clearAllIcon" :alt="t('queue.clear')" class="h-4 w-4">
+				{{ t('queue.clear') }}
 			</button>
 		</div>
 
@@ -165,13 +165,13 @@ const onQueueDrop = (targetId: string) => {
 				<span class="w-6 shrink-0 text-right text-xs font-semibold text-tx-muted">{{ index + 1 }}</span>
 				<span
 					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-corner border border-ui-border bg-ui-bg/70 text-xs font-bold tracking-[0.2em] text-primary transition-colors duration-200 group-hover:bg-primary/10 group-hover:text-tx-main"
-					title="Arrastra para reordenar"
-					aria-label="Arrastrar para reordenar"
+					:title="t('queue.dragToReorder')"
+					:aria-label="t('queue.dragToReorder')"
 				>
 					⋮⋮
 				</span>
 				<div class="min-w-0 flex-1">
-					<p v-if="index === 0" class="text-[11px] uppercase tracking-[0.2em] text-primary">Siguiente</p>
+					<p v-if="index === 0" class="text-[11px] uppercase tracking-[0.2em] text-primary">{{ t('queue.nextUp') }}</p>
 					<p class="truncate text-sm text-tx-main">{{ extractTrackName(entry.path) }}</p>
 				</div>
 				<button
@@ -179,7 +179,7 @@ const onQueueDrop = (targetId: string) => {
 					class="rounded-corner border border-transparent bg-ui-bg/35 px-2.5 py-1 text-xs font-medium text-tx-muted transition-colors duration-200 hover:border-primary/30 hover:bg-primary/10 hover:text-tx-main"
 					@click="emit('remove', entry.id)"
 				>
-					Quitar
+					{{ t('common.remove') }}
 				</button>
 			</li>
 		</TransitionGroup>

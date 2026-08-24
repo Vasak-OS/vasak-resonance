@@ -1,11 +1,15 @@
 <script setup lang="ts">
+import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { computed, onMounted, type Ref, ref } from 'vue';
 import LabeledField from '@/components/layout/LabeledField.vue';
+import { useMetadataLabels } from '@/composables/useMetadataLabels';
 import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import { useTrackContextMenu } from '@/composables/useTrackContextMenu';
 import { fetchAlbumCover } from '@/services/album-cover.service';
 import { usePlayerStore } from '@/stores/player';
 
+const { t } = useI18n();
+const { artistLabel, albumLabel } = useMetadataLabels();
 const playerStore = usePlayerStore();
 const { onTrackContextMenu } = useTrackContextMenu();
 const playIcon = useReactiveIcon('media-playback-start');
@@ -60,7 +64,7 @@ const groupedAlbums = computed(() => {
 
 		group.tracks.push({
 			path: track.path,
-			title: track.title || 'Unknown track',
+			title: track.title || t('common.unknownTrack'),
 			artist: track.artist || 'Unknown Artist',
 		});
 	}
@@ -156,8 +160,9 @@ const onQueueAlbum = (paths: string[]) => {
 	const [firstPath] = paths;
 	if (firstPath) {
 		const metadata = playerStore.getTrackMetadata(firstPath);
-		const albumName = metadata?.album || 'Unknown Album';
-		playerStore.showGlobalBadge(`Encolado album: ${albumName}`);
+		playerStore.showGlobalBadge(
+			t('albums.queuedAlbum').replace('{0}', albumLabel(metadata?.album))
+		);
 	}
 
 	playerStore.enqueuePaths(paths);
@@ -167,8 +172,9 @@ const onPlayAlbum = async (paths: string[]) => {
 	const [firstPath] = paths;
 	if (firstPath) {
 		const metadata = playerStore.getTrackMetadata(firstPath);
-		const albumName = metadata?.album || 'Unknown Album';
-		playerStore.showGlobalBadge(`Reproduciendo album: ${albumName}`);
+		playerStore.showGlobalBadge(
+			t('albums.playingAlbum').replace('{0}', albumLabel(metadata?.album))
+		);
 	}
 
 	await playerStore.playAlbum(paths);
@@ -178,39 +184,39 @@ const onPlayAlbum = async (paths: string[]) => {
 <template>
 	<section class="h-full overflow-y-auto p-4">
 		<div class="mb-4">
-			<p class="text-xs uppercase tracking-[0.16em] text-tx-muted">Albums</p>
-			<h2 class="text-lg font-semibold text-tx-main">Biblioteca por album</h2>
+			<p class="text-xs uppercase tracking-[0.16em] text-tx-muted">{{ t('albums.eyebrow') }}</p>
+			<h2 class="text-lg font-semibold text-tx-main">{{ t('albums.title') }}</h2>
 		</div>
 
 		<div class="mb-4 grid gap-3 lg:grid-cols-[1.4fr_0.8fr_0.8fr]">
-			<LabeledField label="Buscar">
+			<LabeledField :label="t('common.search')">
 				<input
 					v-model="searchQuery"
 					type="search"
-					placeholder="Album, artista o pista"
+					:placeholder="t('albums.searchPlaceholder')"
 					class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 placeholder:text-tx-muted/70 focus:border-primary/50"
 				/>
 			</LabeledField>
 
-			<LabeledField label="Artista">
+			<LabeledField :label="t('common.artist')">
 				<select v-model="artistFilter" class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
-					<option value="all">Todos</option>
-					<option v-for="artist in albumArtistOptions" :key="artist" :value="artist">{{ artist }}</option>
+					<option value="all">{{ t('common.all') }}</option>
+					<option v-for="artist in albumArtistOptions" :key="artist" :value="artist">{{ artistLabel(artist) }}</option>
 				</select>
 			</LabeledField>
 
-			<LabeledField label="Ordenar">
+			<LabeledField :label="t('common.sortBy')">
 				<select v-model="sortBy" class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
-					<option value="album-asc">Album A-Z</option>
-					<option value="album-desc">Album Z-A</option>
-					<option value="tracks-desc">Mas pistas</option>
-					<option value="tracks-asc">Menos pistas</option>
+					<option value="album-asc">{{ t('sort.albumAsc') }}</option>
+					<option value="album-desc">{{ t('sort.albumDesc') }}</option>
+					<option value="tracks-desc">{{ t('sort.mostTracks') }}</option>
+					<option value="tracks-asc">{{ t('sort.fewestTracks') }}</option>
 				</select>
 			</LabeledField>
 		</div>
 
 		<div v-if="filteredAlbums.length === 0" class="rounded-corner border border-dashed border-ui-border bg-ui-surface/35 p-4 text-sm text-tx-muted">
-			No hay albumes en cache todavia. Reproduce o marca canciones como favoritas para construir la biblioteca.
+			{{ t('albums.empty') }}
 		</div>
 
 		<!-- Un solo menú para toda la cuadrícula; cada canción de la vista previa
@@ -222,35 +228,36 @@ const onPlayAlbum = async (paths: string[]) => {
 				class="rounded-corner border border-ui-border bg-ui-bg/80 p-4"
 			>
 				<div class="mb-3 flex h-44 items-center justify-center overflow-hidden rounded-corner border border-ui-border bg-ui-surface/45">
-					<img v-if="getCoverUrl(album)" :src="getCoverUrl(album)" :alt="album.album" class="h-full w-full object-cover" />
-					<div v-else class="text-sm font-semibold uppercase tracking-[0.16em] text-tx-muted">No Cover</div>
+					<img v-if="getCoverUrl(album)" :src="getCoverUrl(album)" :alt="albumLabel(album.album)" class="h-full w-full object-cover" />
+					<div v-else class="text-sm font-semibold uppercase tracking-[0.16em] text-tx-muted">{{ t('common.noCover') }}</div>
 				</div>
-				<p class="truncate text-base font-semibold text-tx-main">{{ album.album }}</p>
-				<p class="truncate text-sm text-tx-muted">{{ album.artist }}</p>
+				<p class="truncate text-base font-semibold text-tx-main">{{ albumLabel(album.album) }}</p>
+				<p class="truncate text-sm text-tx-muted">{{ artistLabel(album.artist) }}</p>
 				<p class="mt-2 text-xs uppercase tracking-[0.12em] text-primary">
-					{{ album.tracks.length }} {{ album.tracks.length === 1 ? 'pista' : 'pistas' }}
+					{{ t(album.tracks.length === 1 ? 'albums.trackCountOne' : 'albums.trackCountOther')
+						.replace('{0}', String(album.tracks.length)) }}
 				</p>
 
 				<div class="mt-3 grid grid-cols-2 gap-2">
 					<button
 						type="button"
 						class="inline-flex w-full items-center justify-center gap-1 rounded-corner border border-primary/45 bg-primary px-3 py-2 text-xs font-semibold text-tx-on-primary transition-colors duration-200 hover:bg-primary/90"
-						title="Reproducir album"
-						aria-label="Reproducir album"
+						:title="t('albums.playAlbum')"
+						:aria-label="t('albums.playAlbum')"
 						@click="onPlayAlbum(album.tracks.map((track) => track.path))"
 					>
-						<img v-if="playIcon" :src="playIcon" alt="Reproducir" class="h-4 w-4">
-						Reproducir album
+						<img v-if="playIcon" :src="playIcon" :alt="t('common.play')" class="h-4 w-4">
+						{{ t('albums.playAlbum') }}
 					</button>
 					<button
 						type="button"
 						class="inline-flex w-full items-center justify-center gap-1 rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-xs font-semibold text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
-						title="Agregar album"
-						aria-label="Agregar album"
+						:title="t('albums.queueAlbum')"
+						:aria-label="t('albums.queueAlbum')"
 						@click="onQueueAlbum(album.tracks.map((track) => track.path))"
 					>
-						<img v-if="addAlbumIcon" :src="addAlbumIcon" alt="Agregar album" class="h-4 w-4">
-						Encolar album
+						<img v-if="addAlbumIcon" :src="addAlbumIcon" :alt="t('albums.queueAlbum')" class="h-4 w-4">
+						{{ t('albums.queueAlbum') }}
 					</button>
 				</div>
 
@@ -267,12 +274,12 @@ const onPlayAlbum = async (paths: string[]) => {
 						<button
 							type="button"
 							class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-corner border border-primary/45 bg-primary/10 text-[11px] font-medium text-primary transition-colors duration-200 hover:bg-primary/20"
-							title="Reproducir"
-							aria-label="Reproducir"
+							:title="t('common.play')"
+							:aria-label="t('common.play')"
 							@click="onPlayTrack(track.path)"
 						>
-							<img v-if="playIcon" :src="playIcon" alt="Reproducir" class="h-3.5 w-3.5">
-							<span class="sr-only">Reproducir</span>
+							<img v-if="playIcon" :src="playIcon" :alt="t('common.play')" class="h-3.5 w-3.5">
+							<span class="sr-only">{{ t('common.play') }}</span>
 						</button>
 					</li>
 				</ul>
