@@ -57,7 +57,14 @@ export const moveQueueEntry = (
 
 	const next = [...entries];
 	const [moved] = next.splice(fromIndex, 1);
-	next.splice(toIndex, 0, moved);
+
+	// Sacar la entrada corre un lugar hacia la izquierda a todo lo que estaba
+	// después, así que para moverla hacia adelante el destino ya no es el mismo
+	// número: sin esto, soltar la primera sobre la tercera la dejaba **después**
+	// de la tercera en vez de en su lugar.
+	const destino = fromIndex < toIndex ? toIndex - 1 : toIndex;
+
+	next.splice(destino, 0, moved);
 	return next;
 };
 

@@ -90,6 +90,24 @@ describe('la cola de reproducción', () => {
 		expect(queuePaths(reordenada)).toEqual(['/musica/d.mp3', '/musica/b.mp3', '/musica/c.mp3']);
 	});
 
+	test('mover hacia adelante deja la entrada en el lugar de la de destino', () => {
+		// Sacarla corre un lugar a todo lo que estaba después: sin compensarlo,
+		// soltar la primera sobre la tercera la dejaba después de la tercera.
+		const entries = createQueueEntries(['/musica/a.mp3', '/musica/b.mp3', '/musica/c.mp3']);
+
+		const reordenada = moveQueueEntry(entries, entries[0].id, entries[2].id);
+
+		expect(queuePaths(reordenada)).toEqual(['/musica/b.mp3', '/musica/a.mp3', '/musica/c.mp3']);
+	});
+
+	test('mover hacia atrás también deja la entrada en el lugar de la de destino', () => {
+		const entries = createQueueEntries(['/musica/a.mp3', '/musica/b.mp3', '/musica/c.mp3']);
+
+		const reordenada = moveQueueEntry(entries, entries[2].id, entries[0].id);
+
+		expect(queuePaths(reordenada)).toEqual(['/musica/c.mp3', '/musica/a.mp3', '/musica/b.mp3']);
+	});
+
 	test('reordenar con entradas que ya no están deja la cola como estaba', () => {
 		const entries = createQueueEntries(['/musica/a.mp3', '/musica/b.mp3']);
 
