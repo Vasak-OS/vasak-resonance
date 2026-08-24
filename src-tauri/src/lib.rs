@@ -2,6 +2,7 @@ mod audio;
 mod audio_manager;
 mod commands;
 mod db;
+mod discord;
 #[cfg(target_os = "linux")]
 mod layer_shell;
 mod lyrics;
@@ -123,6 +124,11 @@ pub fn run() {
             remote_control::start_remote_control_service(app.handle().clone(), audio_state.clone());
                 app.manage(audio_state.clone());
 
+                // La presencia en Discord: el hilo arranca acá y se queda
+                // esperando. Si no hay identificador configurado no arranca
+                // nada y la aplicación no se entera.
+                app.manage(discord::DiscordPresence::iniciar());
+
                 let maybe_args: Vec<String> = std::env::args().skip(1).collect();
                 if !maybe_args.is_empty() {
                     for raw in maybe_args.into_iter() {
@@ -179,7 +185,18 @@ pub fn run() {
             toggle_main_and_miniplayer,
             close_app,
             show_in_file_manager,
+            commands::discord::update_discord_presence,
+            commands::discord::clear_discord_presence,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, evento| {
+            // Salir sin limpiar deja el perfil diciendo que seguís escuchando
+            // algo que ya no suena, hasta que Discord se cierre.
+            if matches!(evento, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
+                if let Some(presencia) = app.try_state::<discord::DiscordPresence>() {
+                    presencia.cerrar();
+                }
+            }
+        });
 }
