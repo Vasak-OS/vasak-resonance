@@ -127,15 +127,18 @@ const enqueuePlaylist = () =>
 /**
  * Reproducir algo de la cola lo saca de la cola, igual que cuando avanza sola:
  * si se quedara, la canción volvería a sonar más tarde sin motivo.
+ *
+ * Se recibe el identificador de la entrada y no su posición, porque la cola
+ * puede haber avanzado desde que se abrió el menú.
  */
-const playFromQueue = async (index: number) => {
-	const path = playerStore.queue[index];
-	if (!path) {
+const playFromQueue = async (id: string) => {
+	const entry = playerStore.getQueueEntry(id);
+	if (!entry) {
 		return;
 	}
 
-	playerStore.removeQueueItem(index);
-	await playerStore.playDropped(path);
+	playerStore.removeQueueItem(id);
+	await playerStore.playDropped(entry.path);
 };
 
 onMounted(() =>
@@ -323,7 +326,7 @@ onMounted(() =>
 		<div v-if="playerStore.queue.length > 0" class="mt-8 border-t border-ui-border pt-4">
 			<p class="mb-3 text-xs uppercase tracking-[0.16em] text-tx-muted">Cola de reproducción</p>
 			<PlayerQueuePanel
-				:queue-items="playerStore.queue"
+				:queue-items="playerStore.queueEntries"
 				@clear="playerStore.clearQueue"
 				@play="playFromQueue"
 				@remove="playerStore.removeQueueItem"

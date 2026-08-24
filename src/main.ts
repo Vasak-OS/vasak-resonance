@@ -16,8 +16,12 @@ const i18n = I18n.getInstance();
 const app = createApp(App);
 const pinia = createPinia();
 
-i18n.load();
 app.use(pinia);
 app.use(router);
+
+// Se espera a que estén las traducciones antes de mostrar nada: montando
+// primero, el arranque enseñaba las claves crudas —«contextMenu.play» y
+// compañía— hasta que el archivo de idioma terminaba de cargar.
+await i18n.load();
 
 app.mount('#app');

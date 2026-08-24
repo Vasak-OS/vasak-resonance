@@ -1,6 +1,6 @@
 import { type MenuEntry, useContextMenu } from '@vasakgroup/plugin-vsk-contextual-menu';
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
-import { showInFileManager } from '@/services/reveal.service';
+import { isRevealError, showInFileManager } from '@/services/reveal.service';
 import { usePlayerStore } from '@/stores/player';
 
 /**
@@ -43,7 +43,13 @@ export function useTrackContextMenu() {
 			await showInFileManager(path);
 		} catch (error) {
 			console.warn('[useTrackContextMenu] no se pudo abrir el gestor de archivos', error);
-			playerStore.showGlobalBadge(t('contextMenu.couldNotShowInFileManager'));
+			// Una canción borrada fuera del reproductor sigue estando en la
+			// biblioteca. Decir «no se pudo abrir la carpeta» ahí desorienta: la
+			// carpeta está, la que falta es la canción.
+			const missingFile = isRevealError(error) && error.kind === 'fileMissing';
+			playerStore.showGlobalBadge(
+				missingFile ? t('contextMenu.songFileMissing') : t('contextMenu.couldNotShowInFileManager')
+			);
 		}
 	}
 

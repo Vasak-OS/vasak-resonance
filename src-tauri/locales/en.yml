@@ -11,6 +11,7 @@ contextMenu:
   removeFromFavorites: Remove from favourites
   showInFileManager: Show in file manager
   couldNotShowInFileManager: The folder for this song could not be opened
+  songFileMissing: This song is no longer on disk
   copy: Copy
   cut: Cut
   paste: Paste

@@ -11,6 +11,7 @@ contextMenu:
   removeFromFavorites: Quitar de favoritos
   showInFileManager: Mostrar en el gestor de archivos
   couldNotShowInFileManager: No se pudo abrir la carpeta de la canción
+  songFileMissing: La canción ya no está en el disco
   copy: Copiar
   cut: Cortar
   paste: Pegar
