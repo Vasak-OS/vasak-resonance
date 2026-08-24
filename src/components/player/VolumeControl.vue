@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { computed } from 'vue';
 import { usePlayerStore } from '@/stores/player';
 
+const { t } = useI18n();
 const playerStore = usePlayerStore();
 
 const volumePercent = computed(() => Math.round((playerStore.volume || 0) * 50));
@@ -17,7 +19,7 @@ const onInput = (e: Event) => {
 
 <template>
 	<div class="hidden md:flex items-center gap-2">
-		<button class="inline-flex items-center gap-2 rounded-corner border border-ui-border bg-ui-surface/55 px-2 py-1 text-xs text-tx-main" title="Volumen">
+		<button class="inline-flex items-center gap-2 rounded-corner border border-ui-border bg-ui-surface/55 px-2 py-1 text-xs text-tx-main" :title="t('volume.label')">
 			<svg class="h-4 w-4 text-tx-muted" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
 				<path d="M9 4.5v11l-4-3H3a1 1 0 01-1-1v-3a1 1 0 011-1h2l4-3z"></path>
 			</svg>

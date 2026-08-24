@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { usePlayerStore } from '@/stores/player';
 
+const { t } = useI18n();
 const playerStore = usePlayerStore();
 </script>
 
@@ -29,8 +31,8 @@ const playerStore = usePlayerStore();
 
 					<!-- Text -->
 					<div class="text-center">
-						<p class="text-sm font-medium text-tx-primary">Indexando biblioteca musical...</p>
-						<p class="mt-1 text-xs text-tx-muted">Por favor espera...</p>
+						<p class="text-sm font-medium text-tx-primary">{{ t('scanning.title') }}</p>
+						<p class="mt-1 text-xs text-tx-muted">{{ t('scanning.subtitle') }}</p>
 					</div>
 				</div>
 			</div>

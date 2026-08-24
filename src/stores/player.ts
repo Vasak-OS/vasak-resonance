@@ -1,4 +1,5 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { defineStore } from 'pinia';
 import { computed, ref, shallowRef, watch } from 'vue';
 import { devLog } from '@/composables/useDevLog';
@@ -29,6 +30,7 @@ import {
 import { type EstadoParaDiscord, hayQueAvisar } from '@/tools/discordPresence';
 
 export const usePlayerStore = defineStore('player', () => {
+	const { t } = useI18n();
 	const currentTrack = ref<DroppedPlaybackTrack | null>(null);
 	const currentPath = ref<string | null>(null);
 	/**
@@ -118,7 +120,9 @@ export const usePlayerStore = defineStore('player', () => {
 	});
 	const hasNextTrack = computed(() => queuedCount.value > 0 || Boolean(nextSuggestionPath.value));
 	const nextActionLabel = computed(() =>
-		queuedCount.value > 0 ? 'Next' : nextSuggestionPath.value ? 'Sugerido' : 'Next'
+		queuedCount.value === 0 && nextSuggestionPath.value
+			? t('transport.suggested')
+			: t('transport.next')
 	);
 	const isCurrentFavorite = computed(() => {
 		if (!currentPath.value) {
@@ -180,6 +184,10 @@ export const usePlayerStore = defineStore('player', () => {
 				return;
 			}
 
+			// «Unknown Artist» y «Unknown Album» son los centinelas que escribe el
+			// backend, y `lyrics.rs` los reconoce para no salir a buscar la letra
+			// de un artista que no existe: acá son dato, no texto de interfaz. La
+			// traducción ocurre al mostrarlos, en `useMetadataLabels`.
 			const sanitized: Record<string, DroppedPlaybackTrack> = {};
 			for (const [path, track] of Object.entries(parsed)) {
 				if (!path || !track || typeof track !== 'object') {
@@ -691,7 +699,7 @@ export const usePlayerStore = defineStore('player', () => {
 			await playFile(filePath);
 			currentPath.value = filePath;
 		} catch (playError: unknown) {
-			error.value = `No se pudo reproducir el archivo: ${String(playError)}`;
+			error.value = t('player.playError').replace('{0}', () => String(playError));
 		} finally {
 			busy.value = false;
 		}
@@ -723,7 +731,7 @@ export const usePlayerStore = defineStore('player', () => {
 			devLog('[playDropped] playFile completado exitosamente');
 		} catch (dropError: unknown) {
 			console.error('[playDropped] Error:', dropError);
-			error.value = `No se pudo cargar el archivo arrastrado: ${String(dropError)}`;
+			error.value = t('player.dropError').replace('{0}', () => String(dropError));
 		} finally {
 			busy.value = false;
 		}
@@ -734,7 +742,7 @@ export const usePlayerStore = defineStore('player', () => {
 			error.value = '';
 			await pausePlayback();
 		} catch (pauseError: unknown) {
-			error.value = `No se pudo pausar: ${String(pauseError)}`;
+			error.value = t('player.pauseError').replace('{0}', () => String(pauseError));
 		}
 	};
 
@@ -743,7 +751,7 @@ export const usePlayerStore = defineStore('player', () => {
 			error.value = '';
 			await resumePlayback();
 		} catch (resumeError: unknown) {
-			error.value = `No se pudo reanudar: ${String(resumeError)}`;
+			error.value = t('player.resumeError').replace('{0}', () => String(resumeError));
 		}
 	};
 
@@ -763,7 +771,7 @@ export const usePlayerStore = defineStore('player', () => {
 			error.value = '';
 			await seekPlayback(seconds);
 		} catch (seekError: unknown) {
-			error.value = `No se pudo mover la reproducción: ${String(seekError)}`;
+			error.value = t('player.seekError').replace('{0}', () => String(seekError));
 		}
 	};
 
@@ -774,7 +782,7 @@ export const usePlayerStore = defineStore('player', () => {
 			error.value = '';
 			await setPlaybackVolume(normalized);
 		} catch (volumeError: unknown) {
-			error.value = `No se pudo ajustar el volumen: ${String(volumeError)}`;
+			error.value = t('player.volumeError').replace('{0}', () => String(volumeError));
 		}
 	};
 
@@ -785,7 +793,7 @@ export const usePlayerStore = defineStore('player', () => {
 			void limpiarPresencia();
 			await stopPlaybackCommand();
 		} catch (stopError: unknown) {
-			error.value = `No se pudo detener la reproducción: ${String(stopError)}`;
+			error.value = t('player.stopError').replace('{0}', () => String(stopError));
 		}
 	};
 
@@ -826,10 +834,10 @@ export const usePlayerStore = defineStore('player', () => {
 
 		if (isFavoritePath(path)) {
 			favoritePaths.value = favoritePaths.value.filter((entry) => entry !== path);
-			showGlobalBadge(`Quitado de favoritos: ${trackLabel}`);
+			showGlobalBadge(t('favorites.removedBadge').replace('{0}', () => trackLabel));
 		} else {
 			favoritePaths.value = [...favoritePaths.value, path];
-			showGlobalBadge(`Añadido a favoritos: ${trackLabel}`);
+			showGlobalBadge(t('favorites.addedBadge').replace('{0}', () => trackLabel));
 		}
 
 		persistFavorites();

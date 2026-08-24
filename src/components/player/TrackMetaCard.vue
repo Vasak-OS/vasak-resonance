@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { computed } from 'vue';
 
 const props = withDefaults(
@@ -14,11 +15,17 @@ const props = withDefaults(
 	{
 		coverSrc: null,
 		variant: 'compact',
-		placeholderText: 'Sin portada',
+		// Vacío y no el texto de reserva: el valor por omisión se evalúa fuera de
+		// `setup`, donde `t()` todavía no existe. Se resuelve más abajo.
+		placeholderText: '',
 		titleClass: 'text-tx-main',
 		subtitleClass: 'text-tx-muted',
 	}
 );
+
+const { t } = useI18n();
+
+const placeholder = computed(() => props.placeholderText || t('common.noCover'));
 
 const rootClass = computed(() => {
 	return props.variant === 'stacked'
@@ -42,7 +49,7 @@ const metaClass = computed(() => {
 		<div :class="coverWrapperClass">
 			<img v-if="coverSrc" :src="coverSrc" :alt="title" class="h-full w-full object-cover">
 			<div v-else class="flex h-full w-full items-center justify-center text-[10px] font-semibold uppercase tracking-[0.14em] text-tx-muted">
-				{{ placeholderText }}
+				{{ placeholder }}
 			</div>
 		</div>
 

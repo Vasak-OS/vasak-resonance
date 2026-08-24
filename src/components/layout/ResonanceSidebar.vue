@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import TrackMetaCard from '@/components/player/TrackMetaCard.vue';
@@ -9,17 +10,22 @@ import { useTrackTitle } from '@/composables/useTrackTitle';
 import { extractDominantColorFromDataUrl, fetchAlbumCover } from '@/services/album-cover.service';
 import { usePlayerStore } from '@/stores/player';
 
+const { t } = useI18n();
 const playerStore = usePlayerStore();
 const router = useRouter();
 const route = useRoute();
 
-const sections = [
-	{ id: 'home', label: 'Inicio', icon: 'go-home-symbolic' },
-	{ id: 'albums', label: 'Albums', icon: 'folder-music-symbolic' },
-	{ id: 'favorites', label: 'Favoritos', icon: 'starred-symbolic' },
-	{ id: 'playlists', label: 'Playlists', icon: 'view-list-symbolic' },
-	{ id: 'radios', label: 'Radios', icon: 'media-playback-start-symbolic' },
-] as const;
+// Las etiquetas se recalculan con el idioma, así que la lista es un `computed`
+// y la navegación ya no puede llevar `v-once`: con la plantilla congelada, el
+// primer pintado —que ocurre antes de que lleguen las traducciones— dejaba los
+// nombres de las secciones puestos para siempre.
+const sections = computed(() => [
+	{ id: 'home', label: t('sidebar.home'), icon: 'go-home-symbolic' },
+	{ id: 'albums', label: t('sidebar.albums'), icon: 'folder-music-symbolic' },
+	{ id: 'favorites', label: t('sidebar.favorites'), icon: 'starred-symbolic' },
+	{ id: 'playlists', label: t('sidebar.playlists'), icon: 'view-list-symbolic' },
+	{ id: 'radios', label: t('sidebar.radios'), icon: 'media-playback-start-symbolic' },
+]);
 
 const homeIcon = useReactiveIcon('go-home-symbolic');
 const albumsIcon = useReactiveIcon('folder-music-symbolic');
@@ -51,7 +57,6 @@ const coverArt = computed(() => {
 const trackTitle = useTrackTitle({
 	currentTrack: () => playerStore.currentTrack,
 	currentPath: () => playerStore.currentPath,
-	fallback: 'Sin reproduccion',
 });
 
 const trackSubtitle = useTrackSubtitle({
@@ -119,11 +124,11 @@ const onSelectSection = async (id: string) => {
 <template>
 	<aside class="flex w-full shrink-0 flex-col rounded-corner border border-ui-border bg-ui-bg/80 p-2 md:w-72">
 		<header class="border-b border-ui-border px-2 pb-3 pt-1">
-			<p class="text-xs uppercase tracking-[0.12em] text-tx-muted">Navegacion</p>
-			<p class="text-sm font-semibold text-tx-main">Biblioteca</p>
+			<p class="text-xs uppercase tracking-[0.12em] text-tx-muted">{{ t('sidebar.sectionTitle') }}</p>
+			<p class="text-sm font-semibold text-tx-main">{{ t('sidebar.library') }}</p>
 		</header>
 
-		<nav v-once class="flex-1 space-y-2 overflow-y-auto px-1 py-3">
+		<nav class="flex-1 space-y-2 overflow-y-auto px-1 py-3">
 			<button
 				v-for="section in sections"
 				:key="section.id"
@@ -139,8 +144,8 @@ const onSelectSection = async (id: string) => {
 			>
 				<span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-corner border border-ui-border bg-ui-bg/55">
 					<img
-						v-if="iconSources[section.id]"
-						:src="iconSources[section.id]"
+						v-if="iconSources[section.id as keyof typeof iconSources]"
+						:src="iconSources[section.id as keyof typeof iconSources]"
 						:alt="section.label"
 						class="h-5 w-5 object-contain"
 					/>

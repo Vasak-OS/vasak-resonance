@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { computed } from 'vue';
 import TransportButton from '@/components/player/transport/TransportButton.vue';
 import { useReactiveIcon } from '@/composables/useReactiveIcon';
@@ -17,11 +18,13 @@ const emit = defineEmits<{
 	next: [];
 }>();
 
+const { t } = useI18n();
+
 const playButtonLabel = computed(() => {
 	if (!props.hasTrack) {
-		return 'Play';
+		return t('transport.play');
 	}
-	return props.isPaused ? 'Play' : 'Pause';
+	return props.isPaused ? t('transport.play') : t('transport.pause');
 });
 
 const prevIcon = useReactiveIcon('player_rew');
@@ -37,7 +40,7 @@ const playPauseIcon = computed(() => {
 <template>
 	<div class="grid grid-cols-3 gap-2">
 		<TransportButton
-			label="Prev"
+			:label="t('transport.previous')"
 			:icon-src="prevIcon"
 			:disabled="!hasTrack || busy"
 			@click="emit('prev')"
