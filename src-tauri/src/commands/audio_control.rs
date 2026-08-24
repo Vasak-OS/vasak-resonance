@@ -37,3 +37,14 @@ pub fn set_volume(volume: f32, state: State<AudioState>) -> Result<(), String> {
 pub fn get_playback_snapshot(state: State<AudioState>) -> Result<PlaybackProgressEvent, String> {
     state.playback_snapshot()
 }
+
+/// Tells the audio thread which track comes next so it can start the crossfade
+/// without waiting to be asked.
+///
+/// The queue lives in the frontend store, so the backend cannot work this out
+/// on its own — and by the time an "the track ended" round trip completes, the
+/// moment to overlap has passed. `None` means nothing follows.
+#[tauri::command]
+pub fn set_next_track(file_path: Option<String>, state: State<AudioState>) -> Result<(), String> {
+    state.set_next_track(file_path)
+}

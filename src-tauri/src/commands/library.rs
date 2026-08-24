@@ -23,7 +23,7 @@ where
 
 #[tauri::command]
 pub async fn list_library_tracks() -> Result<Vec<LibraryTrack>, String> {
-    with_database(|conn| list_tracks(conn)).await
+    with_database(list_tracks).await
 }
 
 #[tauri::command]

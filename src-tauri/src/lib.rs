@@ -14,7 +14,7 @@ mod structs;
 
 use audio_manager::AudioState;
 use commands::audio_control::{
-    get_playback_snapshot, pause, play_file, resume, seek, set_volume, stop,
+    get_playback_snapshot, pause, play_file, resume, seek, set_next_track, set_volume, stop,
 };
 use commands::indexing::{scan_default_music_folder, scan_music_folders};
 use commands::library::{list_library_tracks, save_library_track, search_library_tracks};
@@ -166,6 +166,7 @@ pub fn run() {
             seek,
             set_volume,
             get_playback_snapshot,
+            set_next_track,
             fetch_lyrics,
             fetch_album_cover_command,
             create_playlist_command,

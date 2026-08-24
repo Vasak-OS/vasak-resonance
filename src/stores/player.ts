@@ -14,6 +14,7 @@ import {
 	resumePlayback,
 	saveLibraryTrack,
 	seekPlayback,
+	setNextTrack,
 	setPlaybackVolume,
 	stopPlayback as stopPlaybackCommand,
 } from '@/services/player.service';
@@ -55,6 +56,7 @@ export const usePlayerStore = defineStore('player', () => {
 	let globalBadgeTimeout: number | null = null;
 	let unlistenProgress: UnlistenFn | null = null;
 	let unlistenTrackFinished: UnlistenFn | null = null;
+	let unlistenCrossfade: UnlistenFn | null = null;
 	let unlistenMprisNext: UnlistenFn | null = null;
 	let unlistenMprisPrevious: UnlistenFn | null = null;
 	let unlistenMprisStop: UnlistenFn | null = null;
@@ -66,7 +68,7 @@ export const usePlayerStore = defineStore('player', () => {
 			if (!playbackStorage.value) {
 				const filePath = 'resonance-playback.json';
 				try {
-					const plugin = await import("@tauri-apps/plugin-store");
+					const plugin = await import('@tauri-apps/plugin-store');
 					playbackStorage.value = await new plugin.LazyStore(filePath);
 					await playbackStorage.value.save();
 				} catch (err) {
@@ -507,11 +509,57 @@ export const usePlayerStore = defineStore('player', () => {
 		void stopPlayback();
 	};
 
+	/**
+	 * The backend began overlapping into the next track.
+	 *
+	 * It already started playing it — there is nothing to launch here. What is
+	 * left is the bookkeeping `playDropped` would have done: take the entry off
+	 * the queue, record where we came from, and move the displayed track
+	 * forward so the cover, the title and Discord change with what is audible
+	 * rather than four seconds later.
+	 *
+	 * The path is checked against the head of the queue before popping. The
+	 * backend was told what was next some time ago, and if the queue changed in
+	 * between, removing the head blindly would drop a song nobody played.
+	 */
+	const handleCrossfadeStarted = (metadata: NowPlayingMetadata | null) => {
+		if (!metadata?.path) return;
+
+		const [head, ...rest] = queueEntries.value;
+		if (head?.path !== metadata.path) {
+			return;
+		}
+		queueEntries.value = rest;
+
+		if (currentPath.value && currentPath.value !== metadata.path) {
+			history.value.push(currentPath.value);
+		}
+
+		const track = {
+			path: metadata.path,
+			title: metadata.title,
+			artist: metadata.artist,
+			album: metadata.album,
+			duration_seconds: metadata.duration_seconds,
+			cover_data_url: metadata.cover_data_url,
+			dominant_color: metadata.dominant_color,
+		};
+		currentTrack.value = track;
+		cacheTrackMetadata(track);
+		currentPath.value = metadata.path;
+		durationSeconds.value = metadata.duration_seconds;
+		// The old track's end is no longer an event worth acting on: it is being
+		// faded out, not finished.
+		lastAutoAdvancedPath.value = null;
+	};
+
 	const applyProgress = (payload: PlaybackProgressEvent) => {
 		const prevPath = currentPath.value;
 		currentPath.value = payload.path;
 		const dur = payload.duration_seconds ?? durationSeconds.value;
-		positionSeconds.value = dur ? Math.min(payload.position_seconds, dur) : payload.position_seconds;
+		positionSeconds.value = dur
+			? Math.min(payload.position_seconds, dur)
+			: payload.position_seconds;
 		if (prevPath !== payload.path) {
 			durationSeconds.value = payload.duration_seconds;
 		} else if (payload.duration_seconds !== null) {
@@ -558,6 +606,13 @@ export const usePlayerStore = defineStore('player', () => {
 		unlistenTrackFinished = await listen<string | null>('audio-track-finished', (event) => {
 			handleTrackFinished(event.payload);
 		});
+
+		unlistenCrossfade = await listen<NowPlayingMetadata | null>(
+			'audio-crossfade-started',
+			(event) => {
+				handleCrossfadeStarted(event.payload);
+			}
+		);
 	};
 
 	const syncPlaybackSnapshot = async () => {
@@ -608,6 +663,10 @@ export const usePlayerStore = defineStore('player', () => {
 			unlistenTrackFinished();
 			unlistenTrackFinished = null;
 		}
+		if (unlistenCrossfade) {
+			unlistenCrossfade();
+			unlistenCrossfade = null;
+		}
 	};
 
 	const disposeMprisNextListener = () => {
@@ -650,7 +709,7 @@ export const usePlayerStore = defineStore('player', () => {
 		error.value = '';
 		try {
 			const cached = trackCacheByPath.value[filePath];
-			const track = cached ?? await handleDroppedFile(filePath);
+			const track = cached ?? (await handleDroppedFile(filePath));
 			devLog('[playDropped] Track obtenido:', cached ? '(desde cache)' : track);
 
 			if (!cached) {
@@ -966,6 +1025,25 @@ export const usePlayerStore = defineStore('player', () => {
 			debouncedPersist();
 		},
 		{ deep: false }
+	);
+
+	// The backend needs the next path *before* the current track is within four
+	// seconds of its end, so it is pushed on every queue change rather than
+	// asked for when the moment arrives.
+	//
+	// Only real queue entries: the end-of-queue "suggested track" fallback stays
+	// on the old end-of-track path. Crossfading into it would leave this store
+	// unable to tell whether the head of the queue should be consumed, and
+	// replaying something out of history is a surprising thing to blend into.
+	watch(
+		[queue, currentPath],
+		() => {
+			const upcoming = queue.value.length > 0 ? queue.value[0] : null;
+			void setNextTrack(upcoming).catch(() => {
+				// A lost hint costs an overlap, never a track.
+			});
+		},
+		{ immediate: true }
 	);
 
 	watch(positionSeconds, () => {

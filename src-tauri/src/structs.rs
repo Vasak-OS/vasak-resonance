@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Track {
@@ -60,7 +61,13 @@ pub struct PlaybackProgressEvent {
     pub is_playing: bool,
     pub is_paused: bool,
     pub volume: f32,
-    pub now_playing: Option<NowPlayingMetadata>,
+    /// Behind an `Arc` because this snapshot is cloned twice per tick — once
+    /// into the shared state and once into the emitted event — and
+    /// `cover_data_url` is a base64 image, routinely hundreds of kilobytes. As
+    /// a plain field that was a megabyte or so of memcpy and allocator churn
+    /// every second, for a value that only changes when the track does.
+    /// Serialisation is unaffected: serde sees straight through an `Arc`.
+    pub now_playing: Option<Arc<NowPlayingMetadata>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
