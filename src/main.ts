@@ -7,6 +7,16 @@ import App from '@/App.vue';
 import '@/assets/main.css';
 import { router } from '@/router';
 
+// Una violación de CSP no se ve: el recurso simplemente no carga y la interfaz
+// queda a medias sin decir nada. Esto la manda a la consola, que es donde se
+// puede encontrar al ajustar la política.
+document.addEventListener('securitypolicyviolation', (evento) => {
+	console.error(
+		`[CSP] bloqueado ${evento.blockedURI || '(en línea)'} por la directiva ` +
+			`«${evento.violatedDirective}» en ${evento.sourceFile ?? 'documento'}:${evento.lineNumber}`
+	);
+});
+
 // El clic derecho abre el menú de VasakOS —el mismo de todo el escritorio— y no
 // el del motor del navegador, que ofrecía «Recargar» e «Inspeccionar elemento»
 // y cortaba la canción a mitad.

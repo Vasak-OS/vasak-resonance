@@ -129,7 +129,7 @@ settings:
   crossfade: Encadenar canciones
   crossfadeHint: La canción que termina se cruza con la que empieza, sin silencio en el medio.
   crossfadeLength: Duración del cruce
-  crossfadeSegueWarning: Conviene desactivarlo para discos en vivo, sets de DJ o música clásica: ahí el cruce tapa el empalme que la grabación trae a propósito.
+  crossfadeSegueWarning: "Conviene desactivarlo para discos en vivo, sets de DJ o música clásica: ahí el cruce tapa el empalme que la grabación trae a propósito."
   restoreDefaults: Restaurar valores por omisión
   secondsOne: "{0} segundo"
   secondsOther: "{0} segundos"
