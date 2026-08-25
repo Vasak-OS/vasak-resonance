@@ -46,6 +46,11 @@ enum AudioCommand {
         volume: f32,
         respond_to: Sender<Result<(), String>>,
     },
+    /// How long tracks overlap, in seconds. Zero turns the overlap off.
+    SetCrossfade {
+        seconds: f32,
+        respond_to: Sender<Result<(), String>>,
+    },
     /// Which track follows the current one, so the fade can be prepared without
     /// a round trip to the frontend.
     ///
@@ -59,8 +64,19 @@ enum AudioCommand {
     Shutdown,
 }
 
-/// How long two tracks overlap when one ends and the next begins.
-const CROSSFADE: Duration = Duration::from_secs(4);
+/// How long two tracks overlap out of the box.
+///
+/// Settable per person: four seconds is right for a shuffled library and wrong
+/// for a record that segues — a live album, a DJ set, one movement running into
+/// the next — where any overlap destroys the join the musicians intended. Zero
+/// turns it off, which is why this is a default and not a constant.
+const DEFAULT_CROSSFADE: Duration = Duration::from_secs(4);
+
+/// Longest overlap that can be configured.
+///
+/// Bounded because the fade holds two decoders and, past a point, stops being a
+/// transition and becomes a mashup.
+const MAX_CROSSFADE: Duration = Duration::from_secs(12);
 
 /// How often the audio thread wakes with nothing to do.
 const IDLE_TICK: Duration = Duration::from_millis(500);
@@ -138,6 +154,17 @@ impl AudioState {
         }
 
         response
+    }
+
+    /// Sets how long tracks overlap, in seconds. Zero turns the overlap off.
+    pub fn set_crossfade(&self, seconds: f32) -> Result<(), String> {
+        let (tx, rx) = mpsc::channel::<Result<(), String>>();
+        self.send(AudioCommand::SetCrossfade {
+            seconds,
+            respond_to: tx,
+        })?;
+        rx.recv()
+            .map_err(|_| "No se recibió respuesta del hilo de audio".to_string())?
     }
 
     /// Tells the audio thread which track follows, so it can start the overlap
@@ -377,13 +404,20 @@ struct Fade {
     /// The volume both sides are scaled against, captured at the start so a
     /// mid-fade volume change does not fight the ramp.
     volume: f32,
+    /// Captured at the start too: changing the setting while two tracks are
+    /// overlapping would otherwise move the finish line mid-ramp, and a fade
+    /// shortened underneath itself jumps straight to silence.
+    duration: Duration,
 }
 
 impl Fade {
     /// How far along the fade is, from 0.0 to 1.0.
     fn progress(&self) -> f32 {
-        let elapsed = self.started_at.elapsed().as_secs_f32();
-        (elapsed / CROSSFADE.as_secs_f32()).clamp(0.0, 1.0)
+        let total = self.duration.as_secs_f32();
+        if total <= 0.0 {
+            return 1.0;
+        }
+        (self.started_at.elapsed().as_secs_f32() / total).clamp(0.0, 1.0)
     }
 }
 
@@ -413,6 +447,8 @@ struct AudioManager {
     fade: Option<Fade>,
     /// What to crossfade into, as told by the frontend.
     next_track: Option<PathBuf>,
+    /// Zero means tracks follow one another without overlapping.
+    crossfade: Duration,
     /// What is loaded: a file path, or a station URL when `stream_url` is set.
     ///
     /// Radio used to leave this empty, and every transport method starts by
@@ -446,6 +482,7 @@ impl AudioManager {
             outgoing: None,
             fade: None,
             next_track: None,
+            crossfade: DEFAULT_CROSSFADE,
             current_path: None,
             stream_url: None,
             current_metadata: None,
@@ -827,6 +864,20 @@ impl AudioManager {
         Ok(())
     }
 
+    /// Sets the overlap length. Zero turns it off.
+    ///
+    /// Takes effect on the *next* transition: a fade already running keeps the
+    /// length it started with, so the ramp cannot be moved out from under
+    /// itself.
+    fn set_crossfade(&mut self, seconds: f32) -> Result<(), String> {
+        if !seconds.is_finite() || seconds < 0.0 {
+            return Err("Duración de encadenado inválida".to_string());
+        }
+
+        self.crossfade = Duration::from_secs_f32(seconds).min(MAX_CROSSFADE);
+        Ok(())
+    }
+
     fn set_volume(&mut self, volume: f32) -> Result<(), String> {
         if !volume.is_finite() {
             return Err("Volumen inválido".to_string());
@@ -867,19 +918,22 @@ impl AudioManager {
         if self.fade.is_some() || self.is_paused || self.stream_url.is_some() {
             return None;
         }
+        if self.crossfade.is_zero() {
+            return None;
+        }
         // Nothing playing, nothing to fade out of.
         self.current.as_ref()?;
 
         // Needs a known duration: without one there is no way to know the end
         // is coming, and the plain end-of-track path handles those files.
         let duration = self.current_duration?;
-        if duration <= CROSSFADE {
+        if duration <= self.crossfade {
             return None;
         }
 
         let next_path = self.next_track.clone()?;
         let position = self.current_position_duration();
-        if duration.saturating_sub(position) > CROSSFADE {
+        if duration.saturating_sub(position) > self.crossfade {
             return None;
         }
 
@@ -918,6 +972,7 @@ impl AudioManager {
         self.fade = Some(Fade {
             started_at: Instant::now(),
             volume: self.volume,
+            duration: self.crossfade,
         });
 
         self.current_path = Some(next_path);
@@ -1052,7 +1107,8 @@ fn run_audio_loop(
                 | Ok(AudioCommand::Resume { respond_to })
                 | Ok(AudioCommand::Seek { respond_to, .. })
                 | Ok(AudioCommand::SetVolume { respond_to, .. })
-                | Ok(AudioCommand::SetNextTrack { respond_to, .. }) => {
+                | Ok(AudioCommand::SetNextTrack { respond_to, .. })
+                | Ok(AudioCommand::SetCrossfade { respond_to, .. }) => {
                     let _ = respond_to.send(Err(error.clone()));
                 }
                 Ok(AudioCommand::Shutdown) => return,
@@ -1133,6 +1189,14 @@ fn run_audio_loop(
                     &mut last_published_track,
                     manager.progress_snapshot(),
                 );
+            }
+            Ok(AudioCommand::SetCrossfade {
+                seconds,
+                respond_to,
+            }) => {
+                let _ = respond_to.send(manager.set_crossfade(seconds));
+                // No snapshot: the setting changes nothing about what is
+                // playing right now.
             }
             Ok(AudioCommand::SetNextTrack {
                 file_path,
@@ -1332,6 +1396,7 @@ mod tests {
         let fade = Fade {
             started_at: Instant::now(),
             volume: 1.0,
+            duration: DEFAULT_CROSSFADE,
         };
         assert!(fade.progress() < 0.01);
     }
@@ -1340,7 +1405,37 @@ mod tests {
     fn the_overlap_is_shorter_than_a_track_worth_crossfading() {
         // `maybe_start_fade` refuses tracks no longer than the overlap: fading a
         // three-second track would mean it is never heard on its own.
-        assert!(CROSSFADE < Duration::from_secs(10));
-        assert!(FADE_TICK < CROSSFADE / 50, "el ramp se oiría escalonado");
+        assert!(DEFAULT_CROSSFADE < Duration::from_secs(10));
+        assert!(
+            FADE_TICK < DEFAULT_CROSSFADE / 50,
+            "el ramp se oiría escalonado"
+        );
+        assert!(DEFAULT_CROSSFADE <= MAX_CROSSFADE);
+    }
+
+    #[test]
+    fn a_zero_length_fade_reports_itself_finished() {
+        // Guards the division in `progress()`: a fade configured to zero must
+        // not produce infinity and a volume rodio would happily apply.
+        let fade = Fade {
+            started_at: Instant::now(),
+            volume: 1.0,
+            duration: Duration::ZERO,
+        };
+        assert_eq!(fade.progress(), 1.0);
+    }
+
+    #[test]
+    fn the_configured_length_is_what_the_ramp_uses() {
+        // A fade keeps the length it started with, so changing the setting
+        // mid-transition cannot move the finish line.
+        let fade = Fade {
+            started_at: Instant::now(),
+            volume: 1.0,
+            duration: Duration::from_secs(8),
+        };
+        // Barely started: an 8-second ramp is half the progress of a 4-second
+        // one at the same instant, and both round to nearly zero here.
+        assert!(fade.progress() < 0.01);
     }
 }

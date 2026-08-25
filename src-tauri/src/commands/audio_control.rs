@@ -38,6 +38,15 @@ pub fn get_playback_snapshot(state: State<AudioState>) -> Result<PlaybackProgres
     state.playback_snapshot()
 }
 
+/// Sets how long tracks overlap when one ends and the next begins.
+///
+/// Zero turns the overlap off, which is what someone listening to records that
+/// segue wants: any crossfade destroys the join.
+#[tauri::command]
+pub fn set_crossfade(seconds: f32, state: State<AudioState>) -> Result<(), String> {
+    state.set_crossfade(seconds)
+}
+
 /// Tells the audio thread which track comes next so it can start the crossfade
 /// without waiting to be asked.
 ///
