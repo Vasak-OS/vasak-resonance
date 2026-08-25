@@ -32,6 +32,11 @@ export const router = createRouter({
 					name: 'radios',
 					component: () => import('@/components/views/RadiosView.vue'),
 				},
+				{
+					path: 'settings',
+					name: 'settings',
+					component: () => import('@/components/views/SettingsView.vue'),
+				},
 			],
 		},
 		{

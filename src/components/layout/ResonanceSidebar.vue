@@ -25,6 +25,7 @@ const sections = computed(() => [
 	{ id: 'favorites', label: t('sidebar.favorites'), icon: 'starred-symbolic' },
 	{ id: 'playlists', label: t('sidebar.playlists'), icon: 'view-list-symbolic' },
 	{ id: 'radios', label: t('sidebar.radios'), icon: 'media-playback-start-symbolic' },
+	{ id: 'settings', label: t('sidebar.settings'), icon: 'preferences-system-symbolic' },
 ]);
 
 const homeIcon = useReactiveIcon('go-home-symbolic');
@@ -32,6 +33,7 @@ const albumsIcon = useReactiveIcon('folder-music-symbolic');
 const favoritesIcon = useReactiveIcon('starred-symbolic');
 const playlistsIcon = useReactiveIcon('view-list-symbolic');
 const radiosIcon = useReactiveIcon('media-playback-start-symbolic');
+const settingsIcon = useReactiveIcon('preferences-system-symbolic');
 
 const iconSources = computed(() => ({
 	home: homeIcon.value,
@@ -39,6 +41,7 @@ const iconSources = computed(() => ({
 	favorites: favoritesIcon.value,
 	playlists: playlistsIcon.value,
 	radios: radiosIcon.value,
+	settings: settingsIcon.value,
 }));
 
 const fetchedCoverUrl = ref<string>('');

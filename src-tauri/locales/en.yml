@@ -125,6 +125,17 @@ radios:
 scanning:
   title: Indexing the music library...
   subtitle: Just a moment...
+settings:
+  eyebrow: Settings
+  title: Resonance preferences
+  playbackGroup: Playback
+  crossfade: Crossfade tracks
+  crossfadeHint: The ending song blends into the next one, with no silence in between.
+  crossfadeLength: Overlap length
+  crossfadeSegueWarning: Worth turning off for live records, DJ sets or classical music, where the crossfade covers up a join the recording makes on purpose.
+  restoreDefaults: Restore defaults
+  secondsOne: "{0} second"
+  secondsOther: "{0} seconds"
 sidebar:
   sectionTitle: Navigation
   library: Library
@@ -133,6 +144,7 @@ sidebar:
   favorites: Favourites
   playlists: Playlists
   radios: Radios
+  settings: Settings
 sort:
   recent: Most recent first
   titleAsc: Title A-Z

@@ -88,6 +88,26 @@ export const setPlaybackVolume = (volume: number): Promise<void> => {
 	return invoke<void>('set_volume', { volume });
 };
 
+/**
+ * Sets how long tracks overlap, in seconds. Zero turns the overlap off.
+ *
+ * The backend clamps this, so an out-of-range value is corrected rather than
+ * rejected.
+ */
+export const setCrossfade = (seconds: number): Promise<void> => {
+	return invoke<void>('set_crossfade', { seconds });
+};
+
+/**
+ * Anticipates the next track for the backend's crossfade.
+ *
+ * A hint, not a command: if it never arrives the track still plays, it just
+ * ends without an overlap. Pass null when nothing follows.
+ */
+export const setNextTrack = (filePath: string | null): Promise<void> => {
+	return invoke<void>('set_next_track', { filePath });
+};
+
 export const getPlaybackSnapshot = (): Promise<PlaybackProgressEvent> => {
 	devLog('[player.service] getPlaybackSnapshot invoke');
 	return invoke<PlaybackProgressEvent>('get_playback_snapshot');

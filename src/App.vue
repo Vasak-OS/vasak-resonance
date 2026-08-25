@@ -8,11 +8,13 @@ import { useConfigSync } from '@/composables/useConfigSync';
 import { useTextFieldContextMenu } from '@/composables/useTextFieldContextMenu';
 import { scanDefaultMusicFolder } from '@/services/player.service';
 import { usePlayerStore } from '@/stores/player';
+import { useSettingsStore } from '@/stores/settings';
 
 const isMiniPlayerWindow = getCurrentWindow().label === 'mini-player';
 const AUTO_SCAN_KEY = 'resonance.auto-music-scan.last-run';
 const AUTO_SCAN_INTERVAL_MS = 30 * 60 * 1000;
 const playerStore = usePlayerStore();
+const settingsStore = useSettingsStore();
 
 useConfigSync({ useViewTransition: true });
 
@@ -24,6 +26,13 @@ onMounted(() => {
 	if (isMiniPlayerWindow) {
 		return;
 	}
+
+	// Antes de cualquier otra cosa: el hilo de audio arranca con su propio valor
+	// por omisión, así que sin esto alguien que apagó el encadenado lo volvería a
+	// escuchar en cada arranque. Va acá y no en la vista de Ajustes porque el
+	// ajuste tiene que valer desde la primera canción, no desde la primera vez
+	// que se abre esa pantalla.
+	void settingsStore.load();
 
 	// Listen for scan completion events
 	void listen('scan-complete', async () => {
