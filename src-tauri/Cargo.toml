@@ -59,4 +59,8 @@ panic = "abort"    # Higher performance by disabling panic handlers.
 strip = true       # Ensures debug symbols are removed.
 
 [dev-dependencies]
+# Sólo para el test que valida los catálogos de idioma. El plugin de i18n los
+# parsea en tiempo de ejecución y paniquea si no puede, así que un error de
+# sintaxis no se ve hasta que la aplicación no arranca.
+serde_yaml = "0.9"
 tempfile = "3.27.0"

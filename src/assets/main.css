@@ -142,14 +142,12 @@
   animation: circle-in 500ms;
 }
 
-body * {
-  @apply text-tx-main transition-colors duration-300;
-}
-
-.background {
-  @apply bg-ui-bg/80;
-}
-
+/* El reset del borde va antes de las reglas de la aplicación.
+ *
+ * Está en `@layer base`, así que la capa ya lo deja por debajo de todo lo que
+ * no está en una capa —`body *` incluido— sin importar el orden del archivo.
+ * Pero escrito después parecía pretender ganar y no podía: leído de arriba
+ * abajo, esto es lo que realmente pasa en la cascada. */
 @layer base {
   *,
   ::after,
@@ -158,6 +156,14 @@ body * {
   ::file-selector-button {
     border-color: var(--color-gray-200, currentColor);
   }
+}
+
+body * {
+  @apply text-tx-main transition-colors duration-300;
+}
+
+.background {
+  @apply bg-ui-bg/80;
 }
 
 ::-webkit-scrollbar {
