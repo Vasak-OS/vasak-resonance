@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { listen } from '@tauri-apps/api/event';
+import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { computed, onBeforeUnmount, onMounted, type Ref, ref } from 'vue';
 import LabeledField from '@/components/layout/LabeledField.vue';
 import { useReactiveIcon } from '@/composables/useReactiveIcon';
@@ -11,6 +12,7 @@ import {
 	setCachedStations,
 } from '@/services/radio.service';
 
+const { t } = useI18n();
 const playIcon = useReactiveIcon('media-playback-start');
 const searchIcon = useReactiveIcon('file-search');
 const stations: Ref<RadioStation[]> = ref([]);
@@ -79,14 +81,14 @@ async function loadStations() {
 		setCachedStations(freshStations);
 	} catch (err) {
 		const errorMsg = err instanceof Error ? err.message : String(err);
-		error.value = `Failed to load stations: ${errorMsg}`;
+		error.value = t('radios.loadError').replace('{0}', () => errorMsg);
 		console.error('Radio stations error:', err);
 
 		// If we have cached stations, keep them available
 		const cached = getCachedStations();
 		if (cached && cached.length > 0) {
 			stations.value = cached;
-			error.value = `Using cached stations (last loaded earlier). Error: ${errorMsg}`;
+			error.value = t('radios.usingCache').replace('{0}', () => errorMsg);
 		}
 	} finally {
 		loading.value = false;
@@ -101,7 +103,7 @@ async function handlePlayStation(station: RadioStation) {
 		// keep buffering indicator until playback event arrives
 	} catch (err) {
 		bufferingStationUuid.value = null;
-		error.value = `Error playing station: ${err}`;
+		error.value = t('radios.playError').replace('{0}', () => String(err));
 		console.error(err);
 	}
 }
@@ -139,7 +141,7 @@ onBeforeUnmount(() => {
 	<div class="flex flex-col h-full gap-4 overflow-hidden">
 		<!-- Header with controls -->
 		<div class="flex flex-col gap-2 px-4 pt-4">
-			<h1 class="text-2xl font-bold">Radio Stations</h1>
+			<h1 class="text-2xl font-bold">{{ t('radios.title') }}</h1>
 
 			<!-- Tag selection -->
 			<div v-once class="flex gap-2 flex-wrap">
@@ -159,13 +161,13 @@ onBeforeUnmount(() => {
 			</div>
 
 			<!-- Search -->
-			<LabeledField label="Search" class="flex-1">
+			<LabeledField :label="t('common.search')" class="flex-1">
 				<div class="flex items-center gap-2 px-3 py-2 bg-ui-surface/80 rounded-corner">
-					<img :src="searchIcon" alt="Search" class="w-4 h-4" />
+					<img :src="searchIcon" :alt="t('common.search')" class="w-4 h-4" />
 					<input
 						v-model="searchQuery"
 						type="text"
-						placeholder="Search stations..."
+						:placeholder="t('radios.searchPlaceholder')"
 						class="bg-transparent flex-1 outline-none text-sm"
 					/>
 				</div>
@@ -180,18 +182,18 @@ onBeforeUnmount(() => {
 				:disabled="loading"
 				class="ml-2 px-2 py-1 bg-red-700 hover:bg-red-600 disabled:bg-red-800 rounded text-xs whitespace-nowrap"
 			>
-				{{ loading ? 'Retrying...' : 'Retry' }}
+				{{ loading ? t('radios.retrying') : t('radios.retry') }}
 			</button>
 		</div>
 
 		<!-- Stations list -->
 		<div class="flex-1 overflow-y-auto px-4">
 			<div v-if="loading" class="flex justify-center items-center h-full">
-				<div class="text-tx-muted">Loading stations...</div>
+				<div class="text-tx-muted">{{ t('radios.loading') }}</div>
 			</div>
 
 			<div v-else-if="sortedStations.length === 0" class="flex justify-center items-center h-full">
-				<div class="text-tx-muted">No stations found</div>
+				<div class="text-tx-muted">{{ t('radios.empty') }}</div>
 			</div>
 
 			<div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pb-4">
@@ -211,14 +213,14 @@ onBeforeUnmount(() => {
 							onerror="this.style.display='none'"
 						/>
 						<div v-else class="w-12 h-12 bg-primary rounded-corner flex items-center justify-center">
-							<img :src="playIcon" alt="Radio" class="w-6 h-6" />
+							<img :src="playIcon" :alt="t('radios.stationIconAlt')" class="w-6 h-6" />
 						</div>
 					</div>
 
 					<!-- Station info -->
 					<div class="flex-1 min-w-0">
 						<h3 class="font-semibold text-sm truncate">{{ station.name }}</h3>
-						<p class="text-xs text-gray-400 truncate">{{ station.country || 'Unknown' }}</p>
+						<p class="text-xs text-gray-400 truncate">{{ station.country || t('radios.unknownCountry') }}</p>
 						<div class="flex gap-1 mt-1">
 							<span
 								v-if="station.codec"
@@ -243,7 +245,7 @@ onBeforeUnmount(() => {
 								class="p-2 bg-secondary rounded-full hover:bg-primary transition-colors"
 								@click.stop="handlePlayStation(station)"
 							>
-								<img :src="playIcon" alt="Play" class="w-5 h-5" />
+								<img :src="playIcon" :alt="t('common.play')" class="w-5 h-5" />
 							</button>
 							<!-- buffering indicator -->
 							<div v-if="bufferingStationUuid === station.uuid" class="absolute inset-0 flex items-center justify-center">

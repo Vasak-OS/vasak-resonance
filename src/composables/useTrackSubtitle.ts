@@ -1,27 +1,25 @@
 import { computed } from 'vue';
+import { useMetadataLabels } from '@/composables/useMetadataLabels';
 import type { DroppedPlaybackTrack } from '@/services/player.service';
 
 interface UseTrackSubtitleInput {
 	currentTrack: () => DroppedPlaybackTrack | null;
 	noTrackFallback?: string;
-	unknownArtistLabel?: string;
-	unknownAlbumLabel?: string;
 }
 
 export const useTrackSubtitle = ({
 	currentTrack,
+	// El nombre de la aplicación: no se traduce.
 	noTrackFallback = 'Vasak Resonance',
-	unknownArtistLabel = 'Unknown Artist',
-	unknownAlbumLabel = 'Unknown Album',
 }: UseTrackSubtitleInput) => {
+	const { artistLabel, albumLabel } = useMetadataLabels();
+
 	return computed(() => {
 		const track = currentTrack();
 		if (!track) {
 			return noTrackFallback;
 		}
 
-		const artist = track.artist || unknownArtistLabel;
-		const album = track.album || unknownAlbumLabel;
-		return `${artist} • ${album}`;
+		return `${artistLabel(track.artist)} • ${albumLabel(track.album)}`;
 	});
 };

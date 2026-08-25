@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { RecycleScroller } from 'vue-virtual-scroller';
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css';
+import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import LabeledField from '@/components/layout/LabeledField.vue';
+import { useMetadataLabels } from '@/composables/useMetadataLabels';
 import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import { useTrackContextMenu } from '@/composables/useTrackContextMenu';
 import {
@@ -14,6 +16,8 @@ import {
 } from '@/services/player.service';
 import { usePlayerStore } from '@/stores/player';
 
+const { t } = useI18n();
+const { artistLabel, albumLabel } = useMetadataLabels();
 const playerStore = usePlayerStore();
 const { onTrackContextMenu } = useTrackContextMenu();
 const libraryTracks = ref<LibraryTrack[]>([]);
@@ -62,6 +66,9 @@ const toLibraryTrack = (
 	created_at: createdAt,
 });
 
+// Los centinelas «Unknown Artist» y «Unknown Album» son los que escribe el
+// backend y con los que se agrupa y se filtra: quedan como están y se traducen
+// al mostrarlos, con `artistLabel` y `albumLabel`.
 const sanitizeTrack = (track: LibraryTrack): LibraryTrack => ({
 	...track,
 	title: track.title?.trim() || extractName(track.path),
@@ -75,7 +82,7 @@ const loadLibrary = async () => {
 	try {
 		libraryTracks.value = await listLibraryTracks();
 	} catch (error) {
-		errorMessage.value = `No se pudo cargar la biblioteca: ${String(error)}`;
+		errorMessage.value = t('home.libraryLoadError').replace('{0}', () => String(error));
 	} finally {
 		isLoading.value = false;
 	}
@@ -180,7 +187,7 @@ const playTrack = async (path: string) => {
 const playRandomFiltered = async () => {
 	const list = sortedTracks.value ?? [];
 	if (list.length === 0) {
-		playerStore.globalBadgeMessage = 'No hay canciones que reproducir';
+		playerStore.globalBadgeMessage = t('home.nothingToPlay');
 		return;
 	}
 
@@ -224,6 +231,22 @@ onUnmounted(() => {
 		searchDebounceTimer = null;
 	}
 });
+
+// Con una sola pista, una única cadena decía «1 pistas visibles de 1 totales».
+// Las dos mitades concuerdan por separado, y como no se pueden mostrar cinco
+// pistas de un total de una, sólo tres de las cuatro combinaciones existen.
+const visibleCountLabel = computed(() => {
+	const visible = sortedTracks.value.length;
+	const total = librarySourceTracks.value.length;
+	const key =
+		visible === 1
+			? total === 1
+				? 'home.visibleCountOneOfOne'
+				: 'home.visibleCountOneOfOther'
+			: 'home.visibleCountOther';
+
+	return t(key).replace('{0}', String(visible)).replace('{1}', String(total));
+});
 </script>
 
 <template>
@@ -231,29 +254,29 @@ onUnmounted(() => {
 		<header class="space-y-4 rounded-corner border border-ui-border bg-ui-bg/80 p-4">
 			<div class="flex flex-wrap items-end justify-between gap-4">
 				<div>
-					<p class="text-xs uppercase tracking-[0.16em] text-tx-muted">Biblioteca</p>
-					<h2 class="text-lg font-semibold text-tx-main">Todas las canciones de la base de datos</h2>
+					<p class="text-xs uppercase tracking-[0.16em] text-tx-muted">{{ t('home.eyebrow') }}</p>
+					<h2 class="text-lg font-semibold text-tx-main">{{ t('home.title') }}</h2>
 				</div>
 				<div class="text-xs text-tx-muted">
-					{{ sortedTracks.length }} pistas visibles de {{ librarySourceTracks.length }} totales
+					{{ visibleCountLabel }}
 				</div>
 			</div>
 
 			<div class="grid gap-3 lg:grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr]">
-				<LabeledField label="Buscar">
+				<LabeledField :label="t('common.search')">
 					<input
 						v-model="searchQuery"
 						type="search"
-						placeholder="Título, artista, album o ruta"
+						:placeholder="t('home.searchPlaceholder')"
 						class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 placeholder:text-tx-muted/70 focus:border-primary/50"
 					/>
 				</LabeledField>
 
-				<LabeledField label="Artista" wrapperClass="relative hidden lg:block">
+				<LabeledField :label="t('common.artist')" wrapperClass="relative hidden lg:block">
 					<div class="relative">
 						<select v-model="artistFilter" class="appearance-none rounded-corner border border-ui-border bg-ui-surface/80 px-3 py-2 pr-8 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
-							<option value="all">Todos</option>
-							<option v-for="artist in artistOptions" :key="artist" :value="artist">{{ artist }}</option>
+							<option value="all">{{ t('common.all') }}</option>
+							<option v-for="artist in artistOptions" :key="artist" :value="artist">{{ artistLabel(artist) }}</option>
 						</select>
 						<svg class="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-tx-muted" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
 							<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clip-rule="evenodd" />
@@ -261,11 +284,11 @@ onUnmounted(() => {
 					</div>
 				</LabeledField>
 
-				<LabeledField label="Album" wrapperClass="relative hidden lg:block">
+				<LabeledField :label="t('common.album')" wrapperClass="relative hidden lg:block">
 					<div class="relative">
 						<select v-model="albumFilter" class="appearance-none rounded-corner border border-ui-border bg-ui-surface/80 px-3 py-2 pr-8 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
-							<option value="all">Todos</option>
-							<option v-for="album in albumOptions" :key="album" :value="album">{{ album }}</option>
+							<option value="all">{{ t('common.all') }}</option>
+							<option v-for="album in albumOptions" :key="album" :value="album">{{ albumLabel(album) }}</option>
 						</select>
 						<svg class="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-tx-muted" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
 							<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clip-rule="evenodd" />
@@ -273,17 +296,17 @@ onUnmounted(() => {
 					</div>
 				</LabeledField>
 
-				<LabeledField label="Ordenar" wrapperClass="relative hidden lg:block">
+				<LabeledField :label="t('common.sortBy')" wrapperClass="relative hidden lg:block">
 					<div class="relative">
 						<select v-model="sortBy" class="appearance-none rounded-corner border border-ui-border bg-ui-surface/80 px-3 py-2 pr-8 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
-							<option value="recent-desc">Recientes primero</option>
-							<option value="title-asc">Título A-Z</option>
-							<option value="title-desc">Título Z-A</option>
-							<option value="artist-asc">Artista A-Z</option>
-							<option value="artist-desc">Artista Z-A</option>
-							<option value="album-asc">Album A-Z</option>
-							<option value="duration-asc">Duración corta</option>
-							<option value="duration-desc">Duración larga</option>
+							<option value="recent-desc">{{ t('sort.recent') }}</option>
+							<option value="title-asc">{{ t('sort.titleAsc') }}</option>
+							<option value="title-desc">{{ t('sort.titleDesc') }}</option>
+							<option value="artist-asc">{{ t('sort.artistAsc') }}</option>
+							<option value="artist-desc">{{ t('sort.artistDesc') }}</option>
+							<option value="album-asc">{{ t('sort.albumAsc') }}</option>
+							<option value="duration-asc">{{ t('sort.durationShort') }}</option>
+							<option value="duration-desc">{{ t('sort.durationLong') }}</option>
 						</select>
 						<svg class="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-tx-muted" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
 							<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clip-rule="evenodd" />
@@ -296,19 +319,19 @@ onUnmounted(() => {
 						@click="playRandomFiltered"
 						:disabled="sortedTracks.length === 0"
 						class="inline-flex items-center gap-2 rounded-corner border border-secondary/50 bg-secondary/15 px-4 py-2 text-sm font-medium text-secondary transition-colors duration-200 hover:enabled:border-secondary/80 hover:enabled:bg-secondary/25 disabled:opacity-50 disabled:cursor-not-allowed"
-						title="Reproducir aleatoriamente respetando los filtros aplicados"
+:title="t('home.shuffleHint')"
 					>
 						<svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
 							<path d="M3 2a1 1 0 011 1v2.101a7 7 0 0110.821 3.394c.105.302.214.602.321.901l1.196-.605A1 1 0 0117 7V4a1 1 0 00-2 0v1.101A9 9 0 005 3H4a1 1 0 00-1 1zm14 12a1 1 0 01-1 1h-1.101a7 7 0 01-10.82-3.394c-.105-.302-.214-.602-.321-.901l-1.196.605A1 1 0 003 13v3a1 1 0 002 0v-1.101A9 9 0 0015 17h1a1 1 0 001-1z" />
 						</svg>
-						<span>Aleatorio</span>
+						<span>{{ t('home.shuffle') }}</span>
 					</button>
 				</div>
 			</div>
 		</header>
 
 		<div v-if="isLoading" class="rounded-corner border border-dashed border-ui-border bg-ui-surface/35 p-4 text-sm text-tx-muted">
-			Cargando biblioteca...
+			{{ t('home.loading') }}
 		</div>
 
 		<div v-else-if="errorMessage" class="rounded-corner border border-status-error/35 bg-status-error/10 p-4 text-sm text-status-error">
@@ -316,7 +339,7 @@ onUnmounted(() => {
 		</div>
 
 		<div v-else-if="sortedTracks.length === 0" class="rounded-corner border border-dashed border-ui-border bg-ui-surface/35 p-4 text-sm text-tx-muted">
-			No hay resultados con esos filtros.
+			{{ t('home.noResults') }}
 		</div>
 
 		<!-- El menú es uno para toda la lista; cada fila dice cuál es la suya
@@ -345,7 +368,7 @@ onUnmounted(() => {
 								{{ formatDuration(track.duration_seconds) }}
 							</span>
 						</div>
-						<p class="truncate text-xs text-tx-muted">{{ track.artist }} • {{ track.album }}</p>
+						<p class="truncate text-xs text-tx-muted">{{ artistLabel(track.artist) }} • {{ albumLabel(track.album) }}</p>
 						<p class="truncate text-[11px] text-tx-muted/80">{{ track.path }}</p>
 					</div>
 
@@ -353,27 +376,27 @@ onUnmounted(() => {
 						<button
 							type="button"
 							class="inline-flex items-center gap-1 rounded-corner border border-primary/45 bg-primary px-3 py-2 text-xs font-semibold text-tx-on-primary transition-colors duration-200 hover:bg-primary/90"
-							title="Reproducir"
-							aria-label="Reproducir"
+							:title="t('common.play')"
+							:aria-label="t('common.play')"
 							@click="playTrack(track.path)"
 						>
-							<img v-if="playIcon" :src="playIcon" alt="Reproducir" class="h-4 w-4">
-							Reproducir
+							<img v-if="playIcon" :src="playIcon" :alt="t('common.play')" class="h-4 w-4">
+							{{ t('common.play') }}
 						</button>
 						<button
 							type="button"
 							class="inline-flex items-center gap-1 rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-xs font-semibold text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
-							:title="playerStore.isFavoritePath(track.path) ? 'Quitar favorito' : 'Agregar a favorito'"
-							:aria-label="playerStore.isFavoritePath(track.path) ? 'Quitar favorito' : 'Agregar a favorito'"
+							:title="playerStore.isFavoritePath(track.path) ? t('common.removeFavorite') : t('common.addFavorite')"
+							:aria-label="playerStore.isFavoritePath(track.path) ? t('common.removeFavorite') : t('common.addFavorite')"
 							@click="toggleFavorite(track.path)"
 						>
 							<img
 								v-if="playerStore.isFavoritePath(track.path) ? removeIcon : addFavoriteIcon"
 								:src="playerStore.isFavoritePath(track.path) ? removeIcon : addFavoriteIcon"
-								:alt="playerStore.isFavoritePath(track.path) ? 'Quitar favorito' : 'Agregar a favorito'"
+								:alt="playerStore.isFavoritePath(track.path) ? t('common.removeFavorite') : t('common.addFavorite')"
 								class="h-4 w-4"
 							>
-							{{ playerStore.isFavoritePath(track.path) ? 'Quitar favorito' : 'Favorito' }}
+							{{ playerStore.isFavoritePath(track.path) ? t('common.removeFavorite') : t('common.favorite') }}
 						</button>
 					</div>
 				</article>

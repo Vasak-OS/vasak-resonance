@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { usePlayerStore } from '@/stores/player';
 import { devLog } from '@/composables/useDevLog';
+import { usePlayerStore } from '@/stores/player';
 
 const props = withDefaults(
 	defineProps<{

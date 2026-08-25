@@ -60,7 +60,6 @@ const coverArt = computed(() => {
 const trackTitle = useTrackTitle({
 	currentTrack: () => playerStore.currentTrack,
 	currentPath: () => playerStore.currentPath,
-	fallback: 'Sin reproduccion',
 });
 
 const trackSubtitle = useTrackSubtitle({
@@ -148,8 +147,8 @@ const onSelectSection = async (id: string) => {
 			>
 				<span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-corner border border-ui-border bg-ui-bg/55">
 					<img
-						v-if="iconSources[section.id]"
-						:src="iconSources[section.id]"
+						v-if="iconSources[section.id as keyof typeof iconSources]"
+						:src="iconSources[section.id as keyof typeof iconSources]"
 						:alt="section.label"
 						class="h-5 w-5 object-contain"
 					/>
