@@ -30,10 +30,7 @@ export interface PortadaConColor {
 
 const SIN_PORTADA: PortadaConColor = { cover_data_url: '', dominant_color: '' };
 
-export async function fetchAlbumCover(
-	artist: string,
-	album: string
-): Promise<PortadaConColor> {
+export async function fetchAlbumCover(artist: string, album: string): Promise<PortadaConColor> {
 	if (!artist || !album) {
 		return SIN_PORTADA;
 	}
@@ -67,5 +64,3 @@ export async function fetchAlbumCover(
 		return SIN_PORTADA;
 	}
 }
-
-

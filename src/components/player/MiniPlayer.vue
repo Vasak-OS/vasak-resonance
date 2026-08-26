@@ -74,10 +74,7 @@ watch(
 			fetchedCoverUrl.value = portada.cover_data_url;
 
 			if (portada.cover_data_url && !track.cover_data_url) {
-				playerStore.setCurrentTrackVisuals(
-					portada.cover_data_url,
-					portada.dominant_color || null
-				);
+				playerStore.setCurrentTrackVisuals(portada.cover_data_url, portada.dominant_color || null);
 			}
 		} catch (error) {
 			console.debug('Failed to fetch cover for current track in miniplayer');
