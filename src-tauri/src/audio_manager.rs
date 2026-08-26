@@ -88,6 +88,13 @@ const IDLE_TICK: Duration = Duration::from_millis(500);
 /// smooth to the ear and still nothing next to the cost of decoding.
 const FADE_TICK: Duration = Duration::from_millis(25);
 
+/// Escribe una línea de diagnóstico si `VASAK_RESONANCE_TRACE` está puesta.
+fn traza(mensaje: &str) {
+    if std::env::var_os("VASAK_RESONANCE_TRACE").is_some() {
+        eprintln!("[cruce] {mensaje}");
+    }
+}
+
 /// Ceiling on the per-path cover cache.
 ///
 /// The cache held every cover ever decoded, as base64, for the life of the
@@ -919,22 +926,41 @@ impl AudioManager {
             return None;
         }
         if self.crossfade.is_zero() {
+            traza("no se cruza: el encadenado está en cero");
             return None;
         }
-        // Nothing playing, nothing to fade out of.
+        // Nada sonando, nada de donde salir.
         self.current.as_ref()?;
 
         // Needs a known duration: without one there is no way to know the end
         // is coming, and the plain end-of-track path handles those files.
-        let duration = self.current_duration?;
+        let Some(duration) = self.current_duration else {
+            traza("no se cruza: la pista no declara duración");
+            return None;
+        };
         if duration <= self.crossfade {
+            traza(&format!(
+                "no se cruza: la pista dura {}s, menos que el cruce",
+                duration.as_secs()
+            ));
             return None;
         }
 
-        let next_path = self.next_track.clone()?;
+        let Some(next_path) = self.next_track.clone() else {
+            traza("no se cruza: nadie dijo cuál es la próxima pista");
+            return None;
+        };
         let position = self.current_position_duration();
         if duration.saturating_sub(position) > self.crossfade {
             return None;
+        }
+        if std::env::var_os("VASAK_RESONANCE_TRACE").is_some() {
+            eprintln!(
+                "[cruce] arranca: reloj={}s de {}s, siguiente={}",
+                position.as_secs(),
+                duration.as_secs(),
+                next_path.display()
+            );
         }
 
         if !next_path.exists() {
@@ -997,6 +1023,23 @@ impl AudioManager {
 
         if let Some(playback) = self.current.as_ref() {
             playback.sink.set_volume(volume * in_gain);
+        }
+
+        // Traza del cruce, para ver si el sink entrante está produciendo audio
+        // mientras su rampa sube. Se activa con VASAK_RESONANCE_TRACE=1.
+        if std::env::var_os("VASAK_RESONANCE_TRACE").is_some() {
+            let entrante = self
+                .current
+                .as_ref()
+                .map(|p| (p.sink.empty(), p.sink.len()));
+            let saliente = self
+                .outgoing
+                .as_ref()
+                .map(|p| (p.sink.empty(), p.sink.len()));
+            eprintln!(
+                "[cruce] t={progress:.2} salida={out_gain:.2} entrada={in_gain:.2} \
+                 entrante(vacío,pistas)={entrante:?} saliente={saliente:?}"
+            );
         }
 
         if progress >= 1.0 {
@@ -1202,6 +1245,7 @@ fn run_audio_loop(
                 file_path,
                 respond_to,
             }) => {
+                traza(&format!("SetNextTrack: {file_path:?}"));
                 manager.next_track = file_path.map(PathBuf::from);
                 let _ = respond_to.send(Ok(()));
                 // No snapshot: a hint about what comes next changes nothing the

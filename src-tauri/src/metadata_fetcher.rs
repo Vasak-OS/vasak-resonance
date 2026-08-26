@@ -202,20 +202,40 @@ fn guess_image_format(content_type: Option<&str>, url: &str) -> &'static str {
 }
 
 /// Convert image file to data URL (base64 encoded)
-fn file_to_data_url(path: &PathBuf, format: &str) -> Result<String, String> {
+/// La portada y el color que la representa.
+///
+/// Van juntos porque los bytes de la imagen ya están de este lado: el frontend
+/// los volvía a decodificar en un `<canvas>` sólo para promediar píxeles.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PortadaConColor {
+    pub cover_data_url: String,
+    /// `#RRGGBB`, o vacío si la imagen no se pudo leer.
+    pub dominant_color: String,
+}
+
+fn file_to_data_url(path: &PathBuf, format: &str) -> Result<PortadaConColor, String> {
     let bytes = fs::read(path)
         .map_err(|e| format!("Failed to read image file: {}", e))?;
-	
+
+    // El color se calcula acá, con la misma paleta que las portadas embebidas.
+    // Que falle no invalida la portada: se devuelve sin color y la vista usa el
+    // suyo por omisión.
+    let dominant_color =
+        crate::audio::extract_dominant_color_hex(&bytes).unwrap_or_default();
+
     let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
     let mime_type = match format {
         "png" => "image/png",
         _ => "image/jpeg",
     };
-	
-    Ok(format!("data:{};base64,{}", mime_type, encoded))
+
+    Ok(PortadaConColor {
+        cover_data_url: format!("data:{};base64,{}", mime_type, encoded),
+        dominant_color,
+    })
 }
 /// Main function: Fetch and cache album cover
-pub async fn fetch_album_cover(artist: String, album: String) -> Result<String, String> {
+pub async fn fetch_album_cover(artist: String, album: String) -> Result<PortadaConColor, String> {
     // Check cache first
     if let Some(cached_path) = get_cached_cover_path(&artist, &album) {
         // Convert cached file to data URL
