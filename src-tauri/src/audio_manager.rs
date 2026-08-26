@@ -88,6 +88,18 @@ const IDLE_TICK: Duration = Duration::from_millis(500);
 /// smooth to the ear and still nothing next to the cost of decoding.
 const FADE_TICK: Duration = Duration::from_millis(25);
 
+/// Escribe una línea de diagnóstico si `VASAK_RESONANCE_TRACE` está puesta.
+fn traza(mensaje: &str) {
+    if std::env::var_os("VASAK_RESONANCE_TRACE").is_none() {
+        return;
+    }
+    // `writeln!` y no `eprintln!`: la macro paniquea si la escritura falla —una
+    // tubería cerrada alcanza— y esto corre en el hilo de audio, donde un panic
+    // se lleva puesta la reproducción. Acá un fallo se ignora.
+    use std::io::Write;
+    let _ = writeln!(std::io::stderr(), "[cruce] {mensaje}");
+}
+
 /// Ceiling on the per-path cover cache.
 ///
 /// The cache held every cover ever decoded, as base64, for the life of the
@@ -449,6 +461,12 @@ struct AudioManager {
     next_track: Option<PathBuf>,
     /// Zero means tracks follow one another without overlapping.
     crossfade: Duration,
+    /// El último motivo por el que no se cruzó, para no repetirlo.
+    ///
+    /// `maybe_start_fade` corre en cada vuelta del bucle, así que un motivo que
+    /// no cambia llenaba el registro con la misma línea dos veces por segundo
+    /// —123 idénticas en una prueba— y escribía en el hilo de audio para nada.
+    ultimo_motivo: Option<&'static str>,
     /// What is loaded: a file path, or a station URL when `stream_url` is set.
     ///
     /// Radio used to leave this empty, and every transport method starts by
@@ -483,6 +501,7 @@ impl AudioManager {
             fade: None,
             next_track: None,
             crossfade: DEFAULT_CROSSFADE,
+            ultimo_motivo: None,
             current_path: None,
             stream_url: None,
             current_metadata: None,
@@ -919,23 +938,32 @@ impl AudioManager {
             return None;
         }
         if self.crossfade.is_zero() {
+            self.motivo("el encadenado está en cero");
             return None;
         }
-        // Nothing playing, nothing to fade out of.
+        // Nada sonando, nada de donde salir.
         self.current.as_ref()?;
 
         // Needs a known duration: without one there is no way to know the end
         // is coming, and the plain end-of-track path handles those files.
-        let duration = self.current_duration?;
+        let Some(duration) = self.current_duration else {
+            self.motivo("la pista no declara duración");
+            return None;
+        };
         if duration <= self.crossfade {
+            self.motivo("la pista dura menos que el cruce");
             return None;
         }
 
-        let next_path = self.next_track.clone()?;
+        let Some(next_path) = self.next_track.clone() else {
+            self.motivo("nadie dijo cuál es la próxima pista");
+            return None;
+        };
         let position = self.current_position_duration();
         if duration.saturating_sub(position) > self.crossfade {
             return None;
         }
+
 
         if !next_path.exists() {
             // A queued file that has since been moved or deleted. Dropping the
@@ -975,6 +1003,20 @@ impl AudioManager {
             duration: self.crossfade,
         });
 
+        // La traza va **acá**, cuando el cruce ya arrancó de verdad.
+        //
+        // Antes se emitía antes de comprobar que el archivo existiera y antes de
+        // que `spawn_playback` devolviera bien, así que en los dos caminos de
+        // error el registro afirmaba que el cruce había empezado cuando la
+        // función devolvía `None`.
+        self.ultimo_motivo = None;
+        traza(&format!(
+            "cruce iniciado: reloj={}s de {}s, siguiente={}",
+            position.as_secs(),
+            duration.as_secs(),
+            next_path.display()
+        ));
+
         self.current_path = Some(next_path);
         self.current_metadata = metadata.clone();
         self.current_duration = Some(Duration::from_secs(total));
@@ -983,6 +1025,16 @@ impl AudioManager {
         self.next_track = None;
 
         metadata
+    }
+
+    /// Anota por qué no se cruzó, **sólo si cambió** respecto de la vuelta
+    /// anterior.
+    fn motivo(&mut self, cual: &'static str) {
+        if self.ultimo_motivo == Some(cual) {
+            return;
+        }
+        self.ultimo_motivo = Some(cual);
+        traza(&format!("no se cruza: {cual}"));
     }
 
     /// Steps the volume ramp, and finishes the fade once the overlap is over.
@@ -998,6 +1050,7 @@ impl AudioManager {
         if let Some(playback) = self.current.as_ref() {
             playback.sink.set_volume(volume * in_gain);
         }
+
 
         if progress >= 1.0 {
             if let Some(playback) = self.outgoing.take() {
@@ -1202,6 +1255,7 @@ fn run_audio_loop(
                 file_path,
                 respond_to,
             }) => {
+                traza(&format!("SetNextTrack: {file_path:?}"));
                 manager.next_track = file_path.map(PathBuf::from);
                 let _ = respond_to.send(Ok(()));
                 // No snapshot: a hint about what comes next changes nothing the

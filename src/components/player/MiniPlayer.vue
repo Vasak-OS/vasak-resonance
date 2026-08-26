@@ -8,7 +8,7 @@ import MiniTransportControls from '@/components/player/transport/MiniTransportCo
 import { useConfigSync } from '@/composables/useConfigSync';
 import { useTrackSubtitle } from '@/composables/useTrackSubtitle';
 import { useTrackTitle } from '@/composables/useTrackTitle';
-import { extractDominantColorFromDataUrl, fetchAlbumCover } from '@/services/album-cover.service';
+import { fetchAlbumCover } from '@/services/album-cover.service';
 import { toggleMainAndMiniPlayer } from '@/services/window.service';
 import { usePlayerStore } from '@/stores/player';
 
@@ -59,7 +59,9 @@ watch(
 
 		// Try to fetch cover from cache/APIs
 		try {
-			const url = await fetchAlbumCover(track.artist, track.album);
+			// La portada trae su color: lo calculó Rust con los bytes que ya
+			// tenía, en lugar de que esta ventana decodifique la imagen otra vez.
+			const portada = await fetchAlbumCover(track.artist, track.album);
 			if (playerStore.currentTrack?.path !== newPath) {
 				return;
 			}
@@ -69,13 +71,13 @@ watch(
 				return;
 			}
 
-			fetchedCoverUrl.value = url;
+			fetchedCoverUrl.value = portada.cover_data_url;
 
-			if (url && !track.cover_data_url) {
-				const dominantColor = await extractDominantColorFromDataUrl(url);
-				if (playerStore.currentTrack?.path === newPath) {
-					playerStore.setCurrentTrackVisuals(url, dominantColor);
-				}
+			if (portada.cover_data_url && !track.cover_data_url) {
+				playerStore.setCurrentTrackVisuals(
+					portada.cover_data_url,
+					portada.dominant_color || null
+				);
 			}
 		} catch (error) {
 			console.debug('Failed to fetch cover for current track in miniplayer');

@@ -83,9 +83,9 @@ const fetchAllCovers = async () => {
 		const cacheKey = `${album.artist}|${album.album}`;
 		if (!coverUrlCache.value[cacheKey]) {
 			try {
-				const url = await fetchAlbumCover(album.artist, album.album);
-				if (url) {
-					coverUrlCache.value[cacheKey] = url;
+				const portada = await fetchAlbumCover(album.artist, album.album);
+				if (portada.cover_data_url) {
+					coverUrlCache.value[cacheKey] = portada.cover_data_url;
 				}
 			} catch (error) {
 				console.debug(`Failed to fetch cover for ${album.artist} - ${album.album}`);

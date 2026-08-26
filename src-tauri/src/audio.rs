@@ -141,7 +141,14 @@ pub fn extract_now_playing_metadata_with_cover_cache(
     })
 }
 
-fn extract_dominant_color_hex(image_data: &[u8]) -> Option<String> {
+/// Color dominante de una imagen, en `#RRGGBB`.
+///
+/// Público porque también lo necesita la portada bajada de la red: el frontend
+/// la dibujaba en un `<canvas>` de 48x48 y promediaba los píxeles a mano, o sea
+/// una decodificación de imagen y un recorrido de 9216 píxeles en el hilo que
+/// dibuja, y con un algoritmo peor —un promedio, no una paleta— que el que ya
+/// estaba acá para las portadas embebidas.
+pub fn extract_dominant_color_hex(image_data: &[u8]) -> Option<String> {
     let cursor = Cursor::new(image_data);
     let decoded = ImageReader::new(cursor)
         .with_guessed_format()
@@ -165,4 +172,87 @@ pub fn is_supported_audio_file(path: &Path) -> bool {
         .and_then(|ext| ext.to_str())
         .map(|ext| SUPPORTED_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str()))
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Un PNG de un solo color, armado en memoria.
+    fn png_de_un_color(r: u8, g: u8, b: u8) -> Vec<u8> {
+        let mut imagen = image::RgbImage::new(24, 24);
+        for pixel in imagen.pixels_mut() {
+            *pixel = image::Rgb([r, g, b]);
+        }
+        let mut bytes = Vec::new();
+        image::DynamicImage::ImageRgb8(imagen)
+            .write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png)
+            .expect("el PNG de prueba tiene que poder escribirse");
+        bytes
+    }
+
+    #[test]
+    fn el_color_dominante_sale_en_hexadecimal_de_seis_digitos() {
+        // El formato importa: la interfaz lo mete tal cual en una propiedad CSS,
+        // así que un `#RGB` o un `rgb()` no servirían.
+        let color = extract_dominant_color_hex(&png_de_un_color(0xFF, 0x00, 0x00))
+            .expect("una imagen válida tiene que dar un color");
+        assert!(color.starts_with('#'), "{color}");
+        assert_eq!(color.len(), 7, "{color}");
+        assert!(
+            color[1..].chars().all(|c| c.is_ascii_hexdigit()),
+            "{color}"
+        );
+    }
+
+    #[test]
+    fn una_imagen_roja_da_un_color_rojizo() {
+        let color = extract_dominant_color_hex(&png_de_un_color(0xE0, 0x10, 0x10)).unwrap();
+        let rojo = u8::from_str_radix(&color[1..3], 16).unwrap();
+        let verde = u8::from_str_radix(&color[3..5], 16).unwrap();
+        let azul = u8::from_str_radix(&color[5..7], 16).unwrap();
+
+        assert!(rojo > verde && rojo > azul, "{color} no es rojizo");
+    }
+
+    #[test]
+    fn una_imagen_azul_da_un_color_azulado() {
+        // Con el promedio a mano que hacía el frontend esto también pasaba; lo
+        // que se gana es que el algoritmo sea uno solo y el mejor de los dos.
+        let color = extract_dominant_color_hex(&png_de_un_color(0x10, 0x20, 0xE0)).unwrap();
+        let rojo = u8::from_str_radix(&color[1..3], 16).unwrap();
+        let azul = u8::from_str_radix(&color[5..7], 16).unwrap();
+
+        assert!(azul > rojo, "{color} no es azulado");
+    }
+
+    #[test]
+    fn los_bytes_que_no_son_una_imagen_no_dan_color() {
+        // Una descarga cortada o un HTML de error en lugar de la imagen: tiene
+        // que devolver None y no reventar, porque de esto depende que la portada
+        // se muestre igual sin color.
+        assert!(extract_dominant_color_hex(b"no soy una imagen").is_none());
+        assert!(extract_dominant_color_hex(&[]).is_none());
+        assert!(extract_dominant_color_hex(b"<html>404</html>").is_none());
+    }
+
+    #[test]
+    fn un_png_truncado_no_paniquea() {
+        // Media descarga es el caso realista: el decodificador tiene que fallar
+        // devolviendo None, no abortando el comando.
+        let completo = png_de_un_color(0x40, 0x80, 0xC0);
+        let mitad = &completo[..completo.len() / 2];
+        assert!(extract_dominant_color_hex(mitad).is_none());
+    }
+
+    #[test]
+    fn se_reconocen_los_formatos_de_audio_soportados() {
+        // La lista decide qué entra a la biblioteca al escanear; una extensión
+        // en mayúsculas es lo que más se ve en archivos viejos.
+        assert!(is_supported_audio_file(Path::new("/m/tema.mp3")));
+        assert!(is_supported_audio_file(Path::new("/m/tema.FLAC")));
+        assert!(is_supported_audio_file(Path::new("/m/tema.Opus")));
+        assert!(!is_supported_audio_file(Path::new("/m/tapa.jpg")));
+        assert!(!is_supported_audio_file(Path::new("/m/sin-extension")));
+    }
 }
