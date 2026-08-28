@@ -194,19 +194,19 @@ const onPlayAlbum = async (paths: string[]) => {
 					v-model="searchQuery"
 					type="search"
 					:placeholder="t('albums.searchPlaceholder')"
-					class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 placeholder:text-tx-muted/70 focus:border-primary/50"
+					class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main transition-colors duration-200 placeholder:text-tx-muted/70 focus:border-primary/50"
 				/>
 			</LabeledField>
 
 			<LabeledField :label="t('common.artist')">
-				<select v-model="artistFilter" class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
+				<select v-model="artistFilter" class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main transition-colors duration-200 focus:border-primary/50">
 					<option value="all">{{ t('common.all') }}</option>
 					<option v-for="artist in albumArtistOptions" :key="artist" :value="artist">{{ artistLabel(artist) }}</option>
 				</select>
 			</LabeledField>
 
 			<LabeledField :label="t('common.sortBy')">
-				<select v-model="sortBy" class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
+				<select v-model="sortBy" class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main transition-colors duration-200 focus:border-primary/50">
 					<option value="album-asc">{{ t('sort.albumAsc') }}</option>
 					<option value="album-desc">{{ t('sort.albumDesc') }}</option>
 					<option value="tracks-desc">{{ t('sort.mostTracks') }}</option>
