@@ -180,7 +180,7 @@ onMounted(() =>
 						v-model="newPlaylistName"
 						type="text"
 :placeholder="t('playlists.namePlaceholder')"
-						class="min-w-0 flex-1 rounded-corner border border-ui-border bg-ui-surface/40 p-2 text-sm text-tx-main focus:outline-none focus:ring-2 focus:ring-primary"
+						class="min-w-0 flex-1 rounded-corner border border-ui-border bg-ui-surface/40 p-2 text-sm text-tx-main focus:ring-2 focus:ring-primary"
 					/>
 					<button
 						type="submit"
@@ -300,7 +300,7 @@ onMounted(() =>
 						v-model="addSearch"
 						type="search"
 :placeholder="t('playlists.addSearchPlaceholder')"
-						class="rounded-corner border border-ui-border bg-ui-surface/40 p-2 text-sm text-tx-main focus:outline-none focus:ring-2 focus:ring-primary"
+						class="rounded-corner border border-ui-border bg-ui-surface/40 p-2 text-sm text-tx-main focus:ring-2 focus:ring-primary"
 					/>
 
 					<p v-if="libraryTracks.length === 0" class="text-sm text-tx-muted">

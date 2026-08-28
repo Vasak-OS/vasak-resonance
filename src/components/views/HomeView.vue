@@ -268,13 +268,13 @@ const visibleCountLabel = computed(() => {
 						v-model="searchQuery"
 						type="search"
 						:placeholder="t('home.searchPlaceholder')"
-						class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main outline-none transition-colors duration-200 placeholder:text-tx-muted/70 focus:border-primary/50"
+						class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main transition-colors duration-200 placeholder:text-tx-muted/70 focus:border-primary/50"
 					/>
 				</LabeledField>
 
 				<LabeledField :label="t('common.artist')" wrapperClass="relative hidden lg:block">
 					<div class="relative">
-						<select v-model="artistFilter" class="appearance-none rounded-corner border border-ui-border bg-ui-surface/80 px-3 py-2 pr-8 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
+						<select v-model="artistFilter" class="appearance-none rounded-corner border border-ui-border bg-ui-surface/80 px-3 py-2 pr-8 text-sm text-tx-main transition-colors duration-200 focus:border-primary/50">
 							<option value="all">{{ t('common.all') }}</option>
 							<option v-for="artist in artistOptions" :key="artist" :value="artist">{{ artistLabel(artist) }}</option>
 						</select>
@@ -286,7 +286,7 @@ const visibleCountLabel = computed(() => {
 
 				<LabeledField :label="t('common.album')" wrapperClass="relative hidden lg:block">
 					<div class="relative">
-						<select v-model="albumFilter" class="appearance-none rounded-corner border border-ui-border bg-ui-surface/80 px-3 py-2 pr-8 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
+						<select v-model="albumFilter" class="appearance-none rounded-corner border border-ui-border bg-ui-surface/80 px-3 py-2 pr-8 text-sm text-tx-main transition-colors duration-200 focus:border-primary/50">
 							<option value="all">{{ t('common.all') }}</option>
 							<option v-for="album in albumOptions" :key="album" :value="album">{{ albumLabel(album) }}</option>
 						</select>
@@ -298,7 +298,7 @@ const visibleCountLabel = computed(() => {
 
 				<LabeledField :label="t('common.sortBy')" wrapperClass="relative hidden lg:block">
 					<div class="relative">
-						<select v-model="sortBy" class="appearance-none rounded-corner border border-ui-border bg-ui-surface/80 px-3 py-2 pr-8 text-sm text-tx-main outline-none transition-colors duration-200 focus:border-primary/50">
+						<select v-model="sortBy" class="appearance-none rounded-corner border border-ui-border bg-ui-surface/80 px-3 py-2 pr-8 text-sm text-tx-main transition-colors duration-200 focus:border-primary/50">
 							<option value="recent-desc">{{ t('sort.recent') }}</option>
 							<option value="title-asc">{{ t('sort.titleAsc') }}</option>
 							<option value="title-desc">{{ t('sort.titleDesc') }}</option>

@@ -168,7 +168,7 @@ onBeforeUnmount(() => {
 						v-model="searchQuery"
 						type="text"
 						:placeholder="t('radios.searchPlaceholder')"
-						class="bg-transparent flex-1 outline-none text-sm"
+						class="bg-transparent flex-1 text-sm"
 					/>
 				</div>
 			</LabeledField>
@@ -243,8 +243,7 @@ onBeforeUnmount(() => {
 						<div class="relative">
 							<button
 								class="p-2 bg-secondary rounded-full hover:bg-primary transition-colors"
-								@click.stop="handlePlayStation(station)"
-							>
+								@click.stop="handlePlayStation(station)" :aria-label="t('common.play')">
 								<img :src="playIcon" :alt="t('common.play')" class="w-5 h-5" />
 							</button>
 							<!-- buffering indicator -->
