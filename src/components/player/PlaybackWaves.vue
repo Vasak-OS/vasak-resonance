@@ -89,7 +89,7 @@ const bars = computed(() => {
 		<span
 			v-for="(bar, step) in bars"
 			:key="step"
-			class="flex-1 rounded-sm transition-all duration-200"
+			class="flex-1 rounded-corner-sm transition-all duration-200"
 			:class="bar.isActive ? activeClass : inactiveClass"
 			:style="{ height: `${bar.height}px` }"
 		/>

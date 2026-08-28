@@ -175,12 +175,12 @@ onBeforeUnmount(() => {
 		</div>
 
 		<!-- Error message -->
-		<div v-if="error" class="px-4 py-2 bg-red-900 text-red-200 rounded mx-4 text-sm flex justify-between items-center">
+		<div v-if="error" class="px-4 py-2 bg-status-error/15 text-status-error rounded mx-4 text-sm flex justify-between items-center">
 			<span>{{ error }}</span>
 			<button
 				@click="loadStations()"
 				:disabled="loading"
-				class="ml-2 px-2 py-1 bg-red-700 hover:bg-red-600 disabled:bg-red-800 rounded text-xs whitespace-nowrap"
+				class="ml-2 px-2 py-1 bg-status-error hover:bg-status-error/85 disabled:bg-status-error/50 rounded text-xs whitespace-nowrap"
 			>
 				{{ loading ? t('radios.retrying') : t('radios.retry') }}
 			</button>
@@ -200,7 +200,7 @@ onBeforeUnmount(() => {
 				<div
 					v-for="station in sortedStations"
 					:key="station.uuid"
-					class="bg-ui-surface/80 rounded-lg p-3 hover:bg-ui-bg/80 transition-colors cursor-pointer flex gap-3"
+					class="bg-ui-surface/80 rounded-corner p-3 hover:bg-ui-bg/80 transition-colors cursor-pointer flex gap-3"
 					@click="handlePlayStation(station)"
 				>
 					<!-- Station icon/image -->
@@ -220,7 +220,7 @@ onBeforeUnmount(() => {
 					<!-- Station info -->
 					<div class="flex-1 min-w-0">
 						<h3 class="font-semibold text-sm truncate">{{ station.name }}</h3>
-						<p class="text-xs text-gray-400 truncate">{{ station.country || t('radios.unknownCountry') }}</p>
+						<p class="text-xs text-tx-muted truncate">{{ station.country || t('radios.unknownCountry') }}</p>
 						<div class="flex gap-1 mt-1">
 							<span
 								v-if="station.codec"

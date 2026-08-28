@@ -13,7 +13,7 @@ const playerStore = usePlayerStore();
 				v-show="playerStore.isScanning"
 				class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
 			>
-				<div class="flex flex-col items-center gap-4 rounded-lg bg-bg-primary p-8 shadow-2xl">
+				<div class="flex flex-col items-center gap-4 rounded-corner bg-bg-primary p-8 shadow-2xl">
 					<!-- Spinner SVG -->
 					<svg
 						class="h-12 w-12 animate-spin text-primary"
