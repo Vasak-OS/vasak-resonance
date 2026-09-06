@@ -1,6 +1,5 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useConfigStore } from '@vasakgroup/plugin-config-manager';
-import type { Store } from 'pinia';
 import { onMounted, onUnmounted } from 'vue';
 
 interface UseConfigSyncOptions {
@@ -11,8 +10,11 @@ let sharedUnlisten: UnlistenFn | null = null;
 let activeConsumers = 0;
 let activeLoad: Promise<void> | null = null;
 
+// El tipo sale del propio store en vez de describirse a mano: escrito así
+// quedaba libre de divergir de lo que el gestor de configuración publica, que
+// es justo lo que pasó cuando el store empezó a publicar bien sus acciones.
 const loadConfigSafely = async (
-	configStore: Store<'config', { config: any; loadConfig: () => Promise<void> }>
+	configStore: ReturnType<typeof useConfigStore>
 ) => {
 	if (!activeLoad) {
 		activeLoad = configStore.loadConfig().finally(() => {
@@ -27,10 +29,7 @@ export const useConfigSync = ({ useViewTransition = false }: UseConfigSyncOption
 	onMounted(async () => {
 		activeConsumers += 1;
 
-		const configStore = useConfigStore() as Store<
-			'config',
-			{ config: any; loadConfig: () => Promise<void> }
-		>;
+		const configStore = useConfigStore();
 
 		await loadConfigSafely(configStore);
 
