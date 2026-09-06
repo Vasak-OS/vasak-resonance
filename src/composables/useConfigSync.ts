@@ -13,9 +13,7 @@ let activeLoad: Promise<void> | null = null;
 // El tipo sale del propio store en vez de describirse a mano: escrito así
 // quedaba libre de divergir de lo que el gestor de configuración publica, que
 // es justo lo que pasó cuando el store empezó a publicar bien sus acciones.
-const loadConfigSafely = async (
-	configStore: ReturnType<typeof useConfigStore>
-) => {
+const loadConfigSafely = async (configStore: ReturnType<typeof useConfigStore>) => {
 	if (!activeLoad) {
 		activeLoad = configStore.loadConfig().finally(() => {
 			activeLoad = null;
