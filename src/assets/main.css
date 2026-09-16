@@ -260,6 +260,48 @@ body * {
 }
 
 /*
+ * La canción que está sonando, en la lista.
+ *
+ * El resplandor vive en un `::after` y lo que se anima es su `opacity`, nunca
+ * el `box-shadow`: animar la sombra la vuelve a pintar entera en cada cuadro,
+ * y esta fila está adentro de una lista virtualizada que la recicla mientras
+ * se desplaza.
+ *
+ * Late **sólo mientras suena**. En pausa queda encendido y quieto: una
+ * animación infinita mantiene al compositor despierto para siempre, y la fila
+ * sigue siendo la que está cargada aunque no avance. Quien pidió menos
+ * movimiento no ve el latido — de eso se ocupa el bloque de abajo, que apaga
+ * lo infinito.
+ */
+.pista-sonando {
+  position: relative;
+}
+
+.pista-sonando::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow: 0 0 14px var(--use-primary);
+  opacity: 0.28;
+}
+
+.pista-sonando--activa::after {
+  animation: latido-de-pista 3s ease-in-out infinite;
+}
+
+@keyframes latido-de-pista {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/*
  * Menos movimiento para quien lo pidió (WCAG 2.3.3, y 2.2.2 para lo que no para).
  *
  * En el escritorio hay 378 transiciones y 41 animaciones **infinitas** —pulsos de

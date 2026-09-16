@@ -135,7 +135,7 @@ const onSelectSection = async (id: string) => {
 				v-for="section in sections"
 				:key="section.id"
 				type="button"
-				class="flex w-full items-center gap-3 rounded-corner border px-3 py-2 text-left text-sm transition-all duration-200"
+				class="flex w-full items-center gap-3 rounded-corner border px-3 py-2 text-left text-sm transition-[color,background-color,border-color,scale] duration-[250ms] ease-[cubic-bezier(0.4,0,0.2,1)] active:scale-[0.98]"
 				:class="[
 					selectedSection === section.id
 						? 'border-secondary bg-primary/15 text-tx-main'
