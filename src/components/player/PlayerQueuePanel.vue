@@ -139,8 +139,8 @@ const onQueueDrop = (targetId: string) => {
 			class="grid gap-2"
 			@contextmenu="onQueueContextMenu"
 			move-class="transition-transform duration-200 ease-out"
-			enter-active-class="transition-all duration-200 ease-out"
-			leave-active-class="transition-all duration-150 ease-in"
+			enter-active-class="transition-[opacity,transform] duration-200 ease-out"
+			leave-active-class="transition-[opacity,transform] duration-150 ease-in"
 			enter-from-class="opacity-0 translate-y-2"
 			leave-to-class="opacity-0 translate-y-2"
 		>
@@ -148,7 +148,7 @@ const onQueueDrop = (targetId: string) => {
 				v-for="(entry, index) in props.queueItems"
 				:key="entry.id"
 				:data-queue-id="entry.id"
-				class="group flex items-center gap-3 rounded-corner border border-ui-border/80 bg-ui-surface/45 px-3 py-2.5 text-sm transition-all duration-200 hover:border-primary/35 hover:bg-ui-surface/70"
+				class="group flex items-center gap-3 rounded-corner border border-ui-border/80 bg-ui-surface/45 px-3 py-2.5 text-sm transition-colors duration-200 hover:border-primary/35 hover:bg-ui-surface/70"
 				:class="{
 					'border-primary/55 bg-primary/10': dropTargetId === entry.id,
 					'opacity-70': draggingQueueId === entry.id,
