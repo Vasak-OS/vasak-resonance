@@ -49,9 +49,9 @@ onUnmounted(() => {
 			<AudioDropOverlay :is-active="playerStore.isDragOver" />
 
 			<Transition
-				enter-active-class="transition-[opacity,transform] duration-200 ease-out"
+				enter-active-class="transition-[opacity,translate] duration-200 ease-out"
 				enter-from-class="opacity-0 -translate-y-2"
-				leave-active-class="transition-[opacity,transform] duration-150 ease-in"
+				leave-active-class="transition-[opacity,translate] duration-150 ease-in"
 				leave-to-class="opacity-0 -translate-y-2"
 			>
 				<div

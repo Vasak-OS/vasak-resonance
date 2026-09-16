@@ -37,14 +37,35 @@ describe('ninguna transición pide «todas»', () => {
 describe('la barra lateral', () => {
 	const SIDEBAR = leer('src/components/layout/ResonanceSidebar.vue');
 
-	test('transiciona color y transform, no el resto', () => {
-		expect(SIDEBAR).toContain('transition-[color,background-color,border-color,transform]');
+	test('transiciona color y la escala, no el resto', () => {
+		// `scale` y no `transform`: en Tailwind 4 las utilidades `scale-*` y
+		// `translate-*` escriben las propiedades nativas `scale` y `translate`,
+		// así que nombrar `transform` en la lista deja el movimiento sin animar
+		// —sin error, simplemente no transiciona—. Comprobado en el CSS que sale
+		// del build: `.-translate-y-2` emite `translate: …`.
+		expect(SIDEBAR).toContain('transition-[color,background-color,border-color,scale]');
 	});
 
 	test('se hunde al hacer clic, con transform y no con tamaño', () => {
 		// `scale` es composición; cambiar el tamaño sería layout de toda la lista.
 		expect(SIDEBAR).toContain('active:scale-[0.98]');
 	});
+});
+
+describe('los paneles', () => {
+	for (const archivo of [
+		'src/layouts/WindowAppLayout.vue',
+		'src/components/player/PlayerQueuePanel.vue',
+	]) {
+		test(`${archivo} anima la propiedad que de verdad cambia`, () => {
+			const fuente = leer(archivo);
+
+			// Mismo motivo que la barra lateral: lo que mueven los `translate-*`
+			// en Tailwind 4 es `translate`, no `transform`.
+			expect(fuente).toContain('transition-[opacity,translate]');
+			expect(fuente).not.toContain('transition-[opacity,transform]');
+		});
+	}
 });
 
 describe('la canción que suena', () => {

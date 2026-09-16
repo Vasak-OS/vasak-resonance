@@ -139,8 +139,8 @@ const onQueueDrop = (targetId: string) => {
 			class="grid gap-2"
 			@contextmenu="onQueueContextMenu"
 			move-class="transition-transform duration-200 ease-out"
-			enter-active-class="transition-[opacity,transform] duration-200 ease-out"
-			leave-active-class="transition-[opacity,transform] duration-150 ease-in"
+			enter-active-class="transition-[opacity,translate] duration-200 ease-out"
+			leave-active-class="transition-[opacity,translate] duration-150 ease-in"
 			enter-from-class="opacity-0 translate-y-2"
 			leave-to-class="opacity-0 translate-y-2"
 		>
