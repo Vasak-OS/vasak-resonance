@@ -1,6 +1,6 @@
 [package]
 name = "vasak-resonance"
-version = "0.5.1"
+version = "0.6.0"
 description = "A Vasak Application (template)"
 authors = ["Vasak Group", "Joaquin (Pato) Decima"]
 edition = "2021"
@@ -65,3 +65,12 @@ strip = true       # Ensures debug symbols are removed.
 # sintaxis no se ve hasta que la aplicación no arranca.
 serde_yaml = "0.9"
 tempfile = "3.27.0"
+
+[features]
+# Sin esta feature, `tauri` sirve la interfaz desde `devUrl`, así que un binario
+# compilado a mano —en `debug` o en `release`— abre la ventana con «Could not
+# connect to localhost» y la aplicación no se puede mirar fuera de `tauri dev`.
+# Con ella la interfaz sale de `dist/`, que es lo que hace el empaquetado.
+# Correr `cargo build --features custom-protocol` es la forma de ver la ventana
+# de verdad, y es lo que tienen las otras quince aplicaciones.
+custom-protocol = ["tauri/custom-protocol"]

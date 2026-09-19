@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
+import { WindowFrame } from '@vasakgroup/vue-libvasak';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import PlaybackWaves from '@/components/player/PlaybackWaves.vue';
 import PlayerBackground from '@/components/player/PlayerBackground.vue';
@@ -102,7 +103,22 @@ onUnmounted(() => {
 </script>
 
 <template>
-	<div class="relative h-screen w-screen overflow-hidden rounded-corner-window border border-ui-border bg-ui-bg/90 p-3">
+	<!-- Sin barra. Esto es un widget, no una ventana: trescientos sesenta
+	     píxeles por ciento veinte, siempre encima, sin redimensionar. Una barra
+	     con botones se comería un tercio del alto, y los botones no
+	     significarían nada: no hay nada que minimizar ni maximizar, y para
+	     volver a la ventana grande está el botón del transporte, que es donde
+	     la mano ya lo busca.
+
+	     Del marco compartido se queda con lo que sí hace falta: que el borde,
+	     la esquina y el fondo sean los mismos que los del resto del escritorio.
+	     El fondo es el del marco y no uno propio: dos utilidades de fondo sobre
+	     el mismo elemento las desempata el orden del CSS generado, no el del
+	     atributo, así que un `bg-ui-bg/90` encima del `/80` del marco gana o
+	     pierde según el día. Y una ventana con otro fondo que las demás es
+	     justo lo que esto vino a sacar. -->
+	<WindowFrame hide-bar>
+		<div class="relative min-h-0 min-w-0 flex-1 overflow-hidden p-3">
 		<PlayerBackground />
 
 		<div class="relative z-10 flex h-full flex-col">
@@ -132,5 +148,6 @@ onUnmounted(() => {
 
 			<PlaybackWaves class="mt-2" :steps="72" bar-height="h-3" :floor-paused="2" :floor-playing="4" :amplitude="7" />
 		</div>
-	</div>
+		</div>
+	</WindowFrame>
 </template>
