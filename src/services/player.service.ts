@@ -118,6 +118,11 @@ export const fetchLyrics = (params: {
 	artistName: string;
 	albumName: string;
 	durationSeconds: number;
+	/**
+	 * El archivo que suena, para que el backend mire si la letra ya está en el
+	 * disco antes de salir a la red. Una emisora de radio no tiene.
+	 */
+	path?: string | null;
 }): Promise<TrackLyricsPayload> => {
 	devLog('[player.service] fetchLyrics invoke:', params.trackName, params.artistName);
 	return invoke<TrackLyricsPayload>('fetch_lyrics', {
@@ -125,6 +130,7 @@ export const fetchLyrics = (params: {
 		artistName: params.artistName,
 		albumName: params.albumName,
 		durationSeconds: Math.max(0, Math.floor(params.durationSeconds)),
+		path: params.path ?? null,
 	});
 };
 

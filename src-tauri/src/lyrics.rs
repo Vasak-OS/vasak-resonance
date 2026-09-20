@@ -3,9 +3,14 @@ use serde::Deserialize;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
+
+use lofty::file::TaggedFileExt;
+use lofty::prelude::ItemKey;
+use lofty::probe::Probe;
 
 use crate::structs::{LyricsLine, TrackLyricsPayload};
 
@@ -43,12 +48,18 @@ fn cache() -> &'static Mutex<HashMap<String, TrackLyricsPayload>> {
 }
 
 fn lyrics_cache_path() -> Option<PathBuf> {
-    let home = std::env::var("HOME").map(PathBuf::from).ok().or_else(dirs::home_dir)?;
+    let home = std::env::var("HOME")
+        .map(PathBuf::from)
+        .ok()
+        .or_else(dirs::home_dir)?;
     Some(home.join(NEW_LYRICS_CACHE_RELATIVE_PATH))
 }
 
 fn legacy_lyrics_cache_path() -> Option<PathBuf> {
-    let home = std::env::var("HOME").map(PathBuf::from).ok().or_else(dirs::home_dir)?;
+    let home = std::env::var("HOME")
+        .map(PathBuf::from)
+        .ok()
+        .or_else(dirs::home_dir)?;
     Some(home.join(LEGACY_LYRICS_CACHE_RELATIVE_PATH))
 }
 
@@ -343,6 +354,111 @@ async fn fetch_search_record(client: &Client, query: &LyricsQuery) -> Option<Lrc
     items.into_iter().next()
 }
 
+/// Techo de lo que se lee de un archivo de letras.
+///
+/// Una letra son unos pocos kilobytes. El techo no es por las letras sino por
+/// lo que puede haber quedado con ese nombre al lado de la música: se prefiere
+/// ignorarlo a cargarlo entero en memoria.
+const MAXIMO_BYTES_DE_LETRA: u64 = 1024 * 1024;
+
+/// Lee un archivo de letras que esté al lado del audio.
+///
+/// Vacío —o ausente, o ilegible, o más grande que el techo— es lo mismo que no
+/// estar: se sigue con la fuente siguiente.
+fn leer_archivo_de_letras(path: &Path) -> Option<String> {
+    let metadata = fs::metadata(path).ok()?;
+    if !metadata.is_file() || metadata.len() > MAXIMO_BYTES_DE_LETRA {
+        return None;
+    }
+
+    // Un archivo que no sea UTF-8 —los `.lrc` viejos suelen estar en la
+    // codificación de su país— se deja pasar en vez de adivinar: la letra sale
+    // de la red, como antes.
+    let contenido = fs::read_to_string(path).ok()?;
+    let contenido = contenido.trim().to_string();
+
+    if contenido.is_empty() {
+        None
+    } else {
+        Some(contenido)
+    }
+}
+
+/// Arma la letra sincronizada, si el texto tiene marcas de tiempo.
+fn como_sincronizada(fuente: &str, texto: &str) -> Option<TrackLyricsPayload> {
+    let lines = parse_lrc_lines(texto);
+    if lines.is_empty() {
+        return None;
+    }
+
+    Some(TrackLyricsPayload {
+        source: fuente.to_string(),
+        synced: true,
+        instrumental: false,
+        plain_lyrics: None,
+        synced_lyrics: Some(texto.to_string()),
+        lines,
+    })
+}
+
+/// Arma la letra plana: la que no tiene tiempos y se muestra entera.
+fn como_plana(fuente: &str, texto: &str) -> TrackLyricsPayload {
+    TrackLyricsPayload {
+        source: fuente.to_string(),
+        synced: false,
+        instrumental: false,
+        plain_lyrics: Some(texto.to_string()),
+        synced_lyrics: None,
+        lines: Vec::new(),
+    }
+}
+
+/// La letra guardada dentro del propio archivo de audio.
+fn letra_de_la_etiqueta(audio: &Path) -> Option<String> {
+    let tagged = Probe::open(audio).ok()?.read().ok()?;
+    let tag = tagged.primary_tag().or_else(|| tagged.first_tag())?;
+    let texto = tag.get_string(&ItemKey::Lyrics)?.trim().to_string();
+
+    if texto.is_empty() {
+        None
+    } else {
+        Some(texto)
+    }
+}
+
+/// La letra que ya está en el disco, si está.
+///
+/// Se mira antes que LRCLIB por dos motivos. El primero es que funciona sin
+/// conexión, que es el estado normal de una biblioteca local. El segundo es que
+/// quien se tomó el trabajo de dejar un `.lrc` al lado del archivo quiere **ese**
+/// —puede ser la versión en vivo, la traducida, o la que corrige lo que el
+/// servicio tiene mal—, y una letra de la red no tiene por qué ganarle.
+///
+/// El orden es sincronizada primero: entre un `.lrc` con tiempos y un `.txt`
+/// plano, el que sirve para seguir la canción es el primero.
+pub fn letras_del_disco(audio: &Path) -> Option<TrackLyricsPayload> {
+    // 1. El `.lrc` de al lado. Si no tiene ni una marca de tiempo no es un LRC
+    //    de verdad, y se lo trata como lo que quedó: texto plano.
+    if let Some(texto) = leer_archivo_de_letras(&audio.with_extension("lrc")) {
+        return Some(
+            como_sincronizada("archivo:lrc", &texto)
+                .unwrap_or_else(|| como_plana("archivo:lrc", &texto)),
+        );
+    }
+
+    // 2. La etiqueta del archivo, que es donde la dejan los etiquetadores. A
+    //    veces trae los tiempos adentro, así que se prueba igual.
+    if let Some(texto) = letra_de_la_etiqueta(audio) {
+        return Some(
+            como_sincronizada("etiqueta", &texto).unwrap_or_else(|| como_plana("etiqueta", &texto)),
+        );
+    }
+
+    // 3. Un `.txt` con el mismo nombre. Nunca tiene tiempos.
+    leer_archivo_de_letras(&audio.with_extension("txt"))
+        .map(|texto| como_plana("archivo:txt", &texto))
+}
+
 pub async fn fetch_track_lyrics(query: LyricsQuery) -> Result<TrackLyricsPayload, String> {
     let normalized = LyricsQuery {
         track_name: normalize_for_query(&query.track_name),
@@ -384,4 +500,202 @@ pub async fn fetch_track_lyrics(query: LyricsQuery) -> Result<TrackLyricsPayload
     }
 
     Ok(payload)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Un directorio con un archivo de audio de mentira y lo que se le quiera
+    /// poner al lado. El audio no necesita ser audio de verdad: mientras haya un
+    /// `.lrc` o un `.txt`, nunca se lo abre; y cuando se lo abre —para mirarle la
+    /// etiqueta— fallar es una de las respuestas previstas.
+    fn carpeta_con(archivos: &[(&str, &str)]) -> (tempfile::TempDir, std::path::PathBuf) {
+        let dir = tempfile::tempdir().expect("no se pudo crear el directorio temporal");
+        let audio = dir.path().join("tema.mp3");
+        fs::write(&audio, b"esto no es un mp3").expect("no se pudo escribir el audio");
+
+        for (nombre, contenido) in archivos {
+            fs::write(dir.path().join(nombre), contenido).expect("no se pudo escribir");
+        }
+
+        (dir, audio)
+    }
+
+    const LRC: &str = "[00:12.50]Primera línea\n[00:18.00]Segunda línea\n";
+
+    /// Un MP3 de verdad, con la letra escrita en la etiqueta.
+    ///
+    /// Ocho tramas y no una: `lofty` no da por bueno un MPEG hasta encontrar
+    /// varias cabeceras seguidas, y con una sola la prueba habría pasado en
+    /// verde sin haber leído nunca una etiqueta.
+    fn audio_con_letra_en_la_etiqueta(dir: &Path, nombre: &str, letra: &str) -> std::path::PathBuf {
+        use lofty::config::WriteOptions;
+        use lofty::tag::{Tag, TagExt, TagType};
+
+        let audio = dir.join(nombre);
+        let mut bytes = Vec::new();
+        for _ in 0..8 {
+            // MPEG-1 Layer III, 128 kbps, 44,1 kHz: 417 bytes por trama.
+            bytes.extend_from_slice(&[0xFF, 0xFB, 0x90, 0x00]);
+            bytes.extend(std::iter::repeat(0u8).take(413));
+        }
+        fs::write(&audio, &bytes).expect("no se pudo escribir el audio");
+
+        let mut tag = Tag::new(TagType::Id3v2);
+        tag.insert_text(ItemKey::Lyrics, letra.to_string());
+        tag.save_to_path(&audio, WriteOptions::default())
+            .expect("no se pudo escribir la etiqueta");
+
+        audio
+    }
+
+    #[test]
+    fn el_lrc_de_al_lado_da_letra_sincronizada() {
+        let (_dir, audio) = carpeta_con(&[("tema.lrc", LRC)]);
+
+        let letras = letras_del_disco(&audio).expect("tendría que encontrar el .lrc");
+
+        assert!(letras.synced);
+        assert_eq!(letras.source, "archivo:lrc");
+        assert_eq!(letras.lines.len(), 2);
+        assert_eq!(letras.lines[0].time_ms, 12_500);
+        assert_eq!(letras.lines[0].text, "Primera línea");
+    }
+
+    #[test]
+    fn un_lrc_sin_tiempos_es_texto_plano() {
+        // Pasa: alguien guarda la letra con la extensión del formato
+        // sincronizado. Sirve igual, sólo que sin seguir la canción.
+        let (_dir, audio) = carpeta_con(&[("tema.lrc", "Primera línea\nSegunda línea\n")]);
+
+        let letras = letras_del_disco(&audio).expect("tendría que usarlo igual");
+
+        assert!(!letras.synced);
+        assert!(letras.lines.is_empty());
+        assert_eq!(
+            letras.plain_lyrics.as_deref(),
+            Some("Primera línea\nSegunda línea")
+        );
+    }
+
+    #[test]
+    fn sin_lrc_vale_el_txt() {
+        let (_dir, audio) = carpeta_con(&[("tema.txt", "Una letra sin tiempos\n")]);
+
+        let letras = letras_del_disco(&audio).expect("tendría que encontrar el .txt");
+
+        assert!(!letras.synced);
+        assert_eq!(letras.source, "archivo:txt");
+        assert_eq!(
+            letras.plain_lyrics.as_deref(),
+            Some("Una letra sin tiempos")
+        );
+    }
+
+    #[test]
+    fn el_lrc_le_gana_al_txt() {
+        // Entre los dos gana el que sirve para seguir la canción.
+        let (_dir, audio) = carpeta_con(&[("tema.lrc", LRC), ("tema.txt", "La otra letra")]);
+
+        let letras = letras_del_disco(&audio).expect("tendría que haber letra");
+
+        assert_eq!(letras.source, "archivo:lrc");
+    }
+
+    #[test]
+    fn un_archivo_vacio_es_lo_mismo_que_no_estar() {
+        let (_dir, audio) = carpeta_con(&[("tema.lrc", "   \n\n"), ("tema.txt", "La que sirve")]);
+
+        let letras = letras_del_disco(&audio).expect("tendría que caer en el .txt");
+
+        assert_eq!(letras.source, "archivo:txt");
+    }
+
+    #[test]
+    fn un_archivo_enorme_se_ignora() {
+        let dir = tempfile::tempdir().expect("no se pudo crear el directorio temporal");
+        let audio = dir.path().join("tema.mp3");
+        fs::write(&audio, b"esto no es un mp3").expect("no se pudo escribir el audio");
+        fs::write(
+            dir.path().join("tema.lrc"),
+            "x".repeat((MAXIMO_BYTES_DE_LETRA + 1) as usize),
+        )
+        .expect("no se pudo escribir");
+
+        assert!(letras_del_disco(&audio).is_none());
+    }
+
+    #[test]
+    fn sin_nada_al_lado_no_hay_letra_del_disco() {
+        // Y ahí es donde sigue entrando LRCLIB, que es lo que hacía siempre.
+        let (_dir, audio) = carpeta_con(&[]);
+
+        assert!(letras_del_disco(&audio).is_none());
+    }
+
+    #[test]
+    fn el_archivo_de_letras_sigue_al_nombre_del_audio() {
+        // `tema.parte1.mp3` busca `tema.parte1.lrc`, no `tema.lrc`.
+        let dir = tempfile::tempdir().expect("no se pudo crear el directorio temporal");
+        let audio = dir.path().join("tema.parte1.mp3");
+        fs::write(&audio, b"esto no es un mp3").expect("no se pudo escribir el audio");
+        fs::write(dir.path().join("tema.parte1.lrc"), LRC).expect("no se pudo escribir");
+        fs::write(dir.path().join("tema.lrc"), "La de otro tema").expect("no se pudo escribir");
+
+        let letras = letras_del_disco(&audio).expect("tendría que encontrar el suyo");
+
+        assert_eq!(letras.lines.len(), 2);
+    }
+
+    #[test]
+    fn la_letra_de_la_etiqueta_se_usa_cuando_no_hay_archivo_al_lado() {
+        // Es donde la dejan los etiquetadores y casi todas las descargas.
+        let dir = tempfile::tempdir().expect("no se pudo crear el directorio temporal");
+        let audio = audio_con_letra_en_la_etiqueta(dir.path(), "tema.mp3", "Desde la etiqueta");
+
+        let letras = letras_del_disco(&audio).expect("tendría que leer la etiqueta");
+
+        assert_eq!(letras.source, "etiqueta");
+        assert!(!letras.synced);
+        assert_eq!(letras.plain_lyrics.as_deref(), Some("Desde la etiqueta"));
+    }
+
+    #[test]
+    fn una_etiqueta_con_tiempos_sale_sincronizada() {
+        // Pasa más de lo que parece: el formato sincronizado entra tal cual en
+        // el campo de la letra.
+        let dir = tempfile::tempdir().expect("no se pudo crear el directorio temporal");
+        let audio = audio_con_letra_en_la_etiqueta(dir.path(), "tema.mp3", LRC);
+
+        let letras = letras_del_disco(&audio).expect("tendría que leer la etiqueta");
+
+        assert_eq!(letras.source, "etiqueta");
+        assert!(letras.synced);
+        assert_eq!(letras.lines.len(), 2);
+        assert_eq!(letras.lines[1].time_ms, 18_000);
+    }
+
+    #[test]
+    fn el_archivo_de_al_lado_le_gana_a_la_etiqueta() {
+        // Quien dejó un `.lrc` al lado quiere ése: puede ser el que corrige lo
+        // que la etiqueta tiene mal.
+        let dir = tempfile::tempdir().expect("no se pudo crear el directorio temporal");
+        let audio = audio_con_letra_en_la_etiqueta(dir.path(), "tema.mp3", "La de la etiqueta");
+        fs::write(dir.path().join("tema.lrc"), LRC).expect("no se pudo escribir");
+
+        let letras = letras_del_disco(&audio).expect("tendría que haber letra");
+
+        assert_eq!(letras.source, "archivo:lrc");
+    }
+
+    #[test]
+    fn una_carpeta_con_ese_nombre_no_es_una_letra() {
+        let dir = tempfile::tempdir().expect("no se pudo crear el directorio temporal");
+        let audio = dir.path().join("tema.mp3");
+        fs::write(&audio, b"esto no es un mp3").expect("no se pudo escribir el audio");
+        fs::create_dir(dir.path().join("tema.lrc")).expect("no se pudo crear la carpeta");
+
+        assert!(letras_del_disco(&audio).is_none());
+    }
 }
