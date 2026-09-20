@@ -3,7 +3,8 @@ import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { defineStore } from 'pinia';
 import { computed, ref, shallowRef, watch } from 'vue';
 import { devLog } from '@/composables/useDevLog';
-import { enviarPresencia, limpiarPresencia } from '@/services/discord.service';
+import { fetchAlbumCover } from '@/services/album-cover.service';
+import { enviarPresencia, limpiarPresencia, presenciaActiva } from '@/services/discord.service';
 import {
 	type DroppedPlaybackTrack,
 	getPlaybackSnapshot,
@@ -614,6 +615,99 @@ export const usePlayerStore = defineStore('player', () => {
 	let ultimoAvisoADiscord: { estado: EstadoParaDiscord; momento: number } | null = null;
 
 	/**
+	 * La dirección de la tapa, por álbum.
+	 *
+	 * Se guarda también cuando no se encontró ninguna —cadena vacía—, que es
+	 * justamente lo que evita volver a preguntar por el mismo álbum en cada
+	 * canción.
+	 */
+	const tapasRemotas = new Map<string, string>();
+	/** La del tema que suena, o `null` mientras no se sepa. */
+	let tapaRemotaActual: string | null = null;
+	/** De qué álbum es `tapaRemotaActual`. */
+	let albumDeLaTapa = '';
+	/**
+	 * Los álbumes que se están averiguando ahora mismo, para no pedirlos dos
+	 * veces.
+	 *
+	 * Un conjunto y no «el último»: entre que empieza una búsqueda y termina
+	 * puede sonar otro álbum y volver el primero —una cola de dos, o alguien
+	 * yendo y viniendo—, y con una sola marca la segunda vuelta del primero
+	 * arrancaba otra búsqueda idéntica.
+	 */
+	const albumesEnAveriguacion = new Set<string>();
+	/**
+	 * Si la presencia está encendida, preguntado una sola vez.
+	 *
+	 * La respuesta no cambia mientras la aplicación viva: el hilo de Discord
+	 * arranca —o no— al abrir, según haya identificador configurado.
+	 */
+	let presenciaEncendida: Promise<boolean> | null = null;
+
+	const claveDeAlbum = (artista: string, album: string) => `${artista}|${album}`;
+
+	/**
+	 * Busca la dirección de la tapa del álbum que suena.
+	 *
+	 * Sale a la red, así que **sólo se hace si Discord está configurado**: para
+	 * la ventana la tapa ya está resuelta por otro lado, y quien no usa la
+	 * presencia no tiene por qué mandarle el nombre de cada álbum que escucha a
+	 * un servicio ajeno.
+	 */
+	const averiguarTapaRemota = async (artista: string, album: string, clave: string) => {
+		if (albumesEnAveriguacion.has(clave)) {
+			return;
+		}
+		albumesEnAveriguacion.add(clave);
+
+		try {
+			presenciaEncendida ??= presenciaActiva();
+			if (!(await presenciaEncendida)) {
+				return;
+			}
+
+			const portada = await fetchAlbumCover(artista, album);
+			tapasRemotas.set(clave, portada.remote_url || '');
+
+			// Puede haber cambiado la canción mientras se preguntaba.
+			if (albumDeLaTapa === clave && portada.remote_url) {
+				tapaRemotaActual = portada.remote_url;
+				avisarADiscord();
+			}
+		} catch {
+			// Que no haya tapa no es un problema: la tarjeta sale con el logo
+			// del sistema, como salía siempre.
+			tapasRemotas.set(clave, '');
+		} finally {
+			albumesEnAveriguacion.delete(clave);
+		}
+	};
+
+	/**
+	 * La dirección para el tema que suena, si ya se sabe.
+	 *
+	 * Mira la tabla y, la primera vez de cada álbum, dispara la averiguación sin
+	 * esperarla: avisarle a Discord no puede quedar colgado de la red.
+	 */
+	const tapaParaDiscord = (artista: string, album: string): string | null => {
+		if (!artista || !album) {
+			return null;
+		}
+
+		const clave = claveDeAlbum(artista, album);
+		if (clave !== albumDeLaTapa) {
+			albumDeLaTapa = clave;
+			tapaRemotaActual = tapasRemotas.get(clave) || null;
+		}
+
+		if (!tapasRemotas.has(clave)) {
+			void averiguarTapaRemota(artista, album, clave);
+		}
+
+		return tapaRemotaActual;
+	};
+
+	/**
 	 * Le cuenta a Discord lo que está sonando.
 	 *
 	 * Se llama desde el mismo lugar por donde pasa todo el estado del
@@ -637,10 +731,11 @@ export const usePlayerStore = defineStore('player', () => {
 			path: currentPath.value,
 			title: pista.title || pista.path.split('/').pop() || '',
 			artist: pista.artist,
-			// Sólo sirve una dirección que Discord pueda ver desde su lado; una
-			// tapa incrustada en el archivo no lo es, y el backend lo resuelve
-			// cayendo al logo del sistema.
-			albumArtUrl: null,
+			// Sólo sirve una dirección que Discord pueda ver desde su lado: una
+			// tapa incrustada en el archivo no lo es. La que va acá es la del
+			// servidor del que se bajó la portada del álbum; sin ella el backend
+			// cae en el logo del sistema.
+			albumArtUrl: tapaParaDiscord(pista.artist, pista.album),
 			isPaused: isPaused.value || !isPlaying.value,
 			positionSeconds: positionSeconds.value,
 			durationSeconds: durationSeconds.value ?? 0,

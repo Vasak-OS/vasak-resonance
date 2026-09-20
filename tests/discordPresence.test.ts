@@ -42,6 +42,39 @@ describe('cuándo avisarle a Discord', () => {
 		expect(hayQueAvisar(enPausa, sonando, 1)).toBe(true);
 	});
 
+	test('cuando aparece la tapa sí', () => {
+		// La tapa no está en el archivo: se busca aparte y llega unos segundos
+		// después de que la canción empezó. Sin este aviso, Discord se quedaría
+		// mostrando la tarjeta sin tapa hasta la canción siguiente.
+		const conTapa = {
+			...sonando,
+			albumArtUrl: 'https://coverartarchive.org/release/abc/front',
+		};
+
+		expect(hayQueAvisar(sonando, conTapa, 1)).toBe(true);
+	});
+
+	test('que la tapa siga siendo la misma no manda nada', () => {
+		const conTapa = {
+			...sonando,
+			albumArtUrl: 'https://coverartarchive.org/release/abc/front',
+		};
+		const tresSegundosDespues = { ...conTapa, positionSeconds: 63 };
+
+		expect(hayQueAvisar(conTapa, tresSegundosDespues, 3)).toBe(false);
+	});
+
+	test('quedarse sin tapa también sí', () => {
+		// Pasar de un álbum con tapa a uno sin ella: la tarjeta tiene que volver
+		// al logo del sistema en vez de quedarse con la del álbum anterior.
+		const conTapa = {
+			...sonando,
+			albumArtUrl: 'https://coverartarchive.org/release/abc/front',
+		};
+
+		expect(hayQueAvisar(conTapa, sonando, 1)).toBe(true);
+	});
+
 	test('saltar a otro punto sí', () => {
 		const actual = { ...sonando, positionSeconds: 200 };
 

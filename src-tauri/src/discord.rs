@@ -84,6 +84,15 @@ impl DiscordPresence {
             )
     }
 
+    /// Si el hilo llegó a arrancar, o sea si hay identificador configurado.
+    ///
+    /// Con la presencia apagada, `actualizar` y `limpiar` son operaciones que no
+    /// hacen nada; esto deja que quien llama se ahorre además el trabajo de
+    /// juntar lo que le iba a pasar.
+    pub fn esta_activa(&self) -> bool {
+        self.envio.is_some()
+    }
+
     pub fn actualizar(&self, presencia: Presencia) {
         self.enviar(Mensaje::Actualizar(Box::new(presencia)));
     }
@@ -174,7 +183,9 @@ fn aplicar(
     presencia: &Presencia,
 ) -> Result<(), discord_rich_presence::error::Error> {
     let imagen = imagen_grande(presencia);
-    let mut assets = Assets::new().large_image(imagen).large_text(&presencia.title);
+    let mut assets = Assets::new()
+        .large_image(imagen)
+        .large_text(&presencia.title);
 
     if presencia.is_paused {
         assets = assets.small_image(IMAGEN_EN_PAUSA).small_text("En pausa");
@@ -270,7 +281,9 @@ fn dirs_config() -> Option<PathBuf> {
         }
     }
 
-    std::env::var("HOME").ok().map(|home| PathBuf::from(home).join(".config"))
+    std::env::var("HOME")
+        .ok()
+        .map(|home| PathBuf::from(home).join(".config"))
 }
 
 #[cfg(test)]

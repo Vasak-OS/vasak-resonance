@@ -22,6 +22,23 @@ export async function enviarPresencia(estado: EstadoParaDiscord): Promise<void> 
 	}
 }
 
+/**
+ * Si la presencia está encendida.
+ *
+ * Sirve para no salir a buscar la tapa del álbum cuando nadie la va a mirar:
+ * sin identificador de aplicación configurado el hilo de Discord ni siquiera
+ * arranca. Ante cualquier error se responde que no, que es el lado seguro —no
+ * se sale a la red por las dudas—.
+ */
+export async function presenciaActiva(): Promise<boolean> {
+	try {
+		return await invoke<boolean>('discord_presence_activa');
+	} catch (error) {
+		console.warn('[discord] No se pudo saber si la presencia está activa:', error);
+		return false;
+	}
+}
+
 /** Deja el perfil como estaba: al parar la música y al cerrar. */
 export async function limpiarPresencia(): Promise<void> {
 	try {

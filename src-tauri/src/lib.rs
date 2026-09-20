@@ -29,7 +29,7 @@ use commands::playlists::{
 };
 use commands::radio::{fetch_radio_stations, play_radio_stream};
 use commands::reveal::show_in_file_manager;
-use commands::window::{toggle_main_and_miniplayer, close_app};
+use commands::window::{close_app, toggle_main_and_miniplayer};
 use tauri::Manager;
 
 /// Makes sure the shared VasakOS configuration directory exists.
@@ -128,40 +128,40 @@ pub fn run() {
             }
 
             remote_control::start_remote_control_service(app.handle().clone(), audio_state.clone());
-                app.manage(audio_state.clone());
+            app.manage(audio_state.clone());
 
-                // La presencia en Discord: el hilo arranca acá y se queda
-                // esperando. Si no hay identificador configurado no arranca
-                // nada y la aplicación no se entera.
-                app.manage(discord::DiscordPresence::iniciar());
+            // La presencia en Discord: el hilo arranca acá y se queda
+            // esperando. Si no hay identificador configurado no arranca
+            // nada y la aplicación no se entera.
+            app.manage(discord::DiscordPresence::iniciar());
 
-                let maybe_args: Vec<String> = std::env::args().skip(1).collect();
-                if !maybe_args.is_empty() {
-                    for raw in maybe_args.into_iter() {
-                        let candidate = if raw.starts_with("file://") {
-                            if raw.starts_with("file:///") {
-                                raw.replacen("file://", "", 1)
-                            } else if raw.starts_with("file://localhost/") {
-                                raw.replacen("file://localhost", "", 1)
-                            } else {
-                                raw.replacen("file://", "", 1)
-                            }
+            let maybe_args: Vec<String> = std::env::args().skip(1).collect();
+            if !maybe_args.is_empty() {
+                for raw in maybe_args.into_iter() {
+                    let candidate = if raw.starts_with("file://") {
+                        if raw.starts_with("file:///") {
+                            raw.replacen("file://", "", 1)
+                        } else if raw.starts_with("file://localhost/") {
+                            raw.replacen("file://localhost", "", 1)
                         } else {
-                            raw
-                        };
-
-                        let path = std::path::PathBuf::from(candidate);
-                        if path.exists() && path.is_file() {
-                            let play_path = path.to_string_lossy().to_string();
-                            let audio_clone = audio_state.clone();
-                            // Spawn so setup doesn't block; play_file will queue into audio thread.
-                            std::thread::spawn(move || {
-                                let _ = audio_clone.play_file(play_path, None);
-                            });
-                            break;
+                            raw.replacen("file://", "", 1)
                         }
+                    } else {
+                        raw
+                    };
+
+                    let path = std::path::PathBuf::from(candidate);
+                    if path.exists() && path.is_file() {
+                        let play_path = path.to_string_lossy().to_string();
+                        let audio_clone = audio_state.clone();
+                        // Spawn so setup doesn't block; play_file will queue into audio thread.
+                        std::thread::spawn(move || {
+                            let _ = audio_clone.play_file(play_path, None);
+                        });
+                        break;
                     }
                 }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -194,6 +194,7 @@ pub fn run() {
             close_app,
             show_in_file_manager,
             commands::discord::update_discord_presence,
+            commands::discord::discord_presence_activa,
             commands::discord::clear_discord_presence,
         ])
         .build(tauri::generate_context!())
@@ -201,7 +202,10 @@ pub fn run() {
         .run(|app, evento| {
             // Salir sin limpiar deja el perfil diciendo que seguís escuchando
             // algo que ya no suena, hasta que Discord se cierre.
-            if matches!(evento, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
+            if matches!(
+                evento,
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+            ) {
                 if let Some(presencia) = app.try_state::<discord::DiscordPresence>() {
                     presencia.cerrar();
                 }

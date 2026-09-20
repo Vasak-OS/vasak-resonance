@@ -26,9 +26,16 @@ export interface PortadaConColor {
 	cover_data_url: string;
 	/** `#RRGGBB`, o cadena vacía si la imagen no se pudo leer. */
 	dominant_color: string;
+	/**
+	 * De dónde se bajó la imagen, o cadena vacía si no se sabe.
+	 *
+	 * La ventana no la usa —tiene los bytes—, pero Discord dibuja la tarjeta
+	 * desde su lado y sólo llega a direcciones web.
+	 */
+	remote_url: string;
 }
 
-const SIN_PORTADA: PortadaConColor = { cover_data_url: '', dominant_color: '' };
+const SIN_PORTADA: PortadaConColor = { cover_data_url: '', dominant_color: '', remote_url: '' };
 
 export async function fetchAlbumCover(artist: string, album: string): Promise<PortadaConColor> {
 	if (!artist || !album) {
