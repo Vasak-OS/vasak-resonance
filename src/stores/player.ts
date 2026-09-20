@@ -626,8 +626,16 @@ export const usePlayerStore = defineStore('player', () => {
 	let tapaRemotaActual: string | null = null;
 	/** De qué álbum es `tapaRemotaActual`. */
 	let albumDeLaTapa = '';
-	/** El álbum que se está averiguando ahora mismo, para no pedirlo dos veces. */
-	let albumEnAveriguacion = '';
+	/**
+	 * Los álbumes que se están averiguando ahora mismo, para no pedirlos dos
+	 * veces.
+	 *
+	 * Un conjunto y no «el último»: entre que empieza una búsqueda y termina
+	 * puede sonar otro álbum y volver el primero —una cola de dos, o alguien
+	 * yendo y viniendo—, y con una sola marca la segunda vuelta del primero
+	 * arrancaba otra búsqueda idéntica.
+	 */
+	const albumesEnAveriguacion = new Set<string>();
 	/**
 	 * Si la presencia está encendida, preguntado una sola vez.
 	 *
@@ -647,10 +655,10 @@ export const usePlayerStore = defineStore('player', () => {
 	 * un servicio ajeno.
 	 */
 	const averiguarTapaRemota = async (artista: string, album: string, clave: string) => {
-		if (albumEnAveriguacion === clave) {
+		if (albumesEnAveriguacion.has(clave)) {
 			return;
 		}
-		albumEnAveriguacion = clave;
+		albumesEnAveriguacion.add(clave);
 
 		try {
 			presenciaEncendida ??= presenciaActiva();
@@ -671,9 +679,7 @@ export const usePlayerStore = defineStore('player', () => {
 			// del sistema, como salía siempre.
 			tapasRemotas.set(clave, '');
 		} finally {
-			if (albumEnAveriguacion === clave) {
-				albumEnAveriguacion = '';
-			}
+			albumesEnAveriguacion.delete(clave);
 		}
 	};
 

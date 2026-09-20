@@ -239,22 +239,33 @@ pub struct PortadaConColor {
 /// desconfiar de las APIs sino del archivo `.url` que queda en el disco: es un
 /// archivo de texto en la carpeta de caché de quien usa el equipo, y lo que
 /// diga termina en un servicio ajeno.
+///
+/// Quien decide cuál es el servidor es el parser, no un corte de la cadena a
+/// mano. Partirla parece alcanzar y no alcanza: en un esquema como `https` la
+/// barra invertida **también** termina la parte del servidor, así que
+/// `https://ejemplo.invalido\@coverartarchive.org/tapa.jpg` tiene por servidor
+/// `ejemplo.invalido` —el resto es la ruta— y cualquier corte por `@` se queda
+/// con el nombre de la derecha, que es el que no manda. Es el `Url` de
+/// `reqwest`, que ya es dependencia.
 fn host_permitido(url: &str) -> bool {
-    let Some(resto) = url.strip_prefix("https://") else {
+    let Ok(parseada) = reqwest::Url::parse(url) else {
         return false;
     };
 
-    let host = resto
-        .split('/')
-        .next()
-        .unwrap_or_default()
-        .split('@')
-        .next_back()
-        .unwrap_or_default()
-        .split(':')
-        .next()
-        .unwrap_or_default()
-        .to_ascii_lowercase();
+    if parseada.scheme() != "https" {
+        return false;
+    }
+
+    // Una portada nunca lleva credenciales, y llevarlas es la forma de que el
+    // nombre permitido aparezca donde no manda.
+    if !parseada.username().is_empty() || parseada.password().is_some() {
+        return false;
+    }
+
+    let Some(host) = parseada.host_str() else {
+        return false;
+    };
+    let host = host.to_ascii_lowercase();
 
     host == "coverartarchive.org" || host.ends_with(".dzcdn.net")
 }
@@ -432,6 +443,16 @@ mod tests {
             "https://dzcdn.net.ejemplo.invalido/tapa.jpg",
             // El truco del arroba: el host de verdad es el de la derecha.
             "https://coverartarchive.org@ejemplo.invalido/tapa.jpg",
+            // Y el de la barra invertida, que es el mismo truco al revés: en un
+            // esquema especial la barra invertida termina el servidor, así que
+            // el permitido queda en la ruta y el que manda es el de la
+            // izquierda. Partir la cadena a mano daba por buenos estos dos.
+            "https://ejemplo.invalido\\@coverartarchive.org/tapa.jpg",
+            "https://127.0.0.1\\@coverartarchive.org/tapa.jpg",
+            // Con credenciales, que es de donde sale el truco.
+            "https://alguien:secreto@coverartarchive.org/tapa.jpg",
+            // Ni siquiera es una dirección.
+            "no es una dirección",
             "",
         ] {
             assert!(!host_permitido(url), "{url}");
