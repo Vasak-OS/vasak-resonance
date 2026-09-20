@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { listen } from '@tauri-apps/api/event';
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
-import { computed, onBeforeUnmount, onMounted, type Ref, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, type Ref, reactive, ref, watch } from 'vue';
 import LabeledField from '@/components/layout/LabeledField.vue';
 import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import type { RadioStation } from '@/services/radio.service';
@@ -30,6 +30,15 @@ const lastRequestedUrl = ref('');
  * cada búsqueda, y guardar el estado adentro de cada elemento lo perdería.
  */
 const faviconsRotos = reactive(new Set<string>());
+
+// Y se vacía con cada lista nueva. Un UUID marcado se quedaba marcado hasta
+// que la ventana se cerrara: si la emisora arreglaba su icono y la recarga lo
+// traía bien, seguía dibujándose el de la aplicación. Lo marcó la revisión.
+// Se vacía al reemplazar la lista y no al recibir cada icono porque el `@error`
+// es lo único que avisa: no hay forma de preguntar si hoy carga sin intentarlo.
+watch(stations, () => {
+	faviconsRotos.clear();
+});
 
 const availableTags = [
 	'lofi',

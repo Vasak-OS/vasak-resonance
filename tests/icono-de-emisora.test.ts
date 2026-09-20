@@ -30,6 +30,9 @@ afterEach(() => {
 	vista?.unmount();
 	vista = null;
 	olvidarTodo();
+	// El servicio guarda la lista en `localStorage` durante una hora, y una
+	// prueba que la deje puesta le cambia el punto de partida a la siguiente.
+	localStorage.clear();
 });
 
 describe('una emisora con favicon', () => {
@@ -49,5 +52,33 @@ describe('una emisora con favicon', () => {
 		// El `<img>` de la emisora se va, y queda el bloque con el icono de la
 		// aplicación —el mismo que se ve cuando la emisora no trae ninguno—.
 		expect(vista.find('img[alt="Radio Uno"]').exists()).toBe(false);
+	});
+
+	test('y con la lista nueva se vuelve a intentar', async () => {
+		// La marca de «este icono no carga» dura lo que dura la lista. Si la
+		// emisora arregla su icono y una recarga lo trae bien, el `<img>` tiene
+		// que volver: antes el UUID quedaba marcado hasta cerrar la ventana y
+		// esa emisora se quedaba con el icono de la aplicación para siempre. Lo
+		// marcó la revisión.
+		setActivePinia(createPinia());
+		contestar('fetch_radio_stations', [
+			{ uuid: 'una', name: 'Radio Uno', url: 'http://x', favicon: 'http://no-existe/f.png' },
+		]);
+		vista = mount(RadiosView);
+		await asentar();
+		await vista.get('img[alt="Radio Uno"]').trigger('error');
+		expect(vista.find('img[alt="Radio Uno"]').exists()).toBe(false);
+
+		// La misma emisora, con el icono arreglado, tras tocar otra etiqueta.
+		contestar('fetch_radio_stations', [
+			{ uuid: 'una', name: 'Radio Uno', url: 'http://x', favicon: 'http://si-existe/f.png' },
+		]);
+		const otraEtiqueta = vista.findAll('button').find((boton) => boton.text() === 'jazz');
+		expect(otraEtiqueta).toBeDefined();
+		await otraEtiqueta?.trigger('click');
+		await asentar();
+
+		const icono = vista.get('img[alt="Radio Uno"]');
+		expect(icono.attributes('src')).toBe('http://si-existe/f.png');
 	});
 });
