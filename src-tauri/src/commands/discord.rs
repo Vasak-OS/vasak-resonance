@@ -30,6 +30,19 @@ pub async fn update_discord_presence(
     Ok(())
 }
 
+/// Si la presencia está encendida.
+///
+/// La interfaz lo pregunta antes de salir a buscar la tapa del álbum: esa
+/// búsqueda le manda el artista y el álbum a un servicio ajeno, y no hay motivo
+/// para hacerlo en un equipo donde la presencia está apagada —que es el caso por
+/// omisión, porque hace falta configurar un identificador de aplicación—.
+#[tauri::command]
+pub async fn discord_presence_activa(
+    presencia: State<'_, DiscordPresence>,
+) -> Result<bool, String> {
+    Ok(presencia.esta_activa())
+}
+
 /// Deja el perfil como estaba: al parar la música y al cerrar la aplicación.
 #[tauri::command]
 pub async fn clear_discord_presence(presencia: State<'_, DiscordPresence>) -> Result<(), String> {

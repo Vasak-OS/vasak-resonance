@@ -194,6 +194,7 @@ pub fn run() {
             close_app,
             show_in_file_manager,
             commands::discord::update_discord_presence,
+            commands::discord::discord_presence_activa,
             commands::discord::clear_discord_presence,
         ])
         .build(tauri::generate_context!())

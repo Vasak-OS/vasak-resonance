@@ -40,6 +40,14 @@ Sin identificador la función queda apagada y el reproductor no cambia en nada.
 Si Discord no está abierto tampoco pasa nada: se reintenta cada tanto, y el que
 espera es un hilo aparte, nunca la interfaz ni el audio.
 
-**La tapa del disco sale del archivo**, así que Discord no la puede ver: dibuja
-la imagen desde su lado y sólo llega a direcciones web. Mientras las tapas sean
-locales, se muestra el logo del sistema.
+**La tapa del disco** la dibuja Discord desde su lado, así que sólo le sirven
+direcciones web: la imagen incrustada en el archivo no la puede ver. Lo que se le
+manda es la dirección de la portada del álbum en Deezer o en Cover Art Archive,
+que es de donde el reproductor ya baja las tapas que faltan; la dirección queda
+anotada al lado de la imagen cacheada, así sigue estando la próxima vez aunque no
+haya que volver a bajar nada. Si el álbum no está en ninguno de los dos, la
+tarjeta sale con el logo del sistema como antes.
+
+Esa búsqueda **sólo se hace con la presencia encendida**: le manda el artista y
+el álbum a un servicio ajeno, y en un equipo sin identificador configurado no hay
+ningún motivo para hacerlo.

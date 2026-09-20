@@ -41,6 +41,10 @@ export function hayQueAvisar(
 	if (!anterior) return true;
 	if (anterior.path !== actual.path) return true;
 	if (anterior.isPaused !== actual.isPaused) return true;
+	// La tapa se busca aparte y llega tarde: cuando aparece, la tarjeta que
+	// Discord está mostrando es la de antes y hay que rehacerla. Sin esto, la
+	// primera canción de cada álbum se escucharía entera sin tapa.
+	if (anterior.albumArtUrl !== actual.albumArtUrl) return true;
 
 	// En pausa la barra no corre, así que lo que Discord muestra es lo mismo
 	// que se le mandó.
