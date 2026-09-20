@@ -114,7 +114,15 @@ const onQueueDrop = (targetId: string) => {
 </script>
 
 <template>
-	<section class="rounded-corner border border-ui-border bg-ui-bg/80 p-4">
+	<!-- El menú del clic derecho escucha acá y no en la lista: `TransitionGroup`
+	     no declara eventos del DOM, así que el `@contextmenu` le caía encima por
+	     atributos y terminaba igual en el `<ul>` que dibuja. Escuchando en la
+	     sección es lo mismo —el manejador busca la fila con `closest()` y se va
+	     si no hay ninguna— y además queda dicho dónde está puesto. -->
+	<section
+		class="rounded-corner border border-ui-border bg-ui-bg/80 p-4"
+		@contextmenu="onQueueContextMenu"
+	>
 		<div class="flex items-center justify-between gap-3 pb-3">
 			<div>
 				<p class="text-xs uppercase tracking-[0.18em] text-tx-muted">{{ t('queue.eyebrow') }}</p>
@@ -137,7 +145,6 @@ const onQueueDrop = (targetId: string) => {
 		<TransitionGroup
 			tag="ul"
 			class="grid gap-2"
-			@contextmenu="onQueueContextMenu"
 			move-class="transition-transform duration-200 ease-out"
 			enter-active-class="transition-[opacity,translate] duration-200 ease-out"
 			leave-active-class="transition-[opacity,translate] duration-150 ease-in"
