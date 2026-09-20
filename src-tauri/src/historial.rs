@@ -53,8 +53,16 @@ pub fn umbral(duration_seconds: Option<u64>) -> Option<u64> {
 /// Lo que se sabe del tema que suena ahora.
 struct Cursada {
     path: String,
-    /// Si esta vuelta ya quedó anotada. Una escucha es una fila, no una por tic.
+    /// Si esta vuelta ya quedó **escrita**. Una escucha es una fila, no una por
+    /// tic. Se marca cuando la base confirma, nunca antes: si se marcara al
+    /// decidir, una escritura que falla se llevaría la escucha para siempre —los
+    /// tics siguientes ya no la volverían a ofrecer—.
     anotada: bool,
+    /// Si ya se avisó de un fallo de escritura en esta vuelta.
+    ///
+    /// El reintento es cada medio segundo; el aviso, uno solo. Un disco lleno no
+    /// tiene por qué llenar además el diario.
+    fallo_avisado: bool,
 }
 
 /// Decide qué anotar, mirando pasar los estados de reproducción.
@@ -67,8 +75,12 @@ pub struct Historial {
 }
 
 impl Historial {
-    /// Devuelve la ruta a anotar, y sólo la primera vez que el tema pasa el
-    /// umbral. En cualquier otro tic devuelve `None`.
+    /// Devuelve la ruta que hay que anotar.
+    ///
+    /// La sigue devolviendo en cada tic hasta que alguien avise —con
+    /// [`Historial::confirmar`]— que quedó escrita. Así una escritura que falla
+    /// se reintenta medio segundo después en vez de perderse: acá se decide, la
+    /// base es la que dice si se guardó.
     pub fn observar(
         &mut self,
         path: Option<&str>,
@@ -94,6 +106,7 @@ impl Historial {
             self.actual = Some(Cursada {
                 path: path.to_string(),
                 anotada: false,
+                fallo_avisado: false,
             });
         }
 
@@ -104,8 +117,31 @@ impl Historial {
             return None;
         }
 
-        cursada.anotada = true;
         Some(cursada.path.clone())
+    }
+
+    /// Avisa que la escucha de ese tema quedó guardada.
+    ///
+    /// Con el tema ya cambiado no hace nada: lo que se confirma es la vuelta que
+    /// está sonando, y la anterior ya se fue.
+    pub fn confirmar(&mut self, path: &str) {
+        if let Some(cursada) = &mut self.actual {
+            if cursada.path == path {
+                cursada.anotada = true;
+            }
+        }
+    }
+
+    /// Si hay que avisar de este fallo de escritura, o si ya se avisó en esta
+    /// vuelta.
+    fn avisar_del_fallo(&mut self, path: &str) -> bool {
+        match &mut self.actual {
+            Some(cursada) if cursada.path == path && !cursada.fallo_avisado => {
+                cursada.fallo_avisado = true;
+                true
+            }
+            _ => false,
+        }
     }
 }
 
@@ -136,8 +172,16 @@ pub fn anotar_si_corresponde(snapshot: &PlaybackProgressEvent) {
 
     // Fuera del candado del historial no hace falta: la escritura es una fila en
     // una base local y el hilo de audio es uno solo.
-    if let Err(error) = anotar(&path) {
-        eprintln!("[historial] no se pudo anotar la reproducción: {error}");
+    match anotar(&path) {
+        Ok(()) => historial.confirmar(&path),
+        // Sin confirmar: el próximo tic vuelve a ofrecerla. Una base ocupada
+        // —un barrido escribiendo en ese momento, por ejemplo— se destraba
+        // sola en milisegundos, y la escucha no se pierde por eso.
+        Err(error) => {
+            if historial.avisar_del_fallo(&path) {
+                eprintln!("[historial] no se pudo anotar la reproducción: {error}");
+            }
+        }
     }
 }
 
@@ -186,19 +230,92 @@ mod tests {
         assert_eq!(umbral(None), None);
     }
 
+    /// Lo que hace el llamador cuando la base contesta que sí.
+    fn observar_y_confirmar(
+        historial: &mut Historial,
+        path: &str,
+        position: u64,
+        duration: Option<u64>,
+    ) -> Option<String> {
+        let anotada = historial.observar(Some(path), position, duration);
+        if let Some(path) = &anotada {
+            historial.confirmar(path);
+        }
+        anotada
+    }
+
     #[test]
     fn se_anota_al_pasar_la_mitad_y_una_sola_vez() {
         let mut historial = Historial::default();
 
-        assert_eq!(historial.observar(Some("/m/a.mp3"), 0, DURACION), None);
-        assert_eq!(historial.observar(Some("/m/a.mp3"), 89, DURACION), None);
+        assert_eq!(
+            observar_y_confirmar(&mut historial, "/m/a.mp3", 0, DURACION),
+            None
+        );
+        assert_eq!(
+            observar_y_confirmar(&mut historial, "/m/a.mp3", 89, DURACION),
+            None
+        );
+        assert_eq!(
+            observar_y_confirmar(&mut historial, "/m/a.mp3", 90, DURACION),
+            Some("/m/a.mp3".to_string())
+        );
+        // El resto del tema son cien tics más que no tienen que anotar nada.
+        assert_eq!(
+            observar_y_confirmar(&mut historial, "/m/a.mp3", 91, DURACION),
+            None
+        );
+        assert_eq!(
+            observar_y_confirmar(&mut historial, "/m/a.mp3", 179, DURACION),
+            None
+        );
+    }
+
+    #[test]
+    fn si_la_base_no_pudo_escribir_se_reintenta_en_el_proximo_tic() {
+        // Sin esto, una base ocupada medio segundo se llevaba la escucha para
+        // toda la vuelta: la marca se ponía al decidir y los tics siguientes ya
+        // no volvían a ofrecerla.
+        let mut historial = Historial::default();
+
+        // Pasa el umbral y la escritura falla: nadie confirma.
         assert_eq!(
             historial.observar(Some("/m/a.mp3"), 90, DURACION),
             Some("/m/a.mp3".to_string())
         );
-        // El resto del tema son cien tics más que no tienen que anotar nada.
-        assert_eq!(historial.observar(Some("/m/a.mp3"), 91, DURACION), None);
-        assert_eq!(historial.observar(Some("/m/a.mp3"), 179, DURACION), None);
+        // Medio segundo después vuelve a ofrecerla.
+        assert_eq!(
+            historial.observar(Some("/m/a.mp3"), 91, DURACION),
+            Some("/m/a.mp3".to_string())
+        );
+        // Y esta vez sí se pudo escribir.
+        historial.confirmar("/m/a.mp3");
+        assert_eq!(
+            observar_y_confirmar(&mut historial, "/m/a.mp3", 92, DURACION),
+            None
+        );
+    }
+
+    #[test]
+    fn confirmar_un_tema_que_ya_no_suena_no_hace_nada() {
+        // La escritura de la escucha anterior puede terminar cuando ya cambió el
+        // tema; confirmar entonces no tiene que dar por anotada la vuelta nueva.
+        let mut historial = Historial::default();
+
+        assert_eq!(
+            observar_y_confirmar(&mut historial, "/m/a.mp3", 90, DURACION),
+            Some("/m/a.mp3".to_string())
+        );
+
+        // Suena otro, y llega tarde la confirmación del anterior.
+        assert_eq!(historial.observar(Some("/m/b.mp3"), 0, DURACION), None);
+        historial.confirmar("/m/a.mp3");
+
+        // El nuevo sigue contando cuando le toca.
+        assert_eq!(
+            historial.observar(Some("/m/b.mp3"), 90, DURACION),
+            Some("/m/b.mp3".to_string())
+        );
     }
 
     #[test]
@@ -206,9 +323,18 @@ mod tests {
         // El motivo por el que la regla existe.
         let mut historial = Historial::default();
 
-        assert_eq!(historial.observar(Some("/m/a.mp3"), 10, DURACION), None);
-        assert_eq!(historial.observar(Some("/m/b.mp3"), 0, DURACION), None);
-        assert_eq!(historial.observar(Some("/m/b.mp3"), 12, DURACION), None);
+        assert_eq!(
+            observar_y_confirmar(&mut historial, "/m/a.mp3", 10, DURACION),
+            None
+        );
+        assert_eq!(
+            observar_y_confirmar(&mut historial, "/m/b.mp3", 0, DURACION),
+            None
+        );
+        assert_eq!(
+            observar_y_confirmar(&mut historial, "/m/b.mp3", 12, DURACION),
+            None
+        );
     }
 
     #[test]
@@ -216,11 +342,11 @@ mod tests {
         let mut historial = Historial::default();
 
         assert_eq!(
-            historial.observar(Some("/m/a.mp3"), 90, DURACION),
+            observar_y_confirmar(&mut historial, "/m/a.mp3", 90, DURACION),
             Some("/m/a.mp3".to_string())
         );
         assert_eq!(
-            historial.observar(Some("/m/b.mp3"), 90, DURACION),
+            observar_y_confirmar(&mut historial, "/m/b.mp3", 90, DURACION),
             Some("/m/b.mp3".to_string())
         );
     }
@@ -230,13 +356,16 @@ mod tests {
         let mut historial = Historial::default();
 
         assert_eq!(
-            historial.observar(Some("/m/a.mp3"), 90, DURACION),
+            observar_y_confirmar(&mut historial, "/m/a.mp3", 90, DURACION),
             Some("/m/a.mp3".to_string())
         );
         // Vuelve al principio: lo pusieron otra vez.
-        assert_eq!(historial.observar(Some("/m/a.mp3"), 0, DURACION), None);
         assert_eq!(
-            historial.observar(Some("/m/a.mp3"), 90, DURACION),
+            observar_y_confirmar(&mut historial, "/m/a.mp3", 0, DURACION),
+            None
+        );
+        assert_eq!(
+            observar_y_confirmar(&mut historial, "/m/a.mp3", 90, DURACION),
             Some("/m/a.mp3".to_string())
         );
     }
@@ -248,11 +377,17 @@ mod tests {
         let mut historial = Historial::default();
 
         assert_eq!(
-            historial.observar(Some("/m/a.mp3"), 90, DURACION),
+            observar_y_confirmar(&mut historial, "/m/a.mp3", 90, DURACION),
             Some("/m/a.mp3".to_string())
         );
-        assert_eq!(historial.observar(Some("/m/a.mp3"), 40, DURACION), None);
-        assert_eq!(historial.observar(Some("/m/a.mp3"), 95, DURACION), None);
+        assert_eq!(
+            observar_y_confirmar(&mut historial, "/m/a.mp3", 40, DURACION),
+            None
+        );
+        assert_eq!(
+            observar_y_confirmar(&mut historial, "/m/a.mp3", 95, DURACION),
+            None
+        );
     }
 
     #[test]
@@ -272,13 +407,13 @@ mod tests {
         let mut historial = Historial::default();
 
         assert_eq!(
-            historial.observar(Some("/m/a.mp3"), 90, DURACION),
+            observar_y_confirmar(&mut historial, "/m/a.mp3", 90, DURACION),
             Some("/m/a.mp3".to_string())
         );
         // Se paró la música y se volvió a poner el mismo tema: otra escucha.
         assert_eq!(historial.observar(None, 0, None), None);
         assert_eq!(
-            historial.observar(Some("/m/a.mp3"), 90, DURACION),
+            observar_y_confirmar(&mut historial, "/m/a.mp3", 90, DURACION),
             Some("/m/a.mp3".to_string())
         );
     }
