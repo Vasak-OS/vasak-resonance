@@ -34,6 +34,21 @@ lo que sale del disco no se cachea.
 Un archivo que no esté en UTF-8 se deja pasar en vez de adivinar la codificación,
 y la letra sale de la red como antes.
 
+## Las tapas
+
+La tapa de un tema sale de la etiqueta del archivo, y si no la trae, de la
+imagen que esté **al lado**, en la misma carpeta: `cover.jpg`, `cover.png`,
+`folder.jpg`, `folder.png`, `front.jpg` o `album.jpg`, en ese orden y sin
+importar cómo estén escritas las mayúsculas. Es la que dejan los ripeadores y
+casi todas las descargas, y es la única fuente que funciona sin conexión y sin
+equivocarse: la puso quien armó la carpeta.
+
+Una imagen suelta con cualquier otro nombre **no** se toma como tapa. Ahí es
+donde empiezan las equivocadas —la foto del grupo, el escaneo del librito—.
+
+Recién cuando no hay ninguna de las dos se sale a buscarla a Deezer o a Cover
+Art Archive, que es lo que necesita red y lo que puede traer la de otro disco.
+
 ## La presencia en Discord
 
 Resonance puede mostrar en tu perfil de Discord lo que estás escuchando: el

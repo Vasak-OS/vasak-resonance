@@ -8,9 +8,134 @@ use lofty::tag::{Accessor, ItemKey};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Cursor;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 use crate::structs::{NowPlayingMetadata, Track};
+
+/// Los nombres con los que se guarda la tapa al lado de la música, en orden de
+/// preferencia.
+///
+/// Se comparan **sin mirar mayúsculas**: `Folder.jpg` con mayúscula es lo que
+/// deja medio Windows, y en Linux ése es otro archivo.
+const NOMBRES_DE_TAPA: [&str; 6] = [
+    "cover.jpg",
+    "cover.png",
+    "folder.jpg",
+    "folder.png",
+    "front.jpg",
+    "album.jpg",
+];
+
+/// Techo de lo que se lee como tapa.
+///
+/// Una tapa son unos cientos de kilobytes. El techo no es por las tapas sino
+/// por lo que puede haber quedado con ese nombre: el escaneo de la contratapa a
+/// 600 puntos por pulgada no vale la pena para pintar un cuadradito, y encima
+/// viaja a la ventana en base64.
+const MAXIMO_BYTES_DE_TAPA: u64 = 16 * 1024 * 1024;
+
+/// Cuántas entradas de una carpeta se miran buscando la tapa.
+///
+/// Una carpeta de álbum tiene decenas. Mil es de sobra para cualquier disco, y
+/// evita recorrer entera una carpeta de descargas con cien mil archivos donde la
+/// tapa no va a estar igual.
+const MAXIMO_ENTRADAS_MIRADAS: usize = 1000;
+
+/// La tapa que está al lado de los archivos, ya leída.
+#[derive(Debug, Clone)]
+pub struct TapaDeCarpeta {
+    pub data_url: String,
+    pub dominant_color: Option<String>,
+}
+
+/// Lo leído por carpeta, para no volver a buscar ni a decodificar la misma
+/// imagen una vez por cada tema del disco.
+pub type TapaPorCarpeta = HashMap<String, Option<TapaDeCarpeta>>;
+
+/// El archivo de tapa de una carpeta, si hay alguno.
+///
+/// Una sola pasada por la carpeta en vez de un `stat` por cada nombre posible:
+/// así se reconoce cualquier combinación de mayúsculas sin multiplicar las
+/// consultas, que es donde está la mitad de las tapas del mundo real.
+fn archivo_de_tapa(carpeta: &Path) -> Option<PathBuf> {
+    let entradas = std::fs::read_dir(carpeta).ok()?;
+    let mut mejor: Option<(usize, PathBuf)> = None;
+
+    for entrada in entradas.take(MAXIMO_ENTRADAS_MIRADAS).flatten() {
+        let nombre = entrada.file_name().to_string_lossy().to_ascii_lowercase();
+        let Some(prioridad) = NOMBRES_DE_TAPA
+            .iter()
+            .position(|candidato| *candidato == nombre)
+        else {
+            continue;
+        };
+
+        if mejor
+            .as_ref()
+            .is_some_and(|(anterior, _)| *anterior <= prioridad)
+        {
+            continue;
+        }
+
+        mejor = Some((prioridad, entrada.path()));
+
+        // La primera de la lista: no hay nada mejor que buscar.
+        if prioridad == 0 {
+            break;
+        }
+    }
+
+    mejor.map(|(_, path)| path)
+}
+
+/// La tapa que está al lado del archivo de audio, leída y con su color.
+///
+/// Es la única fuente de tapas que funciona sin conexión y sin equivocarse: es
+/// la imagen que puso quien armó la carpeta. Se mira cuando el archivo no trae
+/// ninguna incrustada.
+fn tapa_de_la_carpeta(audio: &Path, cache: &mut TapaPorCarpeta) -> Option<TapaDeCarpeta> {
+    let carpeta = audio.parent()?;
+    let clave = carpeta.to_string_lossy().to_string();
+
+    if let Some(cacheada) = cache.get(&clave) {
+        return cacheada.clone();
+    }
+
+    let leida = archivo_de_tapa(carpeta).and_then(|imagen| {
+        let metadata = std::fs::metadata(&imagen).ok()?;
+        if !metadata.is_file() || metadata.len() > MAXIMO_BYTES_DE_TAPA {
+            return None;
+        }
+
+        let bytes = fs::read(&imagen).ok()?;
+        if bytes.is_empty() {
+            return None;
+        }
+
+        let mime = if imagen
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
+        {
+            "image/png"
+        } else {
+            "image/jpeg"
+        };
+
+        Some(TapaDeCarpeta {
+            data_url: format!(
+                "data:{};base64,{}",
+                mime,
+                general_purpose::STANDARD.encode(&bytes)
+            ),
+            dominant_color: extract_dominant_color_hex(&bytes),
+        })
+    });
+
+    cache.insert(clave, leida.clone());
+    leida
+}
 
 pub fn extract_track_from_file(path: &Path) -> Result<Track, String> {
     let canonical_path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
@@ -68,16 +193,71 @@ pub fn extract_track_from_file(path: &Path) -> Result<Track, String> {
     })
 }
 
+/// Las tapas de carpeta que ya se leyeron, compartidas por todo el proceso.
+///
+/// La ventana pide los datos de cada tema por separado —al recargar la
+/// biblioteca, uno por uno—, así que un caché local a la llamada no sirve de
+/// nada: un disco de veinte temas leería y decodificaría veinte veces la misma
+/// imagen. Acá se comparten.
+static TAPAS_DE_CARPETA: OnceLock<Mutex<TapaPorCarpeta>> = OnceLock::new();
+
+/// Cuántas carpetas se recuerdan.
+///
+/// Cada entrada puede llevar una imagen entera en base64, así que se vacía
+/// entero al pasarse, igual que el caché del hilo de audio: perderlo cuesta una
+/// relectura, no un error.
+const MAXIMO_CARPETAS_RECORDADAS: usize = 64;
+
 pub fn extract_now_playing_metadata(path: &Path) -> Result<NowPlayingMetadata, String> {
     let mut cover_cache = HashMap::<String, Option<String>>::new();
     let mut dominant_color_cache = HashMap::<String, Option<String>>::new();
-    extract_now_playing_metadata_with_cover_cache(path, &mut cover_cache, &mut dominant_color_cache)
+
+    // El candado se toma dos veces y corto, en vez de una sola vez alrededor de
+    // toda la extracción: leer y parsear las etiquetas es lo caro, y la ventana
+    // pide veinte temas a la vez. Con el candado abierto todo ese rato, esos
+    // veinte pedidos se harían de a uno.
+    let carpeta = path
+        .parent()
+        .map(|carpeta| carpeta.to_string_lossy().to_string());
+    let mut tapa_por_carpeta = TapaPorCarpeta::new();
+    if let Some(carpeta) = &carpeta {
+        if let Some(cacheada) = tapas_de_carpeta()
+            .lock()
+            .ok()
+            .and_then(|cache| cache.get(carpeta).cloned())
+        {
+            tapa_por_carpeta.insert(carpeta.clone(), cacheada);
+        }
+    }
+
+    let metadata = extract_now_playing_metadata_with_cover_cache(
+        path,
+        &mut cover_cache,
+        &mut dominant_color_cache,
+        &mut tapa_por_carpeta,
+    );
+
+    if let (Some(carpeta), Ok(mut compartido)) = (carpeta, tapas_de_carpeta().lock()) {
+        if let Some(leida) = tapa_por_carpeta.remove(&carpeta) {
+            if compartido.len() >= MAXIMO_CARPETAS_RECORDADAS {
+                compartido.clear();
+            }
+            compartido.insert(carpeta, leida);
+        }
+    }
+
+    metadata
+}
+
+fn tapas_de_carpeta() -> &'static Mutex<TapaPorCarpeta> {
+    TAPAS_DE_CARPETA.get_or_init(|| Mutex::new(TapaPorCarpeta::new()))
 }
 
 pub fn extract_now_playing_metadata_with_cover_cache(
     path: &Path,
     cover_cache: &mut HashMap<String, Option<String>>,
     dominant_color_cache: &mut HashMap<String, Option<String>>,
+    tapa_por_carpeta: &mut TapaPorCarpeta,
 ) -> Result<NowPlayingMetadata, String> {
     let canonical_path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let canonical_path_str = canonical_path.to_string_lossy().to_string();
@@ -143,6 +323,18 @@ pub fn extract_now_playing_metadata_with_cover_cache(
                 let encoded = general_purpose::STANDARD.encode(picture.data());
                 computed_cover_data_url = Some(format!("data:{};base64,{}", mime, encoded));
                 computed_dominant_color = extract_dominant_color_hex(picture.data());
+            }
+        }
+
+        // Sin tapa incrustada, la que está al lado del archivo. Es lo que dejan
+        // los ripeadores y casi todas las descargas, y es la única fuente que
+        // funciona sin conexión **y** sin equivocarse: la puso quien armó la
+        // carpeta. Lo que había antes para este caso era salir a buscarla a una
+        // API, que necesita red y puede traer la de otro disco.
+        if computed_cover_data_url.is_none() {
+            if let Some(tapa) = tapa_de_la_carpeta(&canonical_path, tapa_por_carpeta) {
+                computed_cover_data_url = Some(tapa.data_url);
+                computed_dominant_color = tapa.dominant_color;
             }
         }
 
@@ -357,6 +549,187 @@ mod tests {
         );
 
         assert_eq!(extract_track_from_file(&audio).expect("leer").track_no, 3);
+    }
+
+    /// Un MP3 con una tapa incrustada del color que se le pida.
+    fn archivo_con_tapa_incrustada(dir: &Path, nombre: &str, color: (u8, u8, u8)) -> PathBuf {
+        use lofty::config::WriteOptions;
+        use lofty::picture::{MimeType, Picture};
+        use lofty::tag::{Tag, TagExt, TagType};
+
+        let audio = archivo_etiquetado(dir, nombre, &[(ItemKey::TrackTitle, "Un tema")]);
+
+        let mut tag = Tag::new(TagType::Id3v2);
+        tag.insert_text(ItemKey::TrackTitle, "Un tema".to_string());
+        tag.push_picture(Picture::new_unchecked(
+            PictureType::CoverFront,
+            Some(MimeType::Png),
+            None,
+            png_de_un_color(color.0, color.1, color.2),
+        ));
+        tag.save_to_path(&audio, WriteOptions::default())
+            .expect("no se pudo escribir la tapa");
+
+        audio
+    }
+
+    /// Un archivo de imagen con el nombre que se le pida.
+    fn imagen_en(dir: &Path, nombre: &str, color: (u8, u8, u8)) -> PathBuf {
+        let path = dir.join(nombre);
+        fs::write(&path, png_de_un_color(color.0, color.1, color.2)).expect("escribir la imagen");
+        path
+    }
+
+    #[test]
+    fn se_encuentra_la_tapa_que_esta_al_lado_del_archivo() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let audio = archivo_etiquetado(dir.path(), "tema.mp3", &[(ItemKey::TrackTitle, "Un tema")]);
+        imagen_en(dir.path(), "cover.jpg", (0xC0, 0x20, 0x20));
+
+        let mut cache = TapaPorCarpeta::new();
+        let tapa = tapa_de_la_carpeta(&audio, &mut cache).expect("tendría que encontrarla");
+
+        assert!(tapa.data_url.starts_with("data:image/jpeg;base64,"));
+        assert!(tapa.dominant_color.is_some());
+    }
+
+    #[test]
+    fn el_nombre_se_reconoce_con_mayusculas() {
+        // `Folder.jpg` con mayúscula es lo que deja medio Windows, y en Linux
+        // ése es otro archivo.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let audio = archivo_etiquetado(dir.path(), "tema.mp3", &[(ItemKey::TrackTitle, "Un tema")]);
+        imagen_en(dir.path(), "Folder.JPG", (0x20, 0x20, 0xC0));
+
+        let mut cache = TapaPorCarpeta::new();
+        assert!(tapa_de_la_carpeta(&audio, &mut cache).is_some());
+    }
+
+    #[test]
+    fn entre_varias_gana_la_primera_de_la_lista() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let audio = archivo_etiquetado(dir.path(), "tema.mp3", &[(ItemKey::TrackTitle, "Un tema")]);
+        // `cover.jpg` va antes que `folder.jpg`, y el color lo delata.
+        imagen_en(dir.path(), "folder.jpg", (0x20, 0xC0, 0x20));
+        imagen_en(dir.path(), "cover.jpg", (0xC0, 0x20, 0x20));
+
+        let mut cache = TapaPorCarpeta::new();
+        let tapa = tapa_de_la_carpeta(&audio, &mut cache).expect("tendría que encontrarla");
+        let color = tapa.dominant_color.expect("con color");
+
+        let rojo = u8::from_str_radix(&color[1..3], 16).expect("rojo");
+        let verde = u8::from_str_radix(&color[3..5], 16).expect("verde");
+        assert!(rojo > verde, "la elegida tendría que ser la roja: {color}");
+    }
+
+    #[test]
+    fn una_imagen_cualquiera_no_es_la_tapa() {
+        // Acá es donde empiezan las tapas equivocadas: la foto del grupo, el
+        // escaneo del librito. Sólo los nombres de la lista.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let audio = archivo_etiquetado(dir.path(), "tema.mp3", &[(ItemKey::TrackTitle, "Un tema")]);
+        imagen_en(dir.path(), "la-banda-en-vivo.jpg", (0xC0, 0x20, 0x20));
+
+        let mut cache = TapaPorCarpeta::new();
+        assert!(tapa_de_la_carpeta(&audio, &mut cache).is_none());
+    }
+
+    #[test]
+    fn una_tapa_enorme_se_ignora() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let audio = archivo_etiquetado(dir.path(), "tema.mp3", &[(ItemKey::TrackTitle, "Un tema")]);
+        fs::write(
+            dir.path().join("cover.jpg"),
+            vec![0u8; (MAXIMO_BYTES_DE_TAPA + 1) as usize],
+        )
+        .expect("escribir");
+
+        let mut cache = TapaPorCarpeta::new();
+        assert!(tapa_de_la_carpeta(&audio, &mut cache).is_none());
+    }
+
+    #[test]
+    fn la_carpeta_se_mira_una_sola_vez() {
+        // Un disco de veinte temas comparte una imagen: sin el caché se la leería
+        // y decodificaría veinte veces.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let audio = archivo_etiquetado(dir.path(), "tema.mp3", &[(ItemKey::TrackTitle, "Un tema")]);
+        imagen_en(dir.path(), "cover.jpg", (0xC0, 0x20, 0x20));
+
+        let mut cache = TapaPorCarpeta::new();
+        assert!(tapa_de_la_carpeta(&audio, &mut cache).is_some());
+        assert_eq!(cache.len(), 1);
+
+        // Se borra la imagen: si volviera a mirar el disco, no la encontraría.
+        fs::remove_file(dir.path().join("cover.jpg")).expect("borrar");
+        assert!(tapa_de_la_carpeta(&audio, &mut cache).is_some());
+    }
+
+    #[test]
+    fn una_carpeta_sin_tapa_tambien_se_recuerda() {
+        // El caso negativo importa igual: sin recordarlo, cada tema de una
+        // carpeta sin tapa vuelve a recorrerla entera.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let audio = archivo_etiquetado(dir.path(), "tema.mp3", &[(ItemKey::TrackTitle, "Un tema")]);
+
+        let mut cache = TapaPorCarpeta::new();
+        assert!(tapa_de_la_carpeta(&audio, &mut cache).is_none());
+        assert_eq!(cache.len(), 1);
+    }
+
+    #[test]
+    fn la_tapa_incrustada_le_gana_a_la_de_la_carpeta() {
+        // Quien etiquetó el archivo decidió cuál es la tapa de ese tema; la de
+        // la carpeta es para cuando no hay ninguna.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let audio = archivo_con_tapa_incrustada(dir.path(), "tema.mp3", (0x20, 0xC0, 0x20));
+        imagen_en(dir.path(), "cover.jpg", (0xC0, 0x20, 0x20));
+
+        let metadata = extract_now_playing_metadata(&audio).expect("leer");
+        let color = metadata.dominant_color.expect("con color");
+
+        let rojo = u8::from_str_radix(&color[1..3], 16).expect("rojo");
+        let verde = u8::from_str_radix(&color[3..5], 16).expect("verde");
+        assert!(
+            verde > rojo,
+            "tendría que ganar la verde incrustada: {color}"
+        );
+    }
+
+    #[test]
+    fn sin_tapa_incrustada_se_usa_la_de_la_carpeta() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let audio = archivo_etiquetado(dir.path(), "tema.mp3", &[(ItemKey::TrackTitle, "Un tema")]);
+        imagen_en(dir.path(), "cover.jpg", (0xC0, 0x20, 0x20));
+
+        let metadata = extract_now_playing_metadata(&audio).expect("leer");
+
+        assert!(metadata.cover_data_url.is_some());
+    }
+
+    #[test]
+    fn la_tapa_se_comparte_entre_llamadas_al_comando() {
+        // La ventana pide los datos de cada tema por separado: sin el caché
+        // compartido, un disco de veinte temas leería veinte veces la misma
+        // imagen.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let primero = archivo_etiquetado(dir.path(), "01.mp3", &[(ItemKey::TrackTitle, "Una")]);
+        let segundo = archivo_etiquetado(dir.path(), "02.mp3", &[(ItemKey::TrackTitle, "Otra")]);
+        imagen_en(dir.path(), "cover.jpg", (0xC0, 0x20, 0x20));
+
+        assert!(extract_now_playing_metadata(&primero)
+            .expect("leer")
+            .cover_data_url
+            .is_some());
+
+        // Se borra la imagen: si el segundo volviera a mirar el disco, no la
+        // encontraría.
+        fs::remove_file(dir.path().join("cover.jpg")).expect("borrar");
+
+        assert!(extract_now_playing_metadata(&segundo)
+            .expect("leer")
+            .cover_data_url
+            .is_some());
     }
 
     #[test]
