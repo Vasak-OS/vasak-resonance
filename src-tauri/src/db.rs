@@ -276,6 +276,15 @@ pub fn insert_track_if_not_exists(conn: &Connection, track: &Track) -> Result<bo
     Ok(false)
 }
 
+/// Guarda lo que la ventana sabe de un tema.
+///
+/// El artista del álbum y el número de pista **sólo se pisan con algo**: si lo
+/// que llega viene vacío, se deja lo que había. Acá no llega un archivo, llega
+/// el caché de la ventana, y ese caché puede ser de una versión anterior —donde
+/// esos dos campos no existían— y traerlos en su valor por omisión. Sin esta
+/// condición, abrir la aplicación borraría lo que el barrido acababa de leer.
+///
+/// Vaciarlos de verdad le toca al barrido, que es el que mira el archivo.
 pub fn upsert_track(conn: &Connection, track: &Track) -> Result<(), String> {
     conn.execute(
         "
@@ -286,8 +295,14 @@ pub fn upsert_track(conn: &Connection, track: &Track) -> Result<(), String> {
             title = excluded.title,
             artist = excluded.artist,
             album = excluded.album,
-            album_artist = excluded.album_artist,
-            track_no = excluded.track_no,
+            album_artist = CASE
+                WHEN excluded.album_artist <> '' THEN excluded.album_artist
+                ELSE tracks.album_artist
+            END,
+            track_no = CASE
+                WHEN excluded.track_no <> 0 THEN excluded.track_no
+                ELSE tracks.track_no
+            END,
             duration_seconds = excluded.duration_seconds
         ",
         params![
@@ -793,6 +808,44 @@ mod tests {
         .expect("segundo barrido");
 
         assert!(!inserto, "el tema ya estaba: no se inserta de nuevo");
+        let guardado = list_tracks(&conn).expect("list").pop().expect("una fila");
+        assert_eq!(guardado.track_no, 3);
+        assert_eq!(guardado.album_artist, "Varios");
+    }
+
+    #[test]
+    fn el_cache_de_la_ventana_no_borra_el_disco_que_leyo_el_barrido() {
+        // El caché de la ventana puede ser de una versión anterior, donde estos
+        // dos campos no existían, y llegar con los valores por omisión. Antes de
+        // esto, abrir la aplicación pisaba con ellos lo que el barrido acababa
+        // de leer del archivo.
+        let (_dir, conn) = temp_database();
+        insert_track_if_not_exists(
+            &conn,
+            &pista("/m/03.mp3", "Tercera", "Alguien", "Varios", 3),
+        )
+        .expect("el barrido");
+
+        upsert_track(&conn, &track("/m/03.mp3", "Tercera", "Alguien", "Un álbum"))
+            .expect("el caché de la ventana");
+
+        let guardado = list_tracks(&conn).expect("list").pop().expect("una fila");
+        assert_eq!(guardado.track_no, 3);
+        assert_eq!(guardado.album_artist, "Varios");
+    }
+
+    #[test]
+    fn pero_un_disco_de_verdad_si_pisa_lo_que_habia() {
+        let (_dir, conn) = temp_database();
+        insert_track_if_not_exists(&conn, &track("/m/03.mp3", "Tercera", "Alguien", "Un álbum"))
+            .expect("insert");
+
+        upsert_track(
+            &conn,
+            &pista("/m/03.mp3", "Tercera", "Alguien", "Varios", 3),
+        )
+        .expect("upsert");
+
         let guardado = list_tracks(&conn).expect("list").pop().expect("una fila");
         assert_eq!(guardado.track_no, 3);
         assert_eq!(guardado.album_artist, "Varios");

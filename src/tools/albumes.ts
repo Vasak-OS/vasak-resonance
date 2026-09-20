@@ -58,9 +58,14 @@ export const artistaDelDisco = (tema: TemaAgrupable): string =>
  * distintos que se llamen igual —«Greatest Hits», «Live», «Demos», «Unplugged»,
  * que cualquier biblioteca mediana tiene repetidos— se funden en uno, y el
  * artista que termina mostrándose es el de la primera pista que haya caído ahí.
+ *
+ * Los dos van serializados y no pegados con un separador: con un separador
+ * suelto, un artista que lo tenga en el nombre arma la misma clave que otro
+ * disco —`A|B` con el álbum `C` da lo mismo que `A` con el álbum `B|C`— y
+ * vuelve a pasar lo que esto viene a arreglar.
  */
 export const claveDeDisco = (tema: TemaAgrupable): string =>
-	`${normalizar(artistaDelDisco(tema))}|${normalizar(tema.album || ALBUM_DESCONOCIDO)}`;
+	JSON.stringify([normalizar(artistaDelDisco(tema)), normalizar(tema.album || ALBUM_DESCONOCIDO)]);
 
 /**
  * Ordena los temas como vienen en el disco.

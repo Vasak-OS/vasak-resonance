@@ -48,6 +48,20 @@ describe('juntar los temas en discos', () => {
 		expect(discos.map((disco) => disco.artist).sort()).toEqual(['ABBA', 'Queen']);
 	});
 
+	test('un separador en el nombre del artista no funde dos discos', () => {
+		// Con la clave pegada con «|», el artista «A|B» con el álbum «C» armaba
+		// la misma clave que el artista «A» con el álbum «B|C».
+		const discos = agruparEnDiscos(
+			[
+				tema({ path: '/m/1.mp3', artist: 'A|B', album: 'C' }),
+				tema({ path: '/m/2.mp3', artist: 'A', album: 'B|C' }),
+			],
+			SIN_TITULO
+		);
+
+		expect(discos).toHaveLength(2);
+	});
+
 	test('el mismo disco con el nombre en otra caja sigue siendo uno', () => {
 		const discos = agruparEnDiscos(
 			[
