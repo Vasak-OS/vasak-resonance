@@ -15,6 +15,25 @@ Since TypeScript cannot handle type information for `.vue` imports, they are shi
 
 You can learn more about Take Over mode [here](https://github.com/johnsoncodehk/volar/discussions/471).
 
+## Las letras
+
+La letra de un tema se busca primero **en el disco**, y sólo si no está se sale a
+LRCLIB. En orden:
+
+1. Un archivo `.lrc` con el mismo nombre que el de audio, al lado. Es el formato
+   con marcas de tiempo, así que la letra sigue a la canción.
+2. La letra guardada en la etiqueta del propio archivo, que es donde la dejan los
+   etiquetadores. Si trae marcas de tiempo también sigue a la canción.
+3. Un `.txt` con el mismo nombre, sin tiempos.
+
+O sea que una biblioteca prolija tiene letras **sin conexión**, y que un `.lrc`
+puesto a mano —el de la versión en vivo, el traducido, el que corrige lo que el
+servicio tiene mal— le gana a lo que venga de la red. Editarlo se ve enseguida:
+lo que sale del disco no se cachea.
+
+Un archivo que no esté en UTF-8 se deja pasar en vez de adivinar la codificación,
+y la letra sale de la red como antes.
+
 ## La presencia en Discord
 
 Resonance puede mostrar en tu perfil de Discord lo que estás escuchando: el

@@ -56,6 +56,7 @@ const loadLyricsForCurrentTrack = async () => {
 			artistName: track.artist || '',
 			albumName: track.album || '',
 			durationSeconds: track.duration_seconds || 0,
+			path: track.path,
 		});
 		lyrics.value = payload;
 		plainLines.value = (payload.plain_lyrics || '')
