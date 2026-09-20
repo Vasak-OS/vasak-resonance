@@ -7,6 +7,7 @@ import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import { useTrackContextMenu } from '@/composables/useTrackContextMenu';
 import { fetchAlbumCover } from '@/services/album-cover.service';
 import { usePlayerStore } from '@/stores/player';
+import { agruparEnDiscos } from '@/tools/albumes';
 
 const { t } = useI18n();
 const { artistLabel, albumLabel } = useMetadataLabels();
@@ -23,59 +24,9 @@ const coverUrlCache: Ref<Record<string, string>> = ref({});
 
 const normalize = (value: string) => value.trim().toLowerCase();
 
-const groupedAlbums = computed(() => {
-	const albumsMap = new Map<
-		string,
-		{
-			key: string;
-			album: string;
-			artist: string;
-			cover: string;
-			coverDataUrl: string | null;
-			tracks: { path: string; title: string; artist: string }[];
-			tracksPreview: { path: string; title: string; artist: string }[];
-		}
-	>();
-
-	for (const track of playerStore.trackCacheList) {
-		const album = track.album || 'Unknown Album';
-		const key = album.toLowerCase();
-		if (!albumsMap.has(key)) {
-			albumsMap.set(key, {
-				key,
-				album,
-				artist: track.artist || 'Unknown Artist',
-				cover: track.cover_data_url || '',
-				coverDataUrl: track.cover_data_url || null,
-				tracks: [],
-				tracksPreview: [],
-			});
-		}
-
-		const group = albumsMap.get(key);
-		if (!group) {
-			continue;
-		}
-
-		if (!group.cover && track.cover_data_url) {
-			group.cover = track.cover_data_url;
-			group.coverDataUrl = track.cover_data_url;
-		}
-
-		group.tracks.push({
-			path: track.path,
-			title: track.title || t('common.unknownTrack'),
-			artist: track.artist || 'Unknown Artist',
-		});
-	}
-
-	return Array.from(albumsMap.values())
-		.map((group) => ({
-			...group,
-			tracksPreview: group.tracks.slice(0, 4),
-		}))
-		.sort((a, b) => a.album.localeCompare(b.album));
-});
+const groupedAlbums = computed(() =>
+	agruparEnDiscos(playerStore.trackCacheList, t('common.unknownTrack'))
+);
 
 // Fetch covers for all albums on mount
 const fetchAllCovers = async () => {

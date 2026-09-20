@@ -22,6 +22,8 @@ pub fn handle_dropped_file(file_path: String) -> Result<DroppedPlaybackTrack, St
         title: track.title,
         artist: track.artist,
         album: track.album,
+        album_artist: track.album_artist,
+        track_no: track.track_no,
         duration_seconds: track.duration_seconds as i64,
         cover_data_url: track.cover_data_url,
         dominant_color: track.dominant_color,

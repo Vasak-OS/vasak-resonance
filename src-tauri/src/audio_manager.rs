@@ -732,6 +732,9 @@ impl AudioManager {
             title: station_name.to_string(),
             artist: "Radio Stream".to_string(),
             album: String::new(),
+            // Una emisora no es un disco: ni artista de álbum ni número de pista.
+            album_artist: String::new(),
+            track_no: 0,
             duration_seconds: 0,
             cover_data_url: None,
             dominant_color: None,

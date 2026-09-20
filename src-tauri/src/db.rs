@@ -91,6 +91,11 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
             title TEXT NOT NULL,
             artist TEXT NOT NULL,
             album TEXT NOT NULL,
+            -- El artista del álbum: lo que mantiene junta una recopilación.
+            -- Vacío cuando el archivo no lo dice.
+            album_artist TEXT NOT NULL DEFAULT '',
+            -- El número de pista, o 0 si el archivo no lo dice.
+            track_no INTEGER NOT NULL DEFAULT 0,
             duration_seconds INTEGER NOT NULL,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
@@ -183,38 +188,121 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
             .map_err(|e| format!("No se pudo reconstruir índice FTS5: {e}"))?;
     }
 
+    agregar_columnas_que_falten(conn)?;
+
     Ok(())
 }
 
+/// Le suma a una biblioteca vieja las columnas que no tenía.
+///
+/// `CREATE TABLE IF NOT EXISTS` no toca una tabla que ya existe, así que sin
+/// esto una biblioteca de antes se queda sin las columnas nuevas y cualquier
+/// consulta que las nombre falla.
+///
+/// Quedan en su valor por omisión —artista del álbum vacío, pista 0—, que es lo
+/// mismo que dice un archivo sin esas etiquetas. Las de verdad las trae el
+/// próximo barrido, que ya lee las etiquetas de todos los archivos igual.
+fn agregar_columnas_que_falten(conn: &Connection) -> Result<(), String> {
+    let existentes: std::collections::HashSet<String> = conn
+        .prepare("SELECT name FROM pragma_table_info('tracks')")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(0))?
+                .collect::<Result<_, _>>()
+        })
+        .map_err(|e| format!("No se pudo leer el esquema de tracks: {e}"))?;
+
+    for (columna, definicion) in [
+        ("album_artist", "TEXT NOT NULL DEFAULT ''"),
+        ("track_no", "INTEGER NOT NULL DEFAULT 0"),
+    ] {
+        if existentes.contains(columna) {
+            continue;
+        }
+
+        conn.execute(
+            &format!("ALTER TABLE tracks ADD COLUMN {columna} {definicion}"),
+            [],
+        )
+        .map_err(|e| format!("No se pudo agregar la columna {columna}: {e}"))?;
+    }
+
+    Ok(())
+}
+
+/// Mete el tema si no estaba, y si estaba le refresca el artista del álbum y el
+/// número de pista. Devuelve si hubo que meterlo.
+///
+/// El refresco es lo que le da esos dos datos a una biblioteca indexada antes de
+/// que se leyeran. No cuesta nada: quien llama acá viene de leer las etiquetas
+/// del archivo igual —el barrido las lee todas—, así que lo único que se agrega
+/// es un `UPDATE` de dos columnas.
+///
+/// Los otros campos no se tocan: que una etiqueta editada se vea sigue pendiente
+/// y es harina de otro costal —el barrido no distingue todavía un archivo que
+/// cambió de uno que no—.
 pub fn insert_track_if_not_exists(conn: &Connection, track: &Track) -> Result<bool, String> {
     let affected = conn
         .execute(
             "
-            INSERT OR IGNORE INTO tracks (path, title, artist, album, duration_seconds)
-            VALUES (?1, ?2, ?3, ?4, ?5)
+            INSERT OR IGNORE INTO tracks
+                (path, title, artist, album, album_artist, track_no, duration_seconds)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
             ",
             params![
                 track.path,
                 track.title,
                 track.artist,
                 track.album,
+                track.album_artist,
+                track.track_no,
                 track.duration_seconds
             ],
         )
         .map_err(|e| format!("No se pudo insertar track en SQLite: {e}"))?;
 
-    Ok(affected > 0)
+    if affected > 0 {
+        return Ok(true);
+    }
+
+    conn.execute(
+        "
+        UPDATE tracks SET album_artist = ?2, track_no = ?3
+        WHERE path = ?1 AND (album_artist <> ?2 OR track_no <> ?3)
+        ",
+        params![track.path, track.album_artist, track.track_no],
+    )
+    .map_err(|e| format!("No se pudo refrescar el track en SQLite: {e}"))?;
+
+    Ok(false)
 }
 
+/// Guarda lo que la ventana sabe de un tema.
+///
+/// El artista del álbum y el número de pista **sólo se pisan con algo**: si lo
+/// que llega viene vacío, se deja lo que había. Acá no llega un archivo, llega
+/// el caché de la ventana, y ese caché puede ser de una versión anterior —donde
+/// esos dos campos no existían— y traerlos en su valor por omisión. Sin esta
+/// condición, abrir la aplicación borraría lo que el barrido acababa de leer.
+///
+/// Vaciarlos de verdad le toca al barrido, que es el que mira el archivo.
 pub fn upsert_track(conn: &Connection, track: &Track) -> Result<(), String> {
     conn.execute(
         "
-        INSERT INTO tracks (path, title, artist, album, duration_seconds)
-        VALUES (?1, ?2, ?3, ?4, ?5)
+        INSERT INTO tracks
+            (path, title, artist, album, album_artist, track_no, duration_seconds)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
         ON CONFLICT(path) DO UPDATE SET
             title = excluded.title,
             artist = excluded.artist,
             album = excluded.album,
+            album_artist = CASE
+                WHEN excluded.album_artist <> '' THEN excluded.album_artist
+                ELSE tracks.album_artist
+            END,
+            track_no = CASE
+                WHEN excluded.track_no <> 0 THEN excluded.track_no
+                ELSE tracks.track_no
+            END,
             duration_seconds = excluded.duration_seconds
         ",
         params![
@@ -222,6 +310,8 @@ pub fn upsert_track(conn: &Connection, track: &Track) -> Result<(), String> {
             track.title,
             track.artist,
             track.album,
+            track.album_artist,
+            track.track_no,
             track.duration_seconds
         ],
     )
@@ -249,7 +339,8 @@ pub fn list_tracks(conn: &Connection) -> Result<Vec<LibraryTrack>, String> {
     let mut stmt = conn
         .prepare(
             "
-            SELECT id, path, title, artist, album, duration_seconds, created_at
+            SELECT id, path, title, artist, album, album_artist, track_no,
+                   duration_seconds, created_at
             FROM tracks
             ORDER BY created_at DESC, title COLLATE NOCASE ASC
             ",
@@ -264,8 +355,10 @@ pub fn list_tracks(conn: &Connection) -> Result<Vec<LibraryTrack>, String> {
                 title: row.get(2)?,
                 artist: row.get(3)?,
                 album: row.get(4)?,
-                duration_seconds: row.get(5)?,
-                created_at: row.get(6)?,
+                album_artist: row.get(5)?,
+                track_no: row.get(6)?,
+                duration_seconds: row.get(7)?,
+                created_at: row.get(8)?,
             })
         })
         .map_err(|e| format!("No se pudo consultar tracks: {e}"))?;
@@ -299,6 +392,8 @@ pub fn search_tracks_fts(
                 t.title,
                 t.artist,
                 t.album,
+                t.album_artist,
+                t.track_no,
                 t.duration_seconds,
                 t.created_at
             FROM tracks_fts f
@@ -318,8 +413,10 @@ pub fn search_tracks_fts(
                 title: row.get(2)?,
                 artist: row.get(3)?,
                 album: row.get(4)?,
-                duration_seconds: row.get(5)?,
-                created_at: row.get(6)?,
+                album_artist: row.get(5)?,
+                track_no: row.get(6)?,
+                duration_seconds: row.get(7)?,
+                created_at: row.get(8)?,
             })
         })
         .map_err(|e| format!("No se pudo ejecutar búsqueda FTS5: {e}"))?;
@@ -356,7 +453,8 @@ fn search_tracks_contains(
 
     let mut sql = String::from(
         "
-        SELECT id, path, title, artist, album, duration_seconds, created_at
+        SELECT id, path, title, artist, album, album_artist, track_no,
+               duration_seconds, created_at
         FROM tracks
         WHERE 1 = 1
         ",
@@ -402,8 +500,10 @@ fn search_tracks_contains(
                 title: row.get(2)?,
                 artist: row.get(3)?,
                 album: row.get(4)?,
-                duration_seconds: row.get(5)?,
-                created_at: row.get(6)?,
+                album_artist: row.get(5)?,
+                track_no: row.get(6)?,
+                duration_seconds: row.get(7)?,
+                created_at: row.get(8)?,
             })
         })
         .map_err(|e| format!("No se pudo ejecutar búsqueda contains: {e}"))?;
@@ -599,6 +699,23 @@ mod tests {
             title: title.to_string(),
             artist: artist.to_string(),
             album: album.to_string(),
+            album_artist: String::new(),
+            track_no: 0,
+            duration_seconds: 180,
+        }
+    }
+
+    /// El mismo tema, pero de un disco: con su número de pista y su artista de
+    /// álbum.
+    fn pista(path: &str, title: &str, artist: &str, album_artist: &str, numero: i64) -> Track {
+        Track {
+            id: None,
+            path: path.to_string(),
+            title: title.to_string(),
+            artist: artist.to_string(),
+            album: "Un álbum".to_string(),
+            album_artist: album_artist.to_string(),
+            track_no: numero,
             duration_seconds: 180,
         }
     }
@@ -658,6 +775,115 @@ mod tests {
             1,
             "no duplicate row"
         );
+    }
+
+    #[test]
+    fn el_disco_guarda_el_numero_de_pista_y_el_artista_del_album() {
+        let (_dir, conn) = temp_database();
+        insert_track_if_not_exists(
+            &conn,
+            &pista("/m/03.mp3", "Tercera", "Alguien", "Varios", 3),
+        )
+        .expect("insert");
+
+        let guardado = list_tracks(&conn).expect("list").pop().expect("una fila");
+        assert_eq!(guardado.track_no, 3);
+        assert_eq!(guardado.album_artist, "Varios");
+    }
+
+    #[test]
+    fn un_barrido_le_pone_los_datos_nuevos_a_un_tema_ya_indexado() {
+        // El caso de una biblioteca indexada antes de que estos dos campos se
+        // leyeran: el barrido vuelve a pasar, lee las etiquetas igual, y lo que
+        // antes tiraba ahora lo guarda.
+        let (_dir, conn) = temp_database();
+        insert_track_if_not_exists(&conn, &track("/m/03.mp3", "Tercera", "Alguien", "Un álbum"))
+            .expect("insert");
+        assert_eq!(list_tracks(&conn).expect("list")[0].track_no, 0);
+
+        let inserto = insert_track_if_not_exists(
+            &conn,
+            &pista("/m/03.mp3", "Tercera", "Alguien", "Varios", 3),
+        )
+        .expect("segundo barrido");
+
+        assert!(!inserto, "el tema ya estaba: no se inserta de nuevo");
+        let guardado = list_tracks(&conn).expect("list").pop().expect("una fila");
+        assert_eq!(guardado.track_no, 3);
+        assert_eq!(guardado.album_artist, "Varios");
+    }
+
+    #[test]
+    fn el_cache_de_la_ventana_no_borra_el_disco_que_leyo_el_barrido() {
+        // El caché de la ventana puede ser de una versión anterior, donde estos
+        // dos campos no existían, y llegar con los valores por omisión. Antes de
+        // esto, abrir la aplicación pisaba con ellos lo que el barrido acababa
+        // de leer del archivo.
+        let (_dir, conn) = temp_database();
+        insert_track_if_not_exists(
+            &conn,
+            &pista("/m/03.mp3", "Tercera", "Alguien", "Varios", 3),
+        )
+        .expect("el barrido");
+
+        upsert_track(&conn, &track("/m/03.mp3", "Tercera", "Alguien", "Un álbum"))
+            .expect("el caché de la ventana");
+
+        let guardado = list_tracks(&conn).expect("list").pop().expect("una fila");
+        assert_eq!(guardado.track_no, 3);
+        assert_eq!(guardado.album_artist, "Varios");
+    }
+
+    #[test]
+    fn pero_un_disco_de_verdad_si_pisa_lo_que_habia() {
+        let (_dir, conn) = temp_database();
+        insert_track_if_not_exists(&conn, &track("/m/03.mp3", "Tercera", "Alguien", "Un álbum"))
+            .expect("insert");
+
+        upsert_track(
+            &conn,
+            &pista("/m/03.mp3", "Tercera", "Alguien", "Varios", 3),
+        )
+        .expect("upsert");
+
+        let guardado = list_tracks(&conn).expect("list").pop().expect("una fila");
+        assert_eq!(guardado.track_no, 3);
+        assert_eq!(guardado.album_artist, "Varios");
+    }
+
+    #[test]
+    fn una_biblioteca_de_antes_gana_las_columnas_al_abrirse() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("resonance.db");
+
+        {
+            let vieja = Connection::open(&path).expect("legacy open");
+            vieja
+                .execute_batch(
+                    "CREATE TABLE tracks (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        path TEXT NOT NULL UNIQUE,
+                        title TEXT NOT NULL,
+                        artist TEXT NOT NULL,
+                        album TEXT NOT NULL,
+                        duration_seconds INTEGER NOT NULL,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    INSERT INTO tracks (path, title, artist, album, duration_seconds)
+                    VALUES ('/m/a.mp3', 'Vieja', 'Alguien', 'Un álbum', 180);",
+                )
+                .expect("legacy schema");
+        }
+
+        let conn = open_database(&path).expect("open");
+
+        // Sin las columnas, cualquier consulta que las nombre falla: la prueba
+        // es que esto no reviente y que los valores sean los de un archivo sin
+        // esas etiquetas.
+        let guardado = list_tracks(&conn).expect("list").pop().expect("una fila");
+        assert_eq!(guardado.title, "Vieja");
+        assert_eq!(guardado.track_no, 0);
+        assert_eq!(guardado.album_artist, "");
     }
 
     #[test]

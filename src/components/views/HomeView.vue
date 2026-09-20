@@ -62,6 +62,8 @@ const toLibraryTrack = (
 	title: track.title,
 	artist: track.artist,
 	album: track.album,
+	album_artist: track.album_artist,
+	track_no: track.track_no,
 	duration_seconds: track.duration_seconds,
 	created_at: createdAt,
 });

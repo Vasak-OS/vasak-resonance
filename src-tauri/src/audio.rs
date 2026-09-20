@@ -4,7 +4,7 @@ use image::ImageReader;
 use lofty::picture::PictureType;
 use lofty::prelude::{AudioFile, TaggedFileExt};
 use lofty::probe::Probe;
-use lofty::tag::Accessor;
+use lofty::tag::{Accessor, ItemKey};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Cursor;
@@ -41,6 +41,19 @@ pub fn extract_track_from_file(path: &Path) -> Result<Track, String> {
         .and_then(|tag| tag.album().map(|v| v.to_string()))
         .unwrap_or_else(|| "Unknown Album".to_string());
 
+    // El artista del álbum: lo que mantiene junta una recopilación. `lofty` lo
+    // expone como texto libre; vacío es «no lo dice», y entonces el del tema
+    // alcanza.
+    let album_artist = primary_tag
+        .and_then(|tag| tag.get_string(&ItemKey::AlbumArtist))
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_default();
+
+    // El número de pista. Cero es «sin numerar», y es lo que hace que esos
+    // archivos queden al final en vez de mezclados.
+    let track_no = primary_tag.and_then(|tag| tag.track()).unwrap_or(0) as i64;
+
     let duration_seconds = tagged_file.properties().duration().as_secs() as i64;
 
     Ok(Track {
@@ -49,6 +62,8 @@ pub fn extract_track_from_file(path: &Path) -> Result<Track, String> {
         title,
         artist,
         album,
+        album_artist,
+        track_no,
         duration_seconds,
     })
 }
@@ -93,6 +108,13 @@ pub fn extract_now_playing_metadata_with_cover_cache(
         .and_then(|tag| tag.album().map(|v| v.to_string()))
         .unwrap_or_else(|| "Unknown Album".to_string());
 
+    let album_artist = primary_tag
+        .and_then(|tag| tag.get_string(&ItemKey::AlbumArtist))
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_default();
+    let track_no = primary_tag.and_then(|tag| tag.track()).unwrap_or(0) as i64;
+
     let duration_seconds = tagged_file.properties().duration().as_secs();
 
     let mut computed_cover_data_url: Option<String> = None;
@@ -135,6 +157,8 @@ pub fn extract_now_playing_metadata_with_cover_cache(
         title,
         artist,
         album,
+        album_artist,
+        track_no,
         duration_seconds,
         cover_data_url,
         dominant_color,
@@ -177,6 +201,7 @@ pub fn is_supported_audio_file(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     /// Un PNG de un solo color, armado en memoria.
     fn png_de_un_color(r: u8, g: u8, b: u8) -> Vec<u8> {
@@ -186,7 +211,10 @@ mod tests {
         }
         let mut bytes = Vec::new();
         image::DynamicImage::ImageRgb8(imagen)
-            .write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png)
+            .write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                image::ImageFormat::Png,
+            )
             .expect("el PNG de prueba tiene que poder escribirse");
         bytes
     }
@@ -199,10 +227,7 @@ mod tests {
             .expect("una imagen válida tiene que dar un color");
         assert!(color.starts_with('#'), "{color}");
         assert_eq!(color.len(), 7, "{color}");
-        assert!(
-            color[1..].chars().all(|c| c.is_ascii_hexdigit()),
-            "{color}"
-        );
+        assert!(color[1..].chars().all(|c| c.is_ascii_hexdigit()), "{color}");
     }
 
     #[test]
@@ -243,6 +268,95 @@ mod tests {
         let completo = png_de_un_color(0x40, 0x80, 0xC0);
         let mitad = &completo[..completo.len() / 2];
         assert!(extract_dominant_color_hex(mitad).is_none());
+    }
+
+    /// Un MP3 de verdad con las etiquetas que pide la prueba.
+    ///
+    /// Ocho tramas y no una: `lofty` no da por bueno un MPEG hasta encontrar
+    /// varias cabeceras seguidas, y con una sola la prueba pasaría en verde sin
+    /// haber leído nunca una etiqueta.
+    fn archivo_etiquetado(dir: &Path, nombre: &str, etiquetas: &[(ItemKey, &str)]) -> PathBuf {
+        use lofty::config::WriteOptions;
+        use lofty::tag::{Tag, TagExt, TagType};
+
+        let audio = dir.join(nombre);
+        let mut bytes = Vec::new();
+        for _ in 0..8 {
+            // MPEG-1 Layer III, 128 kbps, 44,1 kHz: 417 bytes por trama.
+            bytes.extend_from_slice(&[0xFF, 0xFB, 0x90, 0x00]);
+            bytes.extend(std::iter::repeat(0u8).take(413));
+        }
+        fs::write(&audio, &bytes).expect("no se pudo escribir el audio");
+
+        let mut tag = Tag::new(TagType::Id3v2);
+        for (clave, valor) in etiquetas {
+            tag.insert_text(clave.clone(), valor.to_string());
+        }
+        tag.save_to_path(&audio, WriteOptions::default())
+            .expect("no se pudo escribir la etiqueta");
+
+        audio
+    }
+
+    #[test]
+    fn se_lee_el_numero_de_pista_y_el_artista_del_album() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let audio = archivo_etiquetado(
+            dir.path(),
+            "03.mp3",
+            &[
+                (ItemKey::TrackTitle, "Tercera"),
+                (ItemKey::TrackArtist, "Quien la canta"),
+                (ItemKey::AlbumTitle, "Una recopilación"),
+                (ItemKey::AlbumArtist, "Varios artistas"),
+                (ItemKey::TrackNumber, "3"),
+            ],
+        );
+
+        let track = extract_track_from_file(&audio).expect("leer el archivo");
+
+        assert_eq!(track.track_no, 3);
+        assert_eq!(track.album_artist, "Varios artistas");
+        // Y el artista del tema sigue siendo el suyo, que es todo el punto de
+        // que haya dos campos.
+        assert_eq!(track.artist, "Quien la canta");
+    }
+
+    #[test]
+    fn un_archivo_sin_esas_etiquetas_no_inventa_nada() {
+        // Lo normal en un disco de un solo artista, y en cualquier archivo
+        // suelto: cero y vacío, que es lo que el agrupado entiende como «no lo
+        // dice».
+        let dir = tempfile::tempdir().expect("temp dir");
+        let audio = archivo_etiquetado(
+            dir.path(),
+            "suelto.mp3",
+            &[
+                (ItemKey::TrackTitle, "Un tema"),
+                (ItemKey::TrackArtist, "Alguien"),
+            ],
+        );
+
+        let track = extract_track_from_file(&audio).expect("leer el archivo");
+
+        assert_eq!(track.track_no, 0);
+        assert_eq!(track.album_artist, "");
+    }
+
+    #[test]
+    fn un_numero_de_pista_con_el_total_se_lee_igual() {
+        // «3/12» es como lo escriben la mitad de los etiquetadores.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let audio = archivo_etiquetado(
+            dir.path(),
+            "03.mp3",
+            &[
+                (ItemKey::TrackTitle, "Tercera"),
+                (ItemKey::TrackNumber, "3/12"),
+            ],
+        );
+
+        assert_eq!(extract_track_from_file(&audio).expect("leer").track_no, 3);
     }
 
     #[test]

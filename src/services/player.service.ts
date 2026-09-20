@@ -6,6 +6,15 @@ export interface DroppedPlaybackTrack {
 	title: string;
 	artist: string;
 	album: string;
+	/**
+	 * El artista **del álbum**, o cadena vacía si el archivo no lo dice.
+	 *
+	 * Es lo que mantiene junta una recopilación: cada pista tiene su intérprete
+	 * y todas comparten el disco.
+	 */
+	album_artist: string;
+	/** El número de pista dentro del álbum, o 0 si el archivo no lo dice. */
+	track_no: number;
 	duration_seconds: number;
 	cover_data_url: string | null;
 	dominant_color: string | null;
@@ -16,6 +25,10 @@ export interface NowPlayingMetadata {
 	title: string;
 	artist: string;
 	album: string;
+	/** Ver {@link DroppedPlaybackTrack.album_artist}. */
+	album_artist: string;
+	/** Ver {@link DroppedPlaybackTrack.track_no}. */
+	track_no: number;
 	duration_seconds: number;
 	cover_data_url: string | null;
 	dominant_color: string | null;
@@ -59,6 +72,10 @@ export interface LibraryTrack {
 	title: string;
 	artist: string;
 	album: string;
+	/** Ver {@link DroppedPlaybackTrack.album_artist}. */
+	album_artist: string;
+	/** Ver {@link DroppedPlaybackTrack.track_no}. */
+	track_no: number;
 	duration_seconds: number;
 	created_at: string;
 }
