@@ -8,6 +8,17 @@ pub struct Track {
     pub title: String,
     pub artist: String,
     pub album: String,
+    /// El artista **del álbum**, que puede no ser el del tema.
+    ///
+    /// Es la etiqueta que existe para las recopilaciones: cada pista tiene su
+    /// intérprete y todas comparten el disco. Sin ella, agrupar por artista y
+    /// álbum parte una recopilación en un álbum por intérprete.
+    ///
+    /// Vacío cuando el archivo no la trae, que es lo normal en un disco de un
+    /// solo artista; ahí el del tema alcanza.
+    pub album_artist: String,
+    /// El número de pista dentro del álbum, o 0 si el archivo no lo dice.
+    pub track_no: i64,
     pub duration_seconds: i64,
 }
 
@@ -18,6 +29,10 @@ pub struct LibraryTrack {
     pub title: String,
     pub artist: String,
     pub album: String,
+    /// Ver [`Track::album_artist`].
+    pub album_artist: String,
+    /// Ver [`Track::track_no`].
+    pub track_no: i64,
     pub duration_seconds: i64,
     pub created_at: String,
 }
@@ -37,6 +52,10 @@ pub struct DroppedPlaybackTrack {
     pub title: String,
     pub artist: String,
     pub album: String,
+    /// Ver [`Track::album_artist`].
+    pub album_artist: String,
+    /// Ver [`Track::track_no`].
+    pub track_no: i64,
     pub duration_seconds: i64,
     pub cover_data_url: Option<String>,
     pub dominant_color: Option<String>,
@@ -48,6 +67,10 @@ pub struct NowPlayingMetadata {
     pub title: String,
     pub artist: String,
     pub album: String,
+    /// Ver [`Track::album_artist`].
+    pub album_artist: String,
+    /// Ver [`Track::track_no`].
+    pub track_no: i64,
     pub duration_seconds: u64,
     pub cover_data_url: Option<String>,
     pub dominant_color: Option<String>,

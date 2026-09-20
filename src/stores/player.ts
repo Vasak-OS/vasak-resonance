@@ -203,6 +203,11 @@ export const usePlayerStore = defineStore('player', () => {
 					artist:
 						typeof track.artist === 'string' && track.artist ? track.artist : 'Unknown Artist',
 					album: typeof track.album === 'string' && track.album ? track.album : 'Unknown Album',
+					// Un caché escrito antes de que estos dos campos existieran
+					// no los trae; valen lo mismo que un archivo sin esas
+					// etiquetas hasta el próximo barrido.
+					album_artist: typeof track.album_artist === 'string' ? track.album_artist : '',
+					track_no: typeof track.track_no === 'number' ? track.track_no : 0,
 					duration_seconds: typeof track.duration_seconds === 'number' ? track.duration_seconds : 0,
 					cover_data_url:
 						typeof track.cover_data_url === 'string' || track.cover_data_url === null
@@ -373,6 +378,8 @@ export const usePlayerStore = defineStore('player', () => {
 		a.title === b.title &&
 		a.artist === b.artist &&
 		a.album === b.album &&
+		a.album_artist === b.album_artist &&
+		a.track_no === b.track_no &&
 		a.duration_seconds === b.duration_seconds &&
 		a.cover_data_url === b.cover_data_url &&
 		a.dominant_color === b.dominant_color;
@@ -551,6 +558,8 @@ export const usePlayerStore = defineStore('player', () => {
 			title: metadata.title,
 			artist: metadata.artist,
 			album: metadata.album,
+			album_artist: metadata.album_artist,
+			track_no: metadata.track_no,
 			duration_seconds: metadata.duration_seconds,
 			cover_data_url: metadata.cover_data_url,
 			dominant_color: metadata.dominant_color,
@@ -592,6 +601,8 @@ export const usePlayerStore = defineStore('player', () => {
 				title: nowPlaying.title,
 				artist: nowPlaying.artist,
 				album: nowPlaying.album,
+				album_artist: nowPlaying.album_artist ?? cachedTrack?.album_artist ?? '',
+				track_no: nowPlaying.track_no ?? cachedTrack?.track_no ?? 0,
 				duration_seconds: nowPlaying.duration_seconds,
 				// Preserve cached/embedded visuals when playback events don't include them.
 				cover_data_url: nowPlaying.cover_data_url ?? cachedTrack?.cover_data_url ?? null,
@@ -1108,6 +1119,8 @@ export const usePlayerStore = defineStore('player', () => {
 					title: track.title,
 					artist: track.artist,
 					album: track.album,
+					album_artist: track.album_artist,
+					track_no: track.track_no,
 					duration_seconds: track.duration_seconds,
 					cover_data_url: newVisuals?.cover_data_url ?? null,
 					dominant_color: newVisuals?.dominant_color ?? null,
