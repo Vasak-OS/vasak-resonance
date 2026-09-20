@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { listen } from '@tauri-apps/api/event';
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
-import { computed, onBeforeUnmount, onMounted, type Ref, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, type Ref, reactive, ref, watch } from 'vue';
 import LabeledField from '@/components/layout/LabeledField.vue';
 import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import type { RadioStation } from '@/services/radio.service';
@@ -22,6 +22,23 @@ const selectedTag = ref('lofi');
 const searchQuery = ref('');
 const bufferingStationUuid = ref<string | null>(null);
 const lastRequestedUrl = ref('');
+
+/**
+ * Las emisoras cuyo icono no cargó.
+ *
+ * Un `Set` reactivo y no una marca por emisora: la lista se reemplaza entera en
+ * cada búsqueda, y guardar el estado adentro de cada elemento lo perdería.
+ */
+const faviconsRotos = reactive(new Set<string>());
+
+// Y se vacía con cada lista nueva. Un UUID marcado se quedaba marcado hasta
+// que la ventana se cerrara: si la emisora arreglaba su icono y la recarga lo
+// traía bien, seguía dibujándose el de la aplicación. Lo marcó la revisión.
+// Se vacía al reemplazar la lista y no al recibir cada icono porque el `@error`
+// es lo único que avisa: no hay forma de preguntar si hoy carga sin intentarlo.
+watch(stations, () => {
+	faviconsRotos.clear();
+});
 
 const availableTags = [
 	'lofi',
@@ -205,12 +222,20 @@ onBeforeUnmount(() => {
 				>
 					<!-- Station icon/image -->
 					<div class="flex-shrink-0">
+						<!-- El icono de la emisora, y el de la aplicación cuando no hay o
+						     no carga. Acá había un `onerror="this.style.display='none'"`,
+						     que es un manejador **en línea**: la política de contenido de
+						     esta ventana no permite `script-src` inline, así que el
+						     navegador nunca lo ejecutaba y un favicon roto dejaba el
+						     dibujo de imagen rota. Con `@error` lo maneja Vue, y en vez de
+						     esconder el `<img>` se muestra el icono de abajo, que es lo
+						     que se ve cuando la emisora no trae ninguno. -->
 						<img
-							v-if="station.favicon"
+							v-if="station.favicon && !faviconsRotos.has(station.uuid)"
 							:src="station.favicon"
 							:alt="station.name"
 							class="w-12 h-12 rounded-corner"
-							onerror="this.style.display='none'"
+							@error="faviconsRotos.add(station.uuid)"
 						/>
 						<div v-else class="w-12 h-12 bg-primary rounded-corner flex items-center justify-center">
 							<img :src="playIcon" :alt="t('radios.stationIconAlt')" class="w-6 h-6" />
