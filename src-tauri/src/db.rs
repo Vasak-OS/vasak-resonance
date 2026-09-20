@@ -117,6 +117,22 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
         CREATE INDEX IF NOT EXISTS idx_playlist_tracks_playlist_position
             ON playlist_tracks(playlist_id, position);
 
+        -- Una fila por reproducción. Sólo la ruta y el momento: el título, el
+        -- artista y el álbum están en `tracks`, y copiarlos acá los dejaría
+        -- congelados el día que alguien corrija una etiqueta.
+        --
+        -- Sin clave foránea a propósito. Un archivo que se borra o se mueve no
+        -- tiene por qué llevarse puesto el registro de que se lo escuchó, y una
+        -- biblioteca rebarrida no es una biblioteca escuchada de nuevo.
+        CREATE TABLE IF NOT EXISTS plays (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            path TEXT NOT NULL,
+            played_at INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_plays_played_at ON plays(played_at);
+        CREATE INDEX IF NOT EXISTS idx_plays_path ON plays(path);
+
         CREATE VIRTUAL TABLE IF NOT EXISTS tracks_fts USING fts5(
             title,
             artist,
@@ -210,6 +226,21 @@ pub fn upsert_track(conn: &Connection, track: &Track) -> Result<(), String> {
         ],
     )
     .map_err(|e| format!("No se pudo sincronizar track en SQLite: {e}"))?;
+
+    Ok(())
+}
+
+/// Anota que un tema se escuchó, con el momento en segundos desde la época.
+///
+/// No hay «anotar una sola vez»: quién decide que una escucha cuenta es
+/// `historial`, y acá cada llamada es una escucha más. Escuchar el mismo tema
+/// tres veces son tres filas.
+pub fn record_play(conn: &Connection, path: &str, played_at: i64) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO plays (path, played_at) VALUES (?1, ?2)",
+        rusqlite::params![path, played_at],
+    )
+    .map_err(|e| format!("No se pudo anotar la reproducción: {e}"))?;
 
     Ok(())
 }
@@ -581,15 +612,28 @@ mod tests {
     #[test]
     fn a_new_track_is_searchable_immediately() {
         let (_dir, conn) = temp_database();
-        insert_track_if_not_exists(&conn, &track("/m/a.mp3", "Bohemian Rhapsody", "Queen", "A Night at the Opera"))
-            .expect("insert");
+        insert_track_if_not_exists(
+            &conn,
+            &track(
+                "/m/a.mp3",
+                "Bohemian Rhapsody",
+                "Queen",
+                "A Night at the Opera",
+            ),
+        )
+        .expect("insert");
 
         let by_title = search_tracks_fts(&conn, "bohemian", 10).expect("search");
         assert_eq!(by_title.len(), 1);
         assert_eq!(by_title[0].title, "Bohemian Rhapsody");
 
-        assert_eq!(search_tracks_fts(&conn, "queen", 10).expect("search").len(), 1);
-        assert!(search_tracks_fts(&conn, "nothingmatchesthis", 10).expect("search").is_empty());
+        assert_eq!(
+            search_tracks_fts(&conn, "queen", 10).expect("search").len(),
+            1
+        );
+        assert!(search_tracks_fts(&conn, "nothingmatchesthis", 10)
+            .expect("search")
+            .is_empty());
     }
 
     /// The FTS triggers have to follow edits, or a renamed track keeps being
@@ -602,9 +646,18 @@ mod tests {
 
         upsert_track(&conn, &track("/m/a.mp3", "New Title", "Artist", "Album")).expect("upsert");
 
-        assert!(search_tracks_fts(&conn, "old", 10).expect("search").is_empty());
-        assert_eq!(search_tracks_fts(&conn, "new", 10).expect("search").len(), 1);
-        assert_eq!(list_tracks(&conn).expect("list").len(), 1, "no duplicate row");
+        assert!(search_tracks_fts(&conn, "old", 10)
+            .expect("search")
+            .is_empty());
+        assert_eq!(
+            search_tracks_fts(&conn, "new", 10).expect("search").len(),
+            1
+        );
+        assert_eq!(
+            list_tracks(&conn).expect("list").len(),
+            1,
+            "no duplicate row"
+        );
     }
 
     #[test]
@@ -632,11 +685,95 @@ mod tests {
 
         let conn = open_database(&path).expect("reopen");
         assert_eq!(list_tracks(&conn).expect("list").len(), 1);
-        assert_eq!(search_tracks_fts(&conn, "title", 10).expect("search").len(), 1);
+        assert_eq!(
+            search_tracks_fts(&conn, "title", 10).expect("search").len(),
+            1
+        );
     }
 
     /// A library indexed before the search index existed has tracks but nothing
     /// indexed; that is the only case where a full rebuild is warranted.
+    /// Cuántas veces figura ese tema en el historial.
+    fn escuchas(conn: &Connection, path: &str) -> i64 {
+        conn.query_row(
+            "SELECT COUNT(*) FROM plays WHERE path = ?1",
+            rusqlite::params![path],
+            |row| row.get(0),
+        )
+        .expect("contar escuchas")
+    }
+
+    #[test]
+    fn una_escucha_queda_anotada_con_su_momento() {
+        let (_dir, conn) = temp_database();
+
+        record_play(&conn, "/m/a.mp3", 1_700_000_000).expect("anotar");
+
+        let (path, momento): (String, i64) = conn
+            .query_row("SELECT path, played_at FROM plays", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .expect("leer la escucha");
+        assert_eq!(path, "/m/a.mp3");
+        assert_eq!(momento, 1_700_000_000);
+    }
+
+    #[test]
+    fn escuchar_el_mismo_tema_tres_veces_son_tres_filas() {
+        // Que no se pise es todo el punto: lo que se quiere contar después es
+        // cuántas veces, no si alguna vez.
+        let (_dir, conn) = temp_database();
+
+        record_play(&conn, "/m/a.mp3", 1_700_000_000).expect("anotar");
+        record_play(&conn, "/m/a.mp3", 1_700_000_300).expect("anotar");
+        record_play(&conn, "/m/a.mp3", 1_700_000_600).expect("anotar");
+
+        assert_eq!(escuchas(&conn, "/m/a.mp3"), 3);
+    }
+
+    #[test]
+    fn borrar_el_tema_de_la_biblioteca_no_borra_lo_que_se_escucho() {
+        // Sin clave foránea a propósito: un archivo que se mueve o se borra no
+        // tiene por qué llevarse puesto el registro de que sonó.
+        let (_dir, conn) = temp_database();
+        insert_track_if_not_exists(&conn, &track("/m/a.mp3", "Un tema", "Alguien", "Un álbum"))
+            .expect("insert");
+        record_play(&conn, "/m/a.mp3", 1_700_000_000).expect("anotar");
+
+        conn.execute("DELETE FROM tracks WHERE path = '/m/a.mp3'", [])
+            .expect("borrar el tema");
+
+        assert_eq!(escuchas(&conn, "/m/a.mp3"), 1);
+    }
+
+    #[test]
+    fn una_biblioteca_de_antes_del_historial_gana_la_tabla_al_abrirse() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("resonance.db");
+
+        {
+            let vieja = Connection::open(&path).expect("legacy open");
+            vieja
+                .execute_batch(
+                    "CREATE TABLE tracks (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        path TEXT NOT NULL UNIQUE,
+                        title TEXT NOT NULL,
+                        artist TEXT NOT NULL,
+                        album TEXT NOT NULL,
+                        duration_seconds INTEGER NOT NULL,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );",
+                )
+                .expect("legacy schema");
+        }
+
+        let conn = open_database(&path).expect("open");
+
+        record_play(&conn, "/m/a.mp3", 1_700_000_000).expect("anotar");
+        assert_eq!(escuchas(&conn, "/m/a.mp3"), 1);
+    }
+
     #[test]
     fn a_library_from_before_the_search_index_is_rebuilt() {
         let dir = tempfile::tempdir().expect("temp dir");
@@ -665,7 +802,9 @@ mod tests {
 
         let conn = open_database(&path).expect("open");
         assert_eq!(
-            search_tracks_fts(&conn, "findable", 10).expect("search").len(),
+            search_tracks_fts(&conn, "findable", 10)
+                .expect("search")
+                .len(),
             1,
             "the pre-existing library should have been indexed"
         );
@@ -698,8 +837,16 @@ mod tests {
             )
             .expect("check");
 
-        assert!(!needs_rebuild, "the triggers already keep the index current");
-        assert_eq!(search_tracks_fts(&conn, "findable", 10).expect("search").len(), 1);
+        assert!(
+            !needs_rebuild,
+            "the triggers already keep the index current"
+        );
+        assert_eq!(
+            search_tracks_fts(&conn, "findable", 10)
+                .expect("search")
+                .len(),
+            1
+        );
     }
 
     #[test]
@@ -719,7 +866,12 @@ mod tests {
         assert_eq!(contents.len(), 2);
 
         remove_track_from_playlist(&conn, playlist.id, tracks[0].id).expect("remove");
-        assert_eq!(list_playlist_tracks(&conn, playlist.id).expect("contents").len(), 1);
+        assert_eq!(
+            list_playlist_tracks(&conn, playlist.id)
+                .expect("contents")
+                .len(),
+            1
+        );
 
         // Deleting the playlist must not take the tracks with it.
         delete_playlist(&conn, playlist.id).expect("delete");
@@ -741,7 +893,11 @@ mod tests {
         conn.execute("DELETE FROM tracks WHERE id = ?1", params![entry.id])
             .expect("delete");
 
-        assert!(search_tracks_fts(&conn, "doomed", 10).expect("search").is_empty());
-        assert!(list_playlist_tracks(&conn, playlist.id).expect("contents").is_empty());
+        assert!(search_tracks_fts(&conn, "doomed", 10)
+            .expect("search")
+            .is_empty());
+        assert!(list_playlist_tracks(&conn, playlist.id)
+            .expect("contents")
+            .is_empty());
     }
 }

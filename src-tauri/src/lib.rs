@@ -3,6 +3,7 @@ mod audio_manager;
 mod commands;
 mod db;
 mod discord;
+mod historial;
 #[cfg(target_os = "linux")]
 mod layer_shell;
 mod lyrics;

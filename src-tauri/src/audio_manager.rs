@@ -2,9 +2,9 @@ use rodio::{OutputStream, OutputStreamHandle, Sink, Source};
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
@@ -540,8 +540,10 @@ impl AudioManager {
         // An explicit play replaces everything, fade included: the person asked
         // for this track now, not blended into whatever was going out.
         self.shutdown_all();
-        let playback =
-            self.spawn_playback(&Self::file_ffmpeg_args(&canonical_path, target), self.volume)?;
+        let playback = self.spawn_playback(
+            &Self::file_ffmpeg_args(&canonical_path, target),
+            self.volume,
+        )?;
 
         self.current = Some(playback);
         self.current_path = Some(canonical_path);
@@ -698,13 +700,22 @@ impl AudioManager {
         }
     }
 
-
     /// ffmpeg args to pull a live stream to stdout as PCM f32 WAV.
     fn stream_ffmpeg_args(url: &str) -> Vec<String> {
-        ["-v", "quiet", "-i", url, "-f", "wav", "-acodec", "pcm_f32le", "pipe:1"]
-            .iter()
-            .map(|arg| arg.to_string())
-            .collect()
+        [
+            "-v",
+            "quiet",
+            "-i",
+            url,
+            "-f",
+            "wav",
+            "-acodec",
+            "pcm_f32le",
+            "pipe:1",
+        ]
+        .iter()
+        .map(|arg| arg.to_string())
+        .collect()
     }
 
     fn play_stream_blocking(&mut self, url: &str, station_name: &str) -> Result<(), String> {
@@ -733,9 +744,13 @@ impl AudioManager {
         Ok(())
     }
 
-    fn read_wav_header<R: std::io::Read>(reader: &mut std::io::BufReader<R>) -> Result<(u16, u32), String> {
+    fn read_wav_header<R: std::io::Read>(
+        reader: &mut std::io::BufReader<R>,
+    ) -> Result<(u16, u32), String> {
         let mut riff = [0u8; 12];
-        reader.read_exact(&mut riff).map_err(|e| format!("Error leyendo header WAV: {e}"))?;
+        reader
+            .read_exact(&mut riff)
+            .map_err(|e| format!("Error leyendo header WAV: {e}"))?;
 
         if &riff[..4] != b"RIFF" || &riff[8..12] != b"WAVE" {
             return Err("ffmpeg no produjo un WAV válido".to_string());
@@ -748,23 +763,31 @@ impl AudioManager {
             let mut chunk_id = [0u8; 4];
             let mut chunk_size_raw = [0u8; 4];
 
-            reader.read_exact(&mut chunk_id).map_err(|e| format!("Error leyendo chunk WAV: {e}"))?;
-            reader.read_exact(&mut chunk_size_raw).map_err(|e| format!("Error leyendo tamaño chunk: {e}"))?;
+            reader
+                .read_exact(&mut chunk_id)
+                .map_err(|e| format!("Error leyendo chunk WAV: {e}"))?;
+            reader
+                .read_exact(&mut chunk_size_raw)
+                .map_err(|e| format!("Error leyendo tamaño chunk: {e}"))?;
 
             let chunk_size = u32::from_le_bytes(chunk_size_raw) as usize;
 
             match &chunk_id {
                 b"fmt " => {
                     let mut fmt_data = vec![0u8; chunk_size.max(16)];
-                    reader.read_exact(&mut fmt_data[..chunk_size.min(16)])
+                    reader
+                        .read_exact(&mut fmt_data[..chunk_size.min(16)])
                         .map_err(|e| format!("Error leyendo fmt chunk: {e}"))?;
                     if chunk_size > 16 {
                         let mut skip = vec![0u8; chunk_size - 16];
-                        reader.read_exact(&mut skip).map_err(|e| format!("Error saltando fmt extra: {e}"))?;
+                        reader
+                            .read_exact(&mut skip)
+                            .map_err(|e| format!("Error saltando fmt extra: {e}"))?;
                     }
 
                     channels = u16::from_le_bytes([fmt_data[2], fmt_data[3]]);
-                    sample_rate = u32::from_le_bytes([fmt_data[4], fmt_data[5], fmt_data[6], fmt_data[7]]);
+                    sample_rate =
+                        u32::from_le_bytes([fmt_data[4], fmt_data[5], fmt_data[6], fmt_data[7]]);
                 }
                 b"data" => {
                     return Ok((channels, sample_rate));
@@ -964,7 +987,6 @@ impl AudioManager {
             return None;
         }
 
-
         if !next_path.exists() {
             // A queued file that has since been moved or deleted. Dropping the
             // hint lets the track end normally instead of retrying every tick.
@@ -1050,7 +1072,6 @@ impl AudioManager {
         if let Some(playback) = self.current.as_ref() {
             playback.sink.set_volume(volume * in_gain);
         }
-
 
         if progress >= 1.0 {
             if let Some(playback) = self.outgoing.take() {
@@ -1345,6 +1366,11 @@ fn publish_snapshot(
     if let Ok(mut shared_snapshot) = playback_snapshot.lock() {
         *shared_snapshot = snapshot.clone();
     }
+
+    // El registro de lo escuchado se lleva acá y no en la ventana: esto es por
+    // dónde pasa la reproducción de verdad, y así lo que se anota no depende de
+    // qué vista esté abierta. Casi todos los tics son dos comparaciones.
+    crate::historial::anotar_si_corresponde(&snapshot);
 
     // Strip the metadata from the twice-a-second tick unless the track changed.
     //
