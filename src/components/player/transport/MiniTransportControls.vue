@@ -2,7 +2,6 @@
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { computed } from 'vue';
 import TransportButton from '@/components/player/transport/TransportButton.vue';
-import { useReactiveIcon } from '@/composables/useReactiveIcon';
 
 const props = defineProps<{
 	hasTrack: boolean;
@@ -26,13 +25,8 @@ const toggleLabel = computed(() => {
 	return props.isPaused || !props.isPlaying ? t('transport.play') : t('transport.pause');
 });
 
-const nextIcon = useReactiveIcon('player_fwd');
-const playIcon = useReactiveIcon('media-playback-start');
-const pauseIcon = useReactiveIcon('media-playback-pause');
-const openIcon = useReactiveIcon('stock_new-window');
-
 const playPauseIcon = computed(() => {
-	return props.isPaused || !props.isPlaying ? playIcon.value : pauseIcon.value;
+	return props.isPaused || !props.isPlaying ? 'media-playback-start' : 'media-playback-pause';
 });
 </script>
 
@@ -40,14 +34,14 @@ const playPauseIcon = computed(() => {
 	<div class="flex shrink-0 items-center gap-1">
 		<TransportButton
 			:label="nextLabel || t('transport.next')"
-			:icon-src="nextIcon"
+			icon="player_fwd"
 			size="sm"
 			:disabled="!hasNextTrack || busy"
 			@click="emit('next')"
 		/>
 		<TransportButton
 			:label="toggleLabel"
-			:icon-src="playPauseIcon"
+			:icon="playPauseIcon"
 			variant="primary"
 			size="sm"
 			:disabled="!hasTrack || busy"
@@ -55,7 +49,7 @@ const playPauseIcon = computed(() => {
 		/>
 		<TransportButton
 			:label="openLabel || t('transport.open')"
-			:icon-src="openIcon"
+			icon="stock_new-window"
 			size="sm"
 			@click="emit('open')"
 		/>

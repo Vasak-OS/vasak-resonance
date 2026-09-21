@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
+import { SideButton } from '@vasakgroup/vue-libvasak';
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import TrackMetaCard from '@/components/player/TrackMetaCard.vue';
 import MainTransportControls from '@/components/player/transport/MainTransportControls.vue';
-import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import { useTrackSubtitle } from '@/composables/useTrackSubtitle';
 import { useTrackTitle } from '@/composables/useTrackTitle';
 import { fetchAlbumCover } from '@/services/album-cover.service';
@@ -30,22 +30,6 @@ const sections = computed(() => [
 	{ id: 'radios', label: t('sidebar.radios'), icon: 'media-playback-start-symbolic' },
 	{ id: 'settings', label: t('sidebar.settings'), icon: 'preferences-system-symbolic' },
 ]);
-
-const homeIcon = useReactiveIcon('go-home-symbolic');
-const albumsIcon = useReactiveIcon('folder-music-symbolic');
-const favoritesIcon = useReactiveIcon('starred-symbolic');
-const playlistsIcon = useReactiveIcon('view-list-symbolic');
-const radiosIcon = useReactiveIcon('media-playback-start-symbolic');
-const settingsIcon = useReactiveIcon('preferences-system-symbolic');
-
-const iconSources = computed(() => ({
-	home: homeIcon.value,
-	albums: albumsIcon.value,
-	favorites: favoritesIcon.value,
-	playlists: playlistsIcon.value,
-	radios: radiosIcon.value,
-	settings: settingsIcon.value,
-}));
 
 const fetchedCoverUrl = ref<string>('');
 
@@ -134,30 +118,14 @@ const onSelectSection = async (id: string) => {
 		</header>
 
 		<nav class="flex-1 space-y-2 overflow-y-auto px-1 py-3">
-			<button
+			<SideButton
 				v-for="section in sections"
 				:key="section.id"
-				type="button"
-				class="flex w-full items-center gap-3 rounded-corner border px-3 py-2 text-left text-sm transition-[color,background-color,border-color,scale] duration-[250ms] ease-[cubic-bezier(0.4,0,0.2,1)] active:scale-[0.98]"
-				:class="[
-					selectedSection === section.id
-						? 'border-secondary bg-primary/15 text-tx-main'
-						: 'border-transparent bg-ui-bg/30 text-tx-muted hover:border-ui-border hover:bg-ui-surface/70 hover:text-tx-main',
-					'cursor-pointer',
-				]"
+				:label="section.label"
+				:icon="section.icon"
+				:active="selectedSection === section.id"
 				@click="onSelectSection(section.id)"
-			>
-				<span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-corner border border-ui-border bg-ui-bg/55">
-					<img
-						v-if="iconSources[section.id as keyof typeof iconSources]"
-						:src="iconSources[section.id as keyof typeof iconSources]"
-						:alt="section.label"
-						class="h-5 w-5 object-contain"
-					/>
-					<span v-else class="text-xs font-semibold">{{ section.label.charAt(0) }}</span>
-				</span>
-				<span class="flex-1">{{ section.label }}</span>
-			</button>
+			/>
 		</nav>
 
 		<section class="mt-2 rounded-corner border border-ui-border bg-ui-surface/40 p-3">

@@ -2,7 +2,6 @@
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { computed } from 'vue';
 import TransportButton from '@/components/player/transport/TransportButton.vue';
-import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import type { Repeticion } from '@/stores/playerQueue';
 
 const props = defineProps<{
@@ -32,13 +31,9 @@ const playButtonLabel = computed(() => {
 	return props.isPaused ? t('transport.play') : t('transport.pause');
 });
 
-const repeatIcon = useReactiveIcon('media-playlist-repeat');
-const repeatOneIcon = useReactiveIcon('media-playlist-repeat-song');
-const shuffleIcon = useReactiveIcon('media-playlist-shuffle');
-
 /** El icono dice cuál de los tres modos está puesto. */
 const repeatButtonIcon = computed(() =>
-	props.repeticion === 'uno' ? repeatOneIcon.value : repeatIcon.value
+	props.repeticion === 'uno' ? 'media-playlist-repeat-song' : 'media-playlist-repeat'
 );
 
 /**
@@ -58,13 +53,8 @@ const shuffleButtonLabel = computed(() =>
 	props.aleatorio ? t('transport.shuffleOn') : t('transport.shuffleOff')
 );
 
-const prevIcon = useReactiveIcon('player_rew');
-const playIcon = useReactiveIcon('media-playback-start');
-const pauseIcon = useReactiveIcon('media-playback-pause');
-const nextIcon = useReactiveIcon('player_fwd');
-
 const playPauseIcon = computed(() => {
-	return props.isPaused || !props.hasTrack ? playIcon.value : pauseIcon.value;
+	return props.isPaused || !props.hasTrack ? 'media-playback-start' : 'media-playback-pause';
 });
 </script>
 
@@ -72,33 +62,33 @@ const playPauseIcon = computed(() => {
 	<div class="grid grid-cols-5 gap-2">
 		<TransportButton
 			:label="shuffleButtonLabel"
-			:icon-src="shuffleIcon"
+			icon="media-playlist-shuffle"
 			:variant="aleatorio ? 'primary' : undefined"
 			:disabled="busy"
 			@click="emit('shuffle')"
 		/>
 		<TransportButton
 			:label="t('transport.previous')"
-			:icon-src="prevIcon"
+			icon="player_rew"
 			:disabled="!hasTrack || busy"
 			@click="emit('prev')"
 		/>
 		<TransportButton
 			:label="playButtonLabel"
-			:icon-src="playPauseIcon"
+			:icon="playPauseIcon"
 			variant="primary"
 			:disabled="!hasTrack || busy"
 			@click="emit('toggle')"
 		/>
 		<TransportButton
 			:label="nextActionLabel"
-			:icon-src="nextIcon"
+			icon="player_fwd"
 			:disabled="!hasNextTrack || busy"
 			@click="emit('next')"
 		/>
 		<TransportButton
 			:label="repeatButtonLabel"
-			:icon-src="repeatButtonIcon"
+			:icon="repeatButtonIcon"
 			:variant="repeticion === 'ninguna' ? undefined : 'primary'"
 			:disabled="busy"
 			@click="emit('repeat')"

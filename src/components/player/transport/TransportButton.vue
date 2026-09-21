@@ -1,20 +1,33 @@
 <script setup lang="ts">
+/**
+ * Un botón del transporte: reproducir, siguiente, repetir, aleatorio.
+ *
+ * El icono se pide por **nombre** y no por ruta. Antes recibía una ruta ya
+ * resuelta —`iconSrc`— y quien lo usaba tenía que resolverla, escuchar el
+ * cambio de tema y volver a pedirla; eso es lo que hacía `useReactiveIcon`, y
+ * es lo que `ThemeIcon` hace una sola vez para todo el escritorio.
+ *
+ * El nombre del botón vive en `aria-label` y en `title`, así que el icono no
+ * lleva texto propio: repetirlo hace que un lector de pantalla lo diga dos
+ * veces.
+ */
+import { ThemeIcon } from '@vasakgroup/vue-libvasak';
+
 const props = withDefaults(
 	defineProps<{
 		label: string;
 		disabled?: boolean;
 		variant?: 'primary' | 'secondary';
 		size?: 'sm' | 'md';
-		iconSrc?: string;
-		iconAlt?: string;
+		/** Nombre del icono en el tema del escritorio, no una ruta. */
+		icon?: string;
 		showLabel?: boolean;
 	}>(),
 	{
 		disabled: false,
 		variant: 'secondary',
 		size: 'md',
-		iconSrc: '',
-		iconAlt: '',
+		icon: '',
 		showLabel: false,
 	}
 );
@@ -47,8 +60,8 @@ const onClick = () => {
 		@click="onClick"
 	>
 		<span class="flex items-center justify-center gap-1">
-			<img v-if="iconSrc" :src="iconSrc" :alt="iconAlt || label" class="h-4 w-4 object-contain">
-			<span v-if="showLabel || !iconSrc">{{ label }}</span>
+			<ThemeIcon v-if="icon" :name="icon" type="symbol" :size="16" />
+			<span v-if="showLabel || !icon">{{ label }}</span>
 		</span>
 	</button>
 </template>
