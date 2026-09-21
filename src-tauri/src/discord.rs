@@ -275,15 +275,21 @@ fn app_id() -> Option<String> {
 }
 
 fn dirs_config() -> Option<PathBuf> {
-    if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
-        if !xdg.trim().is_empty() {
-            return Some(PathBuf::from(xdg));
-        }
-    }
+    dirs_config_from(dirs::config_dir())
+}
 
-    std::env::var("HOME")
-        .ok()
-        .map(|home| PathBuf::from(home).join(".config"))
+/// The same decision without reading the environment.
+///
+/// Split out so it can be tested: the environment is process-wide and tests run
+/// in parallel, so one that sets a variable decides another one's outcome.
+///
+/// This used to check the empty string and not a relative path, which has the
+/// same consequence — a path resolved against the process's working directory —
+/// and which the spec says to ignore all the same. One rule instead of two: an
+/// empty string is not an absolute path either. `dirs` only checks `HOME` for
+/// emptiness, so the filter closes that other half.
+fn dirs_config_from(base: Option<PathBuf>) -> Option<PathBuf> {
+    base.filter(|base| base.is_absolute())
 }
 
 #[cfg(test)]
@@ -375,5 +381,29 @@ mod tests {
     #[test]
     fn sin_tapa_va_el_logo() {
         assert_eq!(imagen_grande(&sonando()), IMAGEN_POR_OMISION);
+    }
+
+    #[test]
+    fn an_absolute_config_home_is_used() {
+        assert_eq!(
+            dirs_config_from(Some(PathBuf::from("/home/pato/.config"))),
+            Some(PathBuf::from("/home/pato/.config"))
+        );
+    }
+
+    #[test]
+    fn a_relative_config_home_is_refused() {
+        // This used to check the empty string and not a relative path, which
+        // has the same consequence. The bare name is the one that slips through
+        // when only the empty case is remembered, and it is the one this code
+        // used to accept.
+        for relative in ["", "config", "./config", "../config"] {
+            assert_eq!(
+                dirs_config_from(Some(PathBuf::from(relative))),
+                None,
+                "a base of {relative:?} must not be used"
+            );
+        }
+        assert_eq!(dirs_config_from(None), None);
     }
 }
