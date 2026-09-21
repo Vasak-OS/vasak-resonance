@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
+import { EmptyState, ThemeIcon } from '@vasakgroup/vue-libvasak';
 import { computed, onMounted, ref } from 'vue';
 import LabeledField from '@/components/layout/LabeledField.vue';
 import { useMetadataLabels } from '@/composables/useMetadataLabels';
-import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import { useTrackContextMenu } from '@/composables/useTrackContextMenu';
 import { usePlayerStore } from '@/stores/player';
 
@@ -11,9 +11,6 @@ const { t } = useI18n();
 const { artistLabel, albumLabel } = useMetadataLabels();
 const playerStore = usePlayerStore();
 const { onTrackContextMenu } = useTrackContextMenu();
-const playIcon = useReactiveIcon('media-playback-start');
-const addFavoriteIcon = useReactiveIcon('new-star');
-const removeIcon = useReactiveIcon('remove');
 const searchQuery = ref('');
 const artistFilter = ref('all');
 const sortBy = ref('recent');
@@ -96,12 +93,11 @@ onMounted(async () => {
 				:aria-label="playerStore.isCurrentFavorite ? t('favorites.removeCurrent') : t('common.addFavorite')"
 				@click="playerStore.toggleCurrentFavorite"
 			>
-				<img
-					v-if="playerStore.isCurrentFavorite ? removeIcon : addFavoriteIcon"
-					:src="playerStore.isCurrentFavorite ? removeIcon : addFavoriteIcon"
-					:alt="playerStore.isCurrentFavorite ? t('favorites.removeCurrent') : t('common.addFavorite')"
-					class="h-4 w-4"
-				>
+				<ThemeIcon
+					:name="playerStore.isCurrentFavorite ? 'remove' : 'new-star'"
+					type="symbol"
+					:size="16"
+				/>
 				{{ playerStore.isCurrentFavorite ? t('favorites.removeCurrent') : t('favorites.saveCurrent') }}
 			</button>
 		</div>
@@ -132,9 +128,7 @@ onMounted(async () => {
 			</LabeledField>
 		</div>
 
-		<div v-if="filteredFavoriteEntries.length === 0" class="rounded-corner border border-dashed border-ui-border bg-ui-surface/35 p-4 text-sm text-tx-muted">
-			{{ t('favorites.empty') }}
-		</div>
+		<EmptyState v-if="filteredFavoriteEntries.length === 0" :title="t('favorites.empty')" bordered />
 
 		<ul v-else class="grid gap-2" @contextmenu="onTrackContextMenu">
 			<li
@@ -169,7 +163,7 @@ onMounted(async () => {
 					:aria-label="t('common.play')"
 					@click="playerStore.playDropped(entry.path)"
 				>
-					<img v-if="playIcon" :src="playIcon" :alt="t('common.play')" class="h-4 w-4">
+					<ThemeIcon name="media-playback-start" type="symbol" :size="16" />
 					{{ t('common.play') }}
 				</button>
 				<button
@@ -179,7 +173,7 @@ onMounted(async () => {
 					:aria-label="t('common.remove')"
 					@click="playerStore.toggleFavoritePath(entry.path)"
 				>
-					<img v-if="removeIcon" :src="removeIcon" :alt="t('common.remove')" class="h-4 w-4">
+					<ThemeIcon name="remove" type="symbol" :size="16" />
 					{{ t('common.remove') }}
 				</button>
 			</li>

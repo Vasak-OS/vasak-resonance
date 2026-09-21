@@ -18,6 +18,11 @@ export const router = createRouter({
 					component: () => import('@/components/views/AlbumsView.vue'),
 				},
 				{
+					path: 'artists',
+					name: 'artists',
+					component: () => import('@/components/views/ArtistsView.vue'),
+				},
+				{
 					path: 'favorites',
 					name: 'favorites',
 					component: () => import('@/components/views/FavoritesView.vue'),

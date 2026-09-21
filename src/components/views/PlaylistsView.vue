@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
+import { EmptyState } from '@vasakgroup/vue-libvasak';
 import { computed, onMounted, ref } from 'vue';
 import PlayerQueuePanel from '@/components/player/PlayerQueuePanel.vue';
 import { formatSeconds } from '@/composables/useTimeFormat';
@@ -191,12 +192,7 @@ onMounted(() =>
 					</button>
 				</form>
 
-				<p
-					v-if="playlists.length === 0"
-					class="rounded-corner border border-dashed border-ui-border bg-ui-surface/35 p-4 text-sm text-tx-muted"
-				>
-					{{ t('playlists.empty') }}
-				</p>
+				<EmptyState v-if="playlists.length === 0" :title="t('playlists.empty')" bordered />
 
 				<div
 					v-for="playlist in playlists"
@@ -256,12 +252,7 @@ onMounted(() =>
 					</button>
 				</div>
 
-				<div
-					v-if="playlistTracks.length === 0"
-					class="rounded-corner border border-dashed border-ui-border bg-ui-surface/35 p-4 text-sm text-tx-muted"
-				>
-					{{ t('playlists.emptyList') }}
-				</div>
+				<EmptyState v-if="playlistTracks.length === 0" :title="t('playlists.emptyList')" bordered />
 
 				<ol v-else class="flex flex-col gap-1" @contextmenu="onTrackContextMenu">
 					<li

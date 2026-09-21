@@ -19,3 +19,10 @@ jobs:
     permissions:
       contents: read
     uses: Vasak-OS/.github/.github/workflows/app.yml@main
+    # El guardia de bibliotecas propias atrasadas corta en vez de avisar. Acá
+    # hace falta más que en otros lados: esta aplicación se quedó en la 0.7.2 de
+    # la librería mientras el resto del taller iba por la 1.0, y nada falló en
+    # todo ese tiempo. `^0.x` fija la minor, así que el bloqueo que ya satisface
+    # el rango no se mueve solo y la receta instala con él.
+    with:
+      bibliotecas_cortan: true

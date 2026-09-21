@@ -2,7 +2,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
-import { WindowFrame } from '@vasakgroup/vue-libvasak';
+import { ThemeIcon, WindowFrame } from '@vasakgroup/vue-libvasak';
 import { onMounted, onUnmounted } from 'vue';
 import { RouterView } from 'vue-router';
 import AudioDropOverlay from '@/components/layout/AudioDropOverlay.vue';
@@ -10,14 +10,11 @@ import ResonanceSidebar from '@/components/layout/ResonanceSidebar.vue';
 import NowPlayingTopBar from '@/components/player/NowPlayingTopBar.vue';
 import PlayerBackground from '@/components/player/PlayerBackground.vue';
 import { useAudioDrop } from '@/composables/useAudioDrop';
-import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import { toggleMainAndMiniPlayer } from '@/services/window.service';
 import { usePlayerStore } from '@/stores/player';
 
 const { t } = useI18n();
 const playerStore = usePlayerStore();
-const appIcon = useReactiveIcon('music-app', 'icon');
-const miniIcon = useReactiveIcon('screenshot-ui-window');
 
 useAudioDrop({
 	onFilesDropped: (paths: string[]) => playerStore.handleDroppedPaths(paths),
@@ -67,7 +64,7 @@ onUnmounted(() => {
 		@close="cerrar()"
 	>
 		<template #identidad>
-			<img :src="appIcon" class="h-8 w-8" :alt="t('window.appIconAlt')">
+			<ThemeIcon name="music-app" :size="32" :alt="t('window.appIconAlt')" />
 		</template>
 
 		<!-- El nombre al medio de la ventana entera. Estaba centrado con un tercer
@@ -88,7 +85,7 @@ onUnmounted(() => {
 				:aria-label="t('windowControls.miniPlayer')"
 				@click="toggleMainAndMiniPlayer()"
 			>
-				<img :src="miniIcon" class="inline-block h-4 w-4" alt="">
+				<ThemeIcon name="screenshot-ui-window" type="symbol" :size="16" />
 			</button>
 		</template>
 
