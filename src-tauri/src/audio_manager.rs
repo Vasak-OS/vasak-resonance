@@ -481,6 +481,11 @@ struct AudioManager {
     current_metadata: Option<Arc<NowPlayingMetadata>>,
     cover_cache_by_path: HashMap<String, Option<String>>,
     dominant_color_cache_by_path: HashMap<String, Option<String>>,
+    /// La tapa que está al lado de los archivos, por carpeta.
+    ///
+    /// Por carpeta y no por archivo: un disco de veinte temas comparte una sola
+    /// imagen, y sin esto se la leería y decodificaría veinte veces.
+    tapa_por_carpeta: crate::audio::TapaPorCarpeta,
     current_duration: Option<Duration>,
     started_at: Option<Instant>,
     paused_position: Duration,
@@ -507,6 +512,7 @@ impl AudioManager {
             current_metadata: None,
             cover_cache_by_path: HashMap::new(),
             dominant_color_cache_by_path: HashMap::new(),
+            tapa_por_carpeta: crate::audio::TapaPorCarpeta::new(),
             current_duration: None,
             started_at: None,
             paused_position: Duration::from_secs(0),
@@ -528,6 +534,7 @@ impl AudioManager {
             &canonical_path,
             &mut self.cover_cache_by_path,
             &mut self.dominant_color_cache_by_path,
+            &mut self.tapa_por_carpeta,
         )
         .ok();
         let total_dur = metadata.as_ref().map(|m| m.duration_seconds).unwrap_or(0);
@@ -697,6 +704,10 @@ impl AudioManager {
         if self.cover_cache_by_path.len() > COVER_CACHE_LIMIT {
             self.cover_cache_by_path.clear();
             self.dominant_color_cache_by_path.clear();
+            // Y la de carpetas con ellas: hay una entrada por carpeta, o sea
+            // menos que por archivo, pero cada una puede llevar una imagen
+            // entera en base64.
+            self.tapa_por_carpeta.clear();
         }
     }
 
@@ -1001,6 +1012,7 @@ impl AudioManager {
             &next_path,
             &mut self.cover_cache_by_path,
             &mut self.dominant_color_cache_by_path,
+            &mut self.tapa_por_carpeta,
         )
         .ok()
         .map(Arc::new);
