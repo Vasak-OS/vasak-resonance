@@ -58,12 +58,23 @@ fn scan_folders_into(
     // de pista.
     let releer_todo = get_setting(conn, SCAN_VERSION_SETTING).as_deref() != Some(SCAN_VERSION);
 
+    // Una carpeta que no se puede mirar deja la biblioteca a medio releer, así
+    // que la versión de lectura no se anota: la próxima vez hay que volver a
+    // intentarlo.
+    let mut la_pasada_quedo_completa = true;
+
     for folder in folders {
-        let root = PathBuf::from(folder);
-        if !root.exists() || !root.is_dir() {
+        let sin_canonizar = PathBuf::from(folder);
+        if !sin_canonizar.exists() || !sin_canonizar.is_dir() {
+            la_pasada_quedo_completa = false;
             continue;
         }
 
+        // Canonizada, que es como están guardadas las rutas: si la carpeta
+        // configurada es un enlace —`~/Música` apuntando a otro disco— o trae un
+        // `..`, ninguna fila guardada empieza por ella y la biblioteca parecería
+        // vacía. Con eso, cada barrido releería todo y nada se daría de baja.
+        let root = std::fs::canonicalize(&sin_canonizar).unwrap_or(sin_canonizar);
         let raiz = root.to_string_lossy().to_string();
         let conocidos: HashMap<String, i64> = known_mtimes_under(conn, &raiz)?;
         let mut vistos = HashSet::<String>::new();
@@ -78,6 +89,7 @@ fn scan_folders_into(
                 Ok(entrada) => entrada,
                 Err(_) => {
                     hubo_errores_al_recorrer = true;
+                    la_pasada_quedo_completa = false;
                     continue;
                 }
             };
@@ -101,7 +113,11 @@ fn scan_folders_into(
             let clave = canonica.to_string_lossy().to_string();
             vistos.insert(clave.clone());
 
-            let mtime = entrada.metadata().ok().and_then(|m| mtime_de(&m));
+            // Del archivo apuntado y no de la entrada: el recorrido no sigue
+            // enlaces, así que para un enlace la entrada describe el enlace. La
+            // fila se guarda con la ruta del archivo de verdad, y si la fecha
+            // fuera la del enlace, editar el archivo no se notaría nunca.
+            let mtime = std::fs::metadata(&canonica).ok().and_then(|m| mtime_de(&m));
             let conocido = conocidos.get(&clave).copied();
 
             // Lo caro es abrir el archivo y parsearle las etiquetas. Si la
@@ -129,6 +145,13 @@ fn scan_folders_into(
                 }
                 Err(_) => {
                     summary.failed_files += 1;
+                    // El archivo está pero no se lo pudo leer. Si la fila
+                    // conserva su fecha, el barrido siguiente la da por buena
+                    // sin abrirlo y se queda con lo que decía antes, para
+                    // siempre. Olvidarle la fecha hace que se reintente.
+                    if conocido.is_some() {
+                        crate::db::forget_mtime(conn, &clave)?;
+                    }
                 }
             }
         }
@@ -146,7 +169,10 @@ fn scan_folders_into(
         summary.removed_tracks += remove_tracks(conn, &desaparecidos)?;
     }
 
-    if releer_todo {
+    // La versión se anota sólo si la pasada llegó a mirar todo. Anotarla con una
+    // carpeta sin montar o un directorio ilegible de por medio dejaría filas
+    // leídas con las reglas viejas y el barrido siguiente ya no las tocaría.
+    if releer_todo && la_pasada_quedo_completa {
         set_setting(conn, SCAN_VERSION_SETTING, SCAN_VERSION)?;
     }
 
@@ -239,7 +265,7 @@ mod tests {
 
     use super::*;
     use crate::audio::ayudantes_de_prueba::archivo_etiquetado;
-    use crate::db::{list_tracks, open_database};
+    use crate::db::{known_mtimes_under, list_tracks, open_database};
 
     /// Una biblioteca vacía en un directorio temporal, y la carpeta de música.
     fn biblioteca() -> (tempfile::TempDir, tempfile::TempDir, Connection) {
@@ -394,6 +420,117 @@ mod tests {
 
         assert_eq!(resumen.removed_tracks, 0);
         assert_eq!(list_tracks(&conn).expect("list").len(), 1);
+    }
+
+    #[test]
+    fn una_carpeta_que_es_un_enlace_reconoce_lo_que_ya_estaba() {
+        // `~/Música` apuntando a otro disco es de lo más normal. Las filas se
+        // guardan con la ruta canónica, así que si la carpeta no se canoniza
+        // antes de consultar, la biblioteca parece vacía: todo se relee y nada
+        // se da de baja.
+        let (_base, musica, mut conn) = biblioteca();
+        let audio = archivo_etiquetado(musica.path(), "a.mp3", &[(ItemKey::TrackTitle, "Un tema")]);
+        fechar(&audio, 1_700_000_000);
+
+        let enlaces = tempfile::tempdir().expect("temp dir");
+        let enlace = enlaces.path().join("musica");
+        std::os::unix::fs::symlink(musica.path(), &enlace).expect("enlazar");
+        let por_el_enlace = vec![enlace.to_string_lossy().to_string()];
+
+        let primero = scan_folders_into(&mut conn, &por_el_enlace).expect("barrer");
+        assert_eq!(primero.inserted_tracks, 1);
+
+        let segundo = scan_folders_into(&mut conn, &por_el_enlace).expect("barrer");
+
+        assert_eq!(segundo.unchanged_tracks, 1, "tendría que reconocerlo");
+        assert_eq!(segundo.inserted_tracks, 0);
+    }
+
+    #[test]
+    fn la_fecha_guardada_es_la_del_archivo_y_no_la_del_enlace() {
+        // El recorrido no sigue enlaces, así que para un enlace la entrada
+        // describe el enlace. La fila se guarda con la ruta del archivo
+        // apuntado: si le quedara la fecha del enlace, editar el archivo no se
+        // notaría nunca.
+        //
+        // El archivo de verdad vive **fuera** de la carpeta barrida a propósito:
+        // con los dos adentro, el recorrido ve también el archivo y lo pisa con
+        // su propia fecha, y la prueba pasa aunque el enlace esté mal leído.
+        let (_base, musica, mut conn) = biblioteca();
+        let afuera = tempfile::tempdir().expect("temp dir");
+        let real = archivo_etiquetado(
+            afuera.path(),
+            "real.mp3",
+            &[(ItemKey::TrackTitle, "Un tema")],
+        );
+        fechar(&real, 1_700_000_000);
+
+        // El enlace se crea ahora, así que su fecha propia es la de hoy: es lo
+        // que distingue una de la otra. (No se la puede fijar a mano desde la
+        // biblioteca estándar: abrir un enlace para escribir abre el archivo
+        // apuntado, que fue lo primero que hizo fallar esta prueba.)
+        std::os::unix::fs::symlink(&real, musica.path().join("enlace.mp3")).expect("enlazar");
+
+        barrer(&mut conn, &musica);
+
+        let conocidos =
+            known_mtimes_under(&conn, &afuera.path().to_string_lossy()).expect("consultar");
+        assert_eq!(
+            conocidos.get(&real.to_string_lossy().to_string()),
+            Some(&1_700_000_000),
+            "la fecha tiene que ser la del archivo apuntado"
+        );
+    }
+
+    #[test]
+    fn una_carpeta_que_falta_no_deja_anotada_la_version() {
+        // Si se anotara, el barrido siguiente daría por releída una biblioteca
+        // que quedó a medias y ya no volvería a mirarla.
+        let (_base, musica, mut conn) = biblioteca();
+        archivo_etiquetado(musica.path(), "a.mp3", &[(ItemKey::TrackTitle, "Un tema")]);
+
+        scan_folders_into(
+            &mut conn,
+            &[
+                musica.path().to_string_lossy().to_string(),
+                "/carpeta/que/no/existe".to_string(),
+            ],
+        )
+        .expect("barrer");
+
+        assert_eq!(get_setting(&conn, SCAN_VERSION_SETTING), None);
+    }
+
+    #[test]
+    fn un_archivo_ilegible_no_deja_anotada_la_version_y_se_reintenta() {
+        let (_base, musica, mut conn) = biblioteca();
+        let audio = archivo_etiquetado(musica.path(), "a.mp3", &[(ItemKey::TrackTitle, "Un tema")]);
+        fechar(&audio, 1_700_000_000);
+        barrer(&mut conn, &musica);
+        assert_eq!(
+            get_setting(&conn, SCAN_VERSION_SETTING).as_deref(),
+            Some(SCAN_VERSION)
+        );
+
+        // El archivo sigue estando y con fecha nueva, pero ya no se puede leer.
+        std::fs::write(&audio, b"esto ya no es un mp3").expect("romper");
+        fechar(&audio, 1_700_000_900);
+
+        let resumen = barrer(&mut conn, &musica);
+        assert_eq!(resumen.failed_files, 1);
+
+        // La fila queda sin fecha, así que el barrido siguiente lo vuelve a
+        // intentar en vez de darlo por bueno sin abrirlo.
+        let conocidos =
+            known_mtimes_under(&conn, &musica.path().to_string_lossy()).expect("consultar");
+        assert_eq!(
+            conocidos.get(&audio.to_string_lossy().to_string()),
+            Some(&0)
+        );
+
+        let tercero = barrer(&mut conn, &musica);
+        assert_eq!(tercero.failed_files, 1, "lo reintenta");
+        assert_eq!(tercero.unchanged_tracks, 0);
     }
 
     #[test]

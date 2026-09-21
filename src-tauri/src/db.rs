@@ -294,10 +294,19 @@ pub fn index_track(conn: &Connection, track: &Track, mtime: i64) -> Result<(), S
 /// volver a preguntar, qué archivos ya están, cuáles cambiaron y —lo que no se
 /// puede saber archivo por archivo— cuáles están en la base y ya no en el disco.
 pub fn known_mtimes_under(conn: &Connection, root: &str) -> Result<HashMap<String, i64>, String> {
-    let patron = format!("{}/%", root.trim_end_matches('/'));
+    // `_` y `%` son comodines de `LIKE`: sin escaparlos, una carpeta que se
+    // llame `mi_musica` alcanza también a `miXmusica`, y como lo que no se vio se
+    // da de baja, eso borraría filas de una carpeta que nadie barrió. Los
+    // guiones bajos en los nombres de carpeta son de lo más común.
+    let prefijo = root
+        .trim_end_matches('/')
+        .replace('\\', "\\\\")
+        .replace('_', "\\_")
+        .replace('%', "\\%");
+    let patron = format!("{prefijo}/%");
 
     let mut stmt = conn
-        .prepare("SELECT path, mtime FROM tracks WHERE path = ?1 OR path LIKE ?2")
+        .prepare("SELECT path, mtime FROM tracks WHERE path = ?1 OR path LIKE ?2 ESCAPE '\\'")
         .map_err(|e| format!("No se pudo preparar la consulta de fechas: {e}"))?;
 
     let filas = stmt
@@ -346,6 +355,18 @@ pub fn remove_tracks(conn: &mut Connection, paths: &[String]) -> Result<usize, S
         .map_err(|e| format!("No se pudo confirmar la baja: {e}"))?;
 
     Ok(dados_de_baja)
+}
+
+/// Marca un tema como pendiente de releer, olvidando su fecha.
+///
+/// Se usa cuando el archivo está pero no se lo pudo leer: dejarle la fecha
+/// guardada haría que el barrido siguiente lo diera por bueno sin abrirlo, y la
+/// fila quedaría con lo que decía el archivo antes, para siempre.
+pub fn forget_mtime(conn: &Connection, path: &str) -> Result<(), String> {
+    conn.execute("UPDATE tracks SET mtime = 0 WHERE path = ?1", params![path])
+        .map_err(|e| format!("No se pudo olvidar la fecha de {path}: {e}"))?;
+
+    Ok(())
 }
 
 /// Lee un ajuste de la biblioteca.
@@ -953,6 +974,61 @@ mod tests {
 
         assert_eq!(conocidos.len(), 1);
         assert!(conocidos.contains_key("/m/adentro.mp3"));
+    }
+
+    #[test]
+    fn un_guion_bajo_en_el_nombre_de_la_carpeta_no_alcanza_a_otra() {
+        // `_` es un comodín de `LIKE`. Sin escaparlo, barrer `/m/mi_musica`
+        // habría traído las filas de `/m/miXmusica` y, como no se las ve al
+        // recorrer, las habría dado de baja.
+        let (_dir, conn) = temp_database();
+        indexar(
+            &conn,
+            &track("/m/mi_musica/a.mp3", "Propia", "Alguien", "Un álbum"),
+        );
+        indexar(
+            &conn,
+            &track("/m/miXmusica/b.mp3", "Ajena", "Alguien", "Un álbum"),
+        );
+
+        let conocidos = known_mtimes_under(&conn, "/m/mi_musica").expect("consultar");
+
+        assert_eq!(conocidos.len(), 1);
+        assert!(conocidos.contains_key("/m/mi_musica/a.mp3"));
+    }
+
+    #[test]
+    fn un_porcentaje_en_el_nombre_tampoco() {
+        let (_dir, conn) = temp_database();
+        indexar(
+            &conn,
+            &track("/m/100%/a.mp3", "Propia", "Alguien", "Un álbum"),
+        );
+        indexar(
+            &conn,
+            &track("/m/100 por ciento/b.mp3", "Ajena", "Alguien", "Un álbum"),
+        );
+
+        let conocidos = known_mtimes_under(&conn, "/m/100%").expect("consultar");
+
+        assert_eq!(conocidos.len(), 1);
+        assert!(conocidos.contains_key("/m/100%/a.mp3"));
+    }
+
+    #[test]
+    fn olvidar_la_fecha_obliga_a_releer_el_archivo() {
+        let (_dir, conn) = temp_database();
+        index_track(
+            &conn,
+            &track("/m/a.mp3", "Un tema", "Alguien", "Un álbum"),
+            1_700_000_000,
+        )
+        .expect("indexar");
+
+        forget_mtime(&conn, "/m/a.mp3").expect("olvidar");
+
+        let conocidos = known_mtimes_under(&conn, "/m").expect("consultar");
+        assert_eq!(conocidos.get("/m/a.mp3"), Some(&0));
     }
 
     #[test]
