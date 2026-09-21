@@ -72,12 +72,20 @@ export async function listen(_nombre: string, _manejador: () => unknown) {
 	return () => {};
 }
 
-export async function getIconSource(_nombre: string) {
-	return 'icono.png';
+/**
+ * Los iconos del tema, devolviendo **qué nombre** se pidió.
+ *
+ * Una ruta fija —`'icono.png'`— hace que el icono se dibuje, que es lo único
+ * que hacía falta mientras nadie miraba cuál era. Ahora que los iconos se piden
+ * por nombre, una prueba que quiera comprobar que el botón de silencio pide el
+ * altavoz mudo y no el de volumen alto necesita ver el nombre en el `src`.
+ */
+export async function getIconSource(nombre: string) {
+	return `icono:${nombre}`;
 }
 
-export async function getSymbolSource(_nombre: string) {
-	return 'simbolo.png';
+export async function getSymbolSource(nombre: string) {
+	return `simbolo:${nombre}`;
 }
 
 export function olvidarTodo() {

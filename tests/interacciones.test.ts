@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { SideButton } from '@vasakgroup/vue-libvasak';
+import { mount } from '@vue/test-utils';
 
 /**
  * El pulido visual del reproductor, con una condición: que no cueste cuadros.
@@ -34,21 +36,53 @@ describe('ninguna transición pide «todas»', () => {
 	}
 });
 
-describe('la barra lateral', () => {
-	const SIDEBAR = leer('src/components/layout/ResonanceSidebar.vue');
-
+/**
+ * El botón de la barra ya no se dibuja acá: es `SideButton` de la librería.
+ *
+ * Por eso estas dos pruebas se mudaron del texto del `.vue` al botón
+ * **montado**. Leer el archivo de la aplicación ya no comprueba nada: la clase
+ * vive en la dependencia, así que un `transition-all` que volviera allá pasaría
+ * por al lado de un `expect(SIDEBAR).toContain(...)` sin despeinarlo.
+ *
+ * Las dos reglas no son gusto. `transition-all` obliga al navegador a mirar
+ * cada propiedad animable del elemento en cada cambio, incluidas las que nadie
+ * toca; con seis botones en una columna eso es layout de la lista entera. Y
+ * `scale` es composición, así que hundirlo al apretarlo es gratis y achicarlo
+ * de verdad no lo sería.
+ *
+ * Las dos las traía la copia que vivía acá. Al ir a reemplazarla por el
+ * componente compartido, la copia sabía más que el original, y estas pruebas
+ * son las que lo dijeron: se arregló en vue-libvasak#51 y se adopta desde la
+ * 1.1.0.
+ */
+describe('el botón de la barra lateral', () => {
 	test('transiciona color y la escala, no el resto', () => {
 		// `scale` y no `transform`: en Tailwind 4 las utilidades `scale-*` y
 		// `translate-*` escriben las propiedades nativas `scale` y `translate`,
 		// así que nombrar `transform` en la lista deja el movimiento sin animar
 		// —sin error, simplemente no transiciona—. Comprobado en el CSS que sale
 		// del build: `.-translate-y-2` emite `translate: …`.
-		expect(SIDEBAR).toContain('transition-[color,background-color,border-color,scale]');
+		const boton = mount(SideButton, { props: { label: 'Inicio' } });
+
+		const clases = boton.get('button').classes();
+		expect(clases).toContain('transition-[color,background-color,border-color,scale]');
+		expect(clases).not.toContain('transition-all');
 	});
 
 	test('se hunde al hacer clic, con transform y no con tamaño', () => {
 		// `scale` es composición; cambiar el tamaño sería layout de toda la lista.
-		expect(SIDEBAR).toContain('active:scale-[0.98]');
+		const boton = mount(SideButton, { props: { label: 'Inicio' } });
+
+		expect(boton.get('button').classes()).toContain('active:scale-[0.98]');
+	});
+
+	test('y la barra lo usa en vez de dibujar el suyo', () => {
+		// Sin esto, las dos de arriba comprueban la librería y nadie comprueba
+		// que la aplicación la use.
+		const sidebar = leer('src/components/layout/ResonanceSidebar.vue');
+
+		expect(sidebar).toContain('SideButton');
+		expect(sidebar).not.toContain('<button');
 	});
 });
 

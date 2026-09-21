@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { listen } from '@tauri-apps/api/event';
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
+import { EmptyState, LoadingState, ThemeIcon } from '@vasakgroup/vue-libvasak';
 import { computed, onBeforeUnmount, onMounted, type Ref, reactive, ref, watch } from 'vue';
 import LabeledField from '@/components/layout/LabeledField.vue';
-import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import type { RadioStation } from '@/services/radio.service';
 import {
 	fetchRadioStations,
@@ -14,8 +14,6 @@ import {
 } from '@/services/radio.service';
 
 const { t } = useI18n();
-const playIcon = useReactiveIcon('media-playback-start');
-const searchIcon = useReactiveIcon('file-search');
 const stations: Ref<RadioStation[]> = ref([]);
 const loading = ref(false);
 const error = ref('');
@@ -193,7 +191,7 @@ onBeforeUnmount(() => {
 			<!-- Search -->
 			<LabeledField :label="t('common.search')" class="flex-1">
 				<div class="flex items-center gap-2 px-3 py-2 bg-ui-surface/80 rounded-corner">
-					<img :src="searchIcon" :alt="t('common.search')" class="w-4 h-4" />
+					<ThemeIcon name="file-search" type="symbol" :size="16" />
 					<input
 						v-model="searchQuery"
 						type="text"
@@ -218,12 +216,12 @@ onBeforeUnmount(() => {
 
 		<!-- Stations list -->
 		<div class="flex-1 overflow-y-auto px-4">
-			<div v-if="loading" class="flex justify-center items-center h-full">
-				<div class="text-tx-muted">{{ t('radios.loading') }}</div>
+			<div v-if="loading" class="flex h-full items-center justify-center">
+				<LoadingState :label="t('radios.loading')" />
 			</div>
 
-			<div v-else-if="sortedStations.length === 0" class="flex justify-center items-center h-full">
-				<div class="text-tx-muted">{{ t('radios.empty') }}</div>
+			<div v-else-if="sortedStations.length === 0" class="flex h-full items-center justify-center">
+				<EmptyState :title="t('radios.empty')" />
 			</div>
 
 			<div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pb-4">
@@ -251,7 +249,12 @@ onBeforeUnmount(() => {
 							@error="faviconsRotos.add(station.uuid)"
 						/>
 						<div v-else class="w-12 h-12 bg-primary rounded-corner flex items-center justify-center">
-							<img :src="playIcon" :alt="t('radios.stationIconAlt')" class="w-6 h-6" />
+							<ThemeIcon
+								name="media-playback-start"
+								type="symbol"
+								:size="24"
+								:alt="t('radios.stationIconAlt')"
+							/>
 						</div>
 					</div>
 
@@ -282,7 +285,7 @@ onBeforeUnmount(() => {
 							<button
 								class="p-2 bg-secondary rounded-full hover:bg-primary transition-colors"
 								@click.stop="handlePlayStation(station)" :aria-label="t('common.play')">
-								<img :src="playIcon" :alt="t('common.play')" class="w-5 h-5" />
+								<ThemeIcon name="media-playback-start" type="symbol" :size="20" />
 							</button>
 							<!-- buffering indicator -->
 							<div v-if="bufferingStationUuid === station.uuid" class="absolute inset-0 flex items-center justify-center">

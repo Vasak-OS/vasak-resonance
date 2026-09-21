@@ -2,10 +2,10 @@
 import { RecycleScroller } from 'vue-virtual-scroller';
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css';
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
+import { AlertMessage, EmptyState, LoadingState, ThemeIcon } from '@vasakgroup/vue-libvasak';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import LabeledField from '@/components/layout/LabeledField.vue';
 import { useMetadataLabels } from '@/composables/useMetadataLabels';
-import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import { useTrackContextMenu } from '@/composables/useTrackContextMenu';
 import {
 	type DroppedPlaybackTrack,
@@ -30,9 +30,6 @@ const artistFilter = ref('all');
 const albumFilter = ref('all');
 const sortBy = ref('recent-desc');
 const ftsSearchResults = ref<LibraryTrack[] | null>(null);
-const playIcon = useReactiveIcon('media-playback-start');
-const addFavoriteIcon = useReactiveIcon('new-star');
-const removeIcon = useReactiveIcon('remove');
 let searchDebounceTimer: number | null = null;
 
 const normalize = (value: string) => value.trim().toLowerCase();
@@ -342,17 +339,13 @@ const visibleCountLabel = computed(() => {
 			</div>
 		</header>
 
-		<div v-if="isLoading" class="rounded-corner border border-dashed border-ui-border bg-ui-surface/35 p-4 text-sm text-tx-muted">
-			{{ t('home.loading') }}
-		</div>
+		<LoadingState v-if="isLoading" :label="t('home.loading')" bordered />
 
-		<div v-else-if="errorMessage" class="rounded-corner border border-status-error/35 bg-status-error/10 p-4 text-sm text-status-error">
+		<AlertMessage v-else-if="errorMessage" tone="error" icon="dialog-error">
 			{{ errorMessage }}
-		</div>
+		</AlertMessage>
 
-		<div v-else-if="sortedTracks.length === 0" class="rounded-corner border border-dashed border-ui-border bg-ui-surface/35 p-4 text-sm text-tx-muted">
-			{{ t('home.noResults') }}
-		</div>
+		<EmptyState v-else-if="sortedTracks.length === 0" :title="t('home.noResults')" bordered />
 
 		<!-- El menú es uno para toda la lista; cada fila dice cuál es la suya
 		     con `data-track-path`. Así el `RecycleScroller` puede reciclar las
@@ -397,7 +390,7 @@ const visibleCountLabel = computed(() => {
 							:aria-label="t('common.play')"
 							@click="playTrack(track.path)"
 						>
-							<img v-if="playIcon" :src="playIcon" :alt="t('common.play')" class="h-4 w-4">
+							<ThemeIcon name="media-playback-start" type="symbol" :size="16" />
 							{{ t('common.play') }}
 						</button>
 						<button
@@ -407,12 +400,11 @@ const visibleCountLabel = computed(() => {
 							:aria-label="playerStore.isFavoritePath(track.path) ? t('common.removeFavorite') : t('common.addFavorite')"
 							@click="toggleFavorite(track.path)"
 						>
-							<img
-								v-if="playerStore.isFavoritePath(track.path) ? removeIcon : addFavoriteIcon"
-								:src="playerStore.isFavoritePath(track.path) ? removeIcon : addFavoriteIcon"
-								:alt="playerStore.isFavoritePath(track.path) ? t('common.removeFavorite') : t('common.addFavorite')"
-								class="h-4 w-4"
-							>
+							<ThemeIcon
+								:name="playerStore.isFavoritePath(track.path) ? 'remove' : 'new-star'"
+								type="symbol"
+								:size="16"
+							/>
 							{{ playerStore.isFavoritePath(track.path) ? t('common.removeFavorite') : t('common.favorite') }}
 						</button>
 					</div>

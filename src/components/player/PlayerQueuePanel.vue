@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { type MenuEntry, useContextMenu } from '@vasakgroup/plugin-vsk-contextual-menu';
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
+import { ThemeIcon } from '@vasakgroup/vue-libvasak';
 import { ref } from 'vue';
-import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import type { QueueEntry } from '@/stores/playerQueue';
 
 const props = defineProps<{
@@ -70,8 +70,6 @@ async function onQueueContextMenu(event: MouseEvent) {
 // identificador.
 const draggingQueueId = ref<string | null>(null);
 const dropTargetId = ref<string | null>(null);
-const clearAllIcon = useReactiveIcon('edit-clear-all-symbolic');
-
 const extractTrackName = (path: string): string => {
 	const normalized = path.replace(/\\/g, '/');
 	const parts = normalized.split('/');
@@ -135,7 +133,7 @@ const onQueueDrop = (targetId: string) => {
 				:aria-label="t('queue.clear')"
 				@click="emit('clear')"
 			>
-				<img v-if="clearAllIcon" :src="clearAllIcon" :alt="t('queue.clear')" class="h-4 w-4">
+				<ThemeIcon name="edit-clear-all-symbolic" type="symbol" :size="16" />
 				{{ t('queue.clear') }}
 			</button>
 		</div>

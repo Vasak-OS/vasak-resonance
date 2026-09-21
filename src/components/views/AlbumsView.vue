@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
+import { EmptyState, ThemeIcon } from '@vasakgroup/vue-libvasak';
 import { computed, onMounted, type Ref, ref } from 'vue';
 import LabeledField from '@/components/layout/LabeledField.vue';
 import { useMetadataLabels } from '@/composables/useMetadataLabels';
-import { useReactiveIcon } from '@/composables/useReactiveIcon';
 import { useTrackContextMenu } from '@/composables/useTrackContextMenu';
 import { fetchAlbumCover } from '@/services/album-cover.service';
 import { usePlayerStore } from '@/stores/player';
@@ -13,8 +13,6 @@ const { t } = useI18n();
 const { artistLabel, albumLabel } = useMetadataLabels();
 const playerStore = usePlayerStore();
 const { onTrackContextMenu } = useTrackContextMenu();
-const playIcon = useReactiveIcon('media-playback-start');
-const addAlbumIcon = useReactiveIcon('media-track-add-amarok');
 const searchQuery = ref('');
 const artistFilter = ref('all');
 const sortBy = ref('album-asc');
@@ -166,9 +164,7 @@ const onPlayAlbum = async (paths: string[]) => {
 			</LabeledField>
 		</div>
 
-		<div v-if="filteredAlbums.length === 0" class="rounded-corner border border-dashed border-ui-border bg-ui-surface/35 p-4 text-sm text-tx-muted">
-			{{ t('albums.empty') }}
-		</div>
+		<EmptyState v-if="filteredAlbums.length === 0" :title="t('albums.empty')" bordered />
 
 		<!-- Un solo menú para toda la cuadrícula; cada canción de la vista previa
 		     dice cuál es la suya con `data-track-path`. -->
@@ -197,7 +193,7 @@ const onPlayAlbum = async (paths: string[]) => {
 						:aria-label="t('albums.playAlbum')"
 						@click="onPlayAlbum(album.tracks.map((track) => track.path))"
 					>
-						<img v-if="playIcon" :src="playIcon" :alt="t('common.play')" class="h-4 w-4">
+						<ThemeIcon name="media-playback-start" type="symbol" :size="16" />
 						{{ t('albums.playAlbum') }}
 					</button>
 					<button
@@ -207,7 +203,7 @@ const onPlayAlbum = async (paths: string[]) => {
 						:aria-label="t('albums.queueAlbum')"
 						@click="onQueueAlbum(album.tracks.map((track) => track.path))"
 					>
-						<img v-if="addAlbumIcon" :src="addAlbumIcon" :alt="t('albums.queueAlbum')" class="h-4 w-4">
+						<ThemeIcon name="media-track-add-amarok" type="symbol" :size="16" />
 						{{ t('albums.queueAlbum') }}
 					</button>
 				</div>
@@ -229,7 +225,7 @@ const onPlayAlbum = async (paths: string[]) => {
 							:aria-label="t('common.play')"
 							@click="onPlayTrack(track.path)"
 						>
-							<img v-if="playIcon" :src="playIcon" :alt="t('common.play')" class="h-3.5 w-3.5">
+							<ThemeIcon name="media-playback-start" type="symbol" :size="14" />
 							<span class="sr-only">{{ t('common.play') }}</span>
 						</button>
 					</li>
