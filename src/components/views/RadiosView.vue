@@ -99,11 +99,10 @@ async function loadStations() {
 		}
 
 		// Lo viejo se muestra mientras llega lo nuevo, para no dejar la lista
-		// en blanco.
-		const viejo = getStaleCachedStations(etiquetas);
-		if (viejo) {
-			stations.value = viejo;
-		}
+		// en blanco. Y si no hay nada guardado para esta etiqueta, la lista se
+		// vacía: dejar la de la etiqueta anterior la haría pasar por ésta —y si
+		// además falla la consulta, se queda así—.
+		stations.value = getStaleCachedStations(etiquetas) ?? [];
 
 		const freshStations = await fetchRadioStations(etiquetas);
 		stations.value = freshStations;
@@ -113,11 +112,12 @@ async function loadStations() {
 		error.value = t('radios.loadError').replace('{0}', () => errorMsg);
 		console.error('Radio stations error:', err);
 
-		// Sin el directorio, lo que haya guardado aunque esté viejo: es
-		// justamente cuando más falta hace.
+		// Sin el directorio, lo que haya guardado **de esta etiqueta** aunque
+		// esté viejo: es justamente cuando más falta hace. Si no hay, la lista
+		// queda vacía con su error, que es lo honesto.
 		const cached = getStaleCachedStations(etiquetas);
+		stations.value = cached ?? [];
 		if (cached) {
-			stations.value = cached;
 			error.value = t('radios.usingCache').replace('{0}', () => errorMsg);
 		}
 	} finally {

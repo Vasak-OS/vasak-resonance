@@ -36,8 +36,22 @@ const ESPERA: Duration = Duration::from_secs(10);
 /// no las necesita todas.
 const LIMITE: usize = 100;
 
+/// A cuántas réplicas se le pregunta antes de darse por vencido.
+///
+/// El descubrimiento puede anunciar muchas, y cada intento espera hasta diez
+/// segundos: sin techo, un directorio con todas las réplicas caídas dejaría la
+/// vista esperando minutos. Cuatro son más que las tres de antes y acotan la
+/// espera a menos de un minuto.
+const MAXIMO_REPLICAS: usize = 4;
+
 /// Hasta dónde se leen los textos que vienen del directorio.
 const LARGO_NOMBRE: usize = 200;
+/// Hasta dónde puede medir una dirección.
+///
+/// Las direcciones **no se recortan**: una recortada sigue pareciendo una
+/// dirección válida —mismo esquema, mismo host— pero apunta a otra cosa, así que
+/// pasaría la comprobación y llegaría a la ventana rota. O entera o ninguna.
+const LARGO_DIRECCION: usize = 2048;
 const LARGO_PAIS: usize = 100;
 const LARGO_ETIQUETAS: usize = 512;
 const LARGO_CODEC: usize = 32;
@@ -114,8 +128,14 @@ fn limpiar_opcional(valor: Option<String>, largo: usize) -> Option<String> {
 }
 
 /// Deja sólo direcciones utilizables, o nada.
-fn solo_si_es_utilizable(valor: Option<String>) -> Option<String> {
-    valor.filter(|url| direccion_utilizable(url))
+///
+/// Se le pasa el valor **sin recortar**: recortar una dirección la deja
+/// pareciendo válida y apuntando a otro lado.
+fn solo_si_es_una_direccion(valor: Option<String>) -> Option<String> {
+    valor
+        .map(|url| url.trim().to_string())
+        .filter(|url| url.len() <= LARGO_DIRECCION)
+        .filter(|url| direccion_utilizable(url))
 }
 
 /// El identificador que usa Radio Browser: un UUID con sus guiones.
@@ -146,8 +166,8 @@ pub fn normalizar(mut estacion: RadioStation) -> Option<RadioStation> {
         return None;
     }
 
-    estacion.homepage = solo_si_es_utilizable(limpiar_opcional(estacion.homepage, LARGO_NOMBRE));
-    estacion.favicon = solo_si_es_utilizable(limpiar_opcional(estacion.favicon, LARGO_NOMBRE));
+    estacion.homepage = solo_si_es_una_direccion(estacion.homepage);
+    estacion.favicon = solo_si_es_una_direccion(estacion.favicon);
     estacion.country = limpiar_opcional(estacion.country, LARGO_PAIS);
     estacion.state = limpiar_opcional(estacion.state, LARGO_PAIS);
     estacion.language = limpiar_opcional(estacion.language, LARGO_PAIS);
@@ -244,12 +264,8 @@ pub async fn fetch_stations(tags: Vec<&str>) -> Result<Vec<RadioStation>, String
 
     let mut ultimo_error = String::from("no se pudo preguntarle a ninguna réplica");
 
-    for servidor in servidores().await {
-        let url = format!(
-            "{servidor}/json/stations/search?tag={etiqueta}&hidebroken=true&order=votes&reverse=true&limit={LIMITE}"
-        );
-
-        match pedir_estaciones(&url).await {
+    for servidor in servidores().await.into_iter().take(MAXIMO_REPLICAS) {
+        match pedir_estaciones(&url_de_busqueda(&servidor, &etiqueta)).await {
             Ok(estaciones) if !estaciones.is_empty() => return Ok(estaciones),
             Ok(_) => ultimo_error = format!("{servidor} no devolvió ninguna emisora utilizable"),
             Err(error) => ultimo_error = format!("{servidor}: {error}"),
@@ -259,6 +275,20 @@ pub async fn fetch_stations(tags: Vec<&str>) -> Result<Vec<RadioStation>, String
     Err(format!(
         "No se pudo consultar el directorio de radios ({ultimo_error})"
     ))
+}
+
+/// La consulta de búsqueda contra una réplica.
+///
+/// `tagList` y no `tag`: el primero es el que Radio Browser define para una
+/// lista separada por comas. Con `tag`, «rock,jazz» se compara como **texto**
+/// contra la lista de etiquetas de cada emisora, así que sólo encuentra las que
+/// tengan esas dos justo una al lado de la otra. Con una etiqueta sola los dos
+/// devuelven lo mismo —comprobado contra el directorio—, así que el cambio no
+/// altera lo que se ve hoy.
+fn url_de_busqueda(servidor: &str, etiqueta: &str) -> String {
+    format!(
+        "{servidor}/json/stations/search?tagList={etiqueta}&hidebroken=true&order=votes&reverse=true&limit={LIMITE}"
+    )
 }
 
 async fn pedir_estaciones(url: &str) -> Result<Vec<RadioStation>, String> {
@@ -390,6 +420,42 @@ mod tests {
         let normalizada = normalizar(larguisima).expect("tendría que pasar");
 
         assert_eq!(normalizada.name.chars().count(), LARGO_NOMBRE);
+    }
+
+    #[test]
+    fn una_direccion_larguisima_se_descarta_en_vez_de_recortarse() {
+        // Recortada seguiría pareciendo una dirección válida —mismo esquema,
+        // mismo host— y llegaría a la ventana apuntando a otra cosa: una imagen
+        // rota o un enlace equivocado, en vez de un campo vacío.
+        let mut con_favicon_larguisimo = estacion();
+        let larga = format!("https://emisora.ejemplo/{}", "a".repeat(LARGO_DIRECCION));
+        con_favicon_larguisimo.favicon = Some(larga);
+
+        let normalizada = normalizar(con_favicon_larguisimo).expect("la emisora sirve igual");
+
+        assert_eq!(normalizada.favicon, None);
+    }
+
+    #[test]
+    fn una_direccion_de_largo_normal_pasa_entera() {
+        let mut con_favicon = estacion();
+        let url = "https://emisora.ejemplo/icono.png?version=2&tamano=128";
+        con_favicon.favicon = Some(url.into());
+
+        let normalizada = normalizar(con_favicon).expect("pasa");
+
+        assert_eq!(normalizada.favicon.as_deref(), Some(url));
+    }
+
+    #[test]
+    fn la_busqueda_usa_el_parametro_de_lista_de_etiquetas() {
+        // Con `tag`, «rock,jazz» se compara como texto contra la lista de
+        // etiquetas de cada emisora, así que sólo encuentra las que tengan esas
+        // dos justo una al lado de la otra.
+        let url = url_de_busqueda("https://de1.api.radio-browser.info", "rock%2Cjazz");
+
+        assert!(url.contains("tagList=rock%2Cjazz"), "{url}");
+        assert!(!url.contains("?tag="), "{url}");
     }
 
     #[test]
