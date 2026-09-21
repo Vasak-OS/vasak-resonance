@@ -1,5 +1,7 @@
 mod audio;
 mod audio_manager;
+#[cfg(target_os = "linux")]
+mod bandeja;
 mod commands;
 mod db;
 mod discord;
@@ -7,6 +9,7 @@ mod historial;
 #[cfg(target_os = "linux")]
 mod layer_shell;
 mod lyrics;
+mod mando;
 mod metadata_fetcher;
 mod modos;
 #[cfg(target_os = "linux")]
@@ -14,6 +17,8 @@ mod mpris;
 mod radio;
 mod remote_control;
 mod structs;
+#[cfg(target_os = "linux")]
+mod wayfire_ipc;
 
 use audio_manager::AudioState;
 use commands::audio_control::{
@@ -122,6 +127,11 @@ pub fn run() {
             let audio_state = AudioState::new(app.handle().clone());
             #[cfg(target_os = "linux")]
             mpris::start_mpris_service(app.handle().clone(), audio_state.clone());
+
+            // El icono de la bandeja, con el mismo mando que MPRIS: lo que hace
+            // el menú y lo que hace el panel es la misma llamada.
+            #[cfg(target_os = "linux")]
+            bandeja::iniciar(app.handle().clone(), audio_state.clone());
 
             #[cfg(target_os = "linux")]
             if let Some(mini_window) = app.get_webview_window("mini-player") {

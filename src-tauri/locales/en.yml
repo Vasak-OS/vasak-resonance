@@ -185,6 +185,13 @@ transport:
   shuffle: Shuffle
   shuffleOn: Shuffle on
   shuffleOff: Shuffle off
+tray:
+  show: Show
+  play: Play
+  pause: Pause
+  previous: Previous
+  next: Next
+  quit: Quit
 volume:
   label: Volume
 window:

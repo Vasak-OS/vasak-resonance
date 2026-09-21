@@ -1,6 +1,6 @@
 [package]
 name = "vasak-resonance"
-version = "0.7.3"
+version = "0.7.4"
 description = "A Vasak Application (template)"
 authors = ["Vasak Group", "Joaquin (Pato) Decima"]
 edition = "2021"
@@ -46,6 +46,11 @@ tauri-plugin-vsk-journal = "2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus = "5"
+# El icono de la bandeja. Habla StatusNotifierItem directo —es Rust puro sobre
+# zbus, no suma ninguna biblioteca del sistema— y por eso el clic izquierdo
+# llega: libappindicator lo consume para abrir el menú y `activate` no se
+# dispara nunca.
+ksni = "0.3"
 gtk = { version = "0.18", features = ["v3_24"] }
 gtk-layer-shell = { version = "0.8", features = ["v0_5"] }
 

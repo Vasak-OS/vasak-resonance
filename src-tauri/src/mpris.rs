@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 
-use tauri::{AppHandle, Emitter, Listener, Manager};
+use tauri::{AppHandle, Emitter, Listener};
 use zbus::connection::Builder as ConstructorDeConexion;
 use zbus::fdo;
 use zbus::zvariant::{OwnedValue, Value};
 
 use crate::audio_manager::AudioState;
+use crate::mando::{Mando, MandoDeTauri};
 
 const MPRIS_BUS_NAME: &str = "org.mpris.MediaPlayer2.vasak-resonance";
 const MPRIS_OBJECT_PATH: &str = "/org/mpris/MediaPlayer2";
@@ -19,12 +20,14 @@ pub fn start_mpris_service(app_handle: AppHandle, audio_state: AudioState) {
 }
 
 async fn run_mpris_service(app_handle: AppHandle, audio_state: AudioState) -> Result<(), String> {
+    let mando = MandoDeTauri::nuevo(app_handle.clone(), audio_state.clone());
     let root_iface = MprisRootInterface {
-        app_handle: app_handle.clone(),
+        mando: mando.clone(),
     };
     let player_iface = MprisPlayerInterface {
         app_handle: app_handle.clone(),
         audio_state: audio_state.clone(),
+        mando,
     };
 
     let connection = ConstructorDeConexion::session()
@@ -101,12 +104,13 @@ async fn run_mpris_service(app_handle: AppHandle, audio_state: AudioState) -> Re
 }
 
 struct MprisRootInterface {
-    app_handle: AppHandle,
+    mando: MandoDeTauri,
 }
 
 struct MprisPlayerInterface {
     app_handle: AppHandle,
     audio_state: AudioState,
+    mando: MandoDeTauri,
 }
 
 #[zbus::interface(name = "org.mpris.MediaPlayer2")]
@@ -115,16 +119,15 @@ impl MprisRootInterface {
     ///
     /// This is what clicking the track name in the desktop's music widget does.
     /// It was an empty function, so the click did nothing.
+    ///
+    /// Es la misma llamada que hace el clic izquierdo en la bandeja: las dos
+    /// pasan por `Mando::mostrar`.
     fn raise(&self) {
-        if let Some(window) = self.app_handle.get_webview_window("main") {
-            let _ = window.show();
-            let _ = window.unminimize();
-            let _ = window.set_focus();
-        }
+        let _ = self.mando.mostrar();
     }
 
     fn quit(&self) {
-        self.app_handle.exit(0);
+        self.mando.salir();
     }
 
     #[zbus(property)]
@@ -178,21 +181,15 @@ impl MprisPlayerInterface {
     }
 
     fn play_pause(&self) -> fdo::Result<()> {
-        self.audio_state
-            .play_pause_toggle()
-            .map_err(|e| fdo::Error::Failed(e.to_string()))
+        self.mando.reproducir_o_pausar().map_err(fdo::Error::Failed)
     }
 
     fn next(&self) -> fdo::Result<()> {
-        self.app_handle
-            .emit("mpris-next-request", ())
-            .map_err(|e| fdo::Error::Failed(format!("No se pudo emitir evento next: {e}")))
+        self.mando.siguiente().map_err(fdo::Error::Failed)
     }
 
     fn previous(&self) -> fdo::Result<()> {
-        self.app_handle
-            .emit("mpris-previous-request", ())
-            .map_err(|e| fdo::Error::Failed(format!("No se pudo emitir evento previous: {e}")))
+        self.mando.anterior().map_err(fdo::Error::Failed)
     }
 
     fn stop(&self) -> fdo::Result<()> {

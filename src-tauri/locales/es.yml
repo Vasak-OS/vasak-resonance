@@ -182,6 +182,13 @@ transport:
   shuffle: Aleatorio
   shuffleOn: Aleatorio activado
   shuffleOff: Aleatorio desactivado
+tray:
+  show: Mostrar
+  play: Reproducir
+  pause: Pausar
+  previous: Anterior
+  next: Siguiente
+  quit: Salir
 volume:
   label: Volumen
 window:
