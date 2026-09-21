@@ -137,6 +137,18 @@ fn tapa_de_la_carpeta(audio: &Path, cache: &mut TapaPorCarpeta) -> Option<TapaDe
     leida
 }
 
+/// Con qué reglas se leyeron las etiquetas de la biblioteca.
+///
+/// **Se sube cuando esta función empieza a producir algo distinto** de lo que
+/// producía antes: un título, un artista o un campo nuevo. El barrido compara
+/// este número con el que quedó anotado en la base y, si no coinciden, relee
+/// todos los archivos una vez en vez de confiar en la fecha de modificación.
+///
+/// Sin esto, cada cambio de estas reglas necesita su propio apaño para que la
+/// biblioteca ya indexada se entere — que es lo que hubo que hacer al empezar a
+/// leer el número de pista y el artista del álbum.
+pub const SCAN_VERSION: &str = "1";
+
 pub fn extract_track_from_file(path: &Path) -> Result<Track, String> {
     let canonical_path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
 
@@ -403,8 +415,48 @@ pub fn is_supported_audio_file(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// Ayudantes que usan tanto las pruebas de acá como las del barrido.
+#[cfg(test)]
+pub(crate) mod ayudantes_de_prueba {
+    use super::*;
+    use lofty::prelude::ItemKey;
+
+    /// Un MP3 de verdad con las etiquetas que pida quien lo llame.
+    ///
+    /// Ocho tramas y no una: `lofty` no da por bueno un MPEG hasta encontrar
+    /// varias cabeceras seguidas, y con una sola la prueba pasaría en verde sin
+    /// haber leído nunca una etiqueta.
+    pub(crate) fn archivo_etiquetado(
+        dir: &Path,
+        nombre: &str,
+        etiquetas: &[(ItemKey, &str)],
+    ) -> PathBuf {
+        use lofty::config::WriteOptions;
+        use lofty::tag::{Tag, TagExt, TagType};
+
+        let audio = dir.join(nombre);
+        let mut bytes = Vec::new();
+        for _ in 0..8 {
+            // MPEG-1 Layer III, 128 kbps, 44,1 kHz: 417 bytes por trama.
+            bytes.extend_from_slice(&[0xFF, 0xFB, 0x90, 0x00]);
+            bytes.extend(std::iter::repeat(0u8).take(413));
+        }
+        fs::write(&audio, &bytes).expect("no se pudo escribir el audio");
+
+        let mut tag = Tag::new(TagType::Id3v2);
+        for (clave, valor) in etiquetas {
+            tag.insert_text(clave.clone(), valor.to_string());
+        }
+        tag.save_to_path(&audio, WriteOptions::default())
+            .expect("no se pudo escribir la etiqueta");
+
+        audio
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::ayudantes_de_prueba::archivo_etiquetado;
     use super::*;
     use std::path::PathBuf;
 
@@ -473,34 +525,6 @@ mod tests {
         let completo = png_de_un_color(0x40, 0x80, 0xC0);
         let mitad = &completo[..completo.len() / 2];
         assert!(extract_dominant_color_hex(mitad).is_none());
-    }
-
-    /// Un MP3 de verdad con las etiquetas que pide la prueba.
-    ///
-    /// Ocho tramas y no una: `lofty` no da por bueno un MPEG hasta encontrar
-    /// varias cabeceras seguidas, y con una sola la prueba pasaría en verde sin
-    /// haber leído nunca una etiqueta.
-    fn archivo_etiquetado(dir: &Path, nombre: &str, etiquetas: &[(ItemKey, &str)]) -> PathBuf {
-        use lofty::config::WriteOptions;
-        use lofty::tag::{Tag, TagExt, TagType};
-
-        let audio = dir.join(nombre);
-        let mut bytes = Vec::new();
-        for _ in 0..8 {
-            // MPEG-1 Layer III, 128 kbps, 44,1 kHz: 417 bytes por trama.
-            bytes.extend_from_slice(&[0xFF, 0xFB, 0x90, 0x00]);
-            bytes.extend(std::iter::repeat(0u8).take(413));
-        }
-        fs::write(&audio, &bytes).expect("no se pudo escribir el audio");
-
-        let mut tag = Tag::new(TagType::Id3v2);
-        for (clave, valor) in etiquetas {
-            tag.insert_text(clave.clone(), valor.to_string());
-        }
-        tag.save_to_path(&audio, WriteOptions::default())
-            .expect("no se pudo escribir la etiqueta");
-
-        audio
     }
 
     #[test]

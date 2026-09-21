@@ -1,4 +1,5 @@
 use rusqlite::{params, Connection};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -97,6 +98,11 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
             -- El número de pista, o 0 si el archivo no lo dice.
             track_no INTEGER NOT NULL DEFAULT 0,
             duration_seconds INTEGER NOT NULL,
+            -- Cuándo se modificó el archivo por última vez, en segundos desde
+            -- la época. Es lo que hace que un barrido no tenga que abrir un
+            -- archivo que no cambió — y lo que hace que uno editado se vea.
+            -- Cero es «no se sabe»: una fila de antes de que esto existiera.
+            mtime INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -136,6 +142,14 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
         );
 
         CREATE INDEX IF NOT EXISTS idx_plays_played_at ON plays(played_at);
+
+        -- Cuatro cosas que la biblioteca necesita recordar de sí misma. Hoy
+        -- sólo la versión de barrido; es una tabla y no un archivo para que
+        -- viaje con la base y no pueda quedar desfasada de ella.
+        CREATE TABLE IF NOT EXISTS settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
         CREATE INDEX IF NOT EXISTS idx_plays_path ON plays(path);
 
         CREATE VIRTUAL TABLE IF NOT EXISTS tracks_fts USING fts5(
@@ -214,6 +228,7 @@ fn agregar_columnas_que_falten(conn: &Connection) -> Result<(), String> {
     for (columna, definicion) in [
         ("album_artist", "TEXT NOT NULL DEFAULT ''"),
         ("track_no", "INTEGER NOT NULL DEFAULT 0"),
+        ("mtime", "INTEGER NOT NULL DEFAULT 0"),
     ] {
         if existentes.contains(columna) {
             continue;
@@ -229,51 +244,130 @@ fn agregar_columnas_que_falten(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
-/// Mete el tema si no estaba, y si estaba le refresca el artista del álbum y el
-/// número de pista. Devuelve si hubo que meterlo.
+/// Mete el tema, o lo actualiza entero si ya estaba.
 ///
-/// El refresco es lo que le da esos dos datos a una biblioteca indexada antes de
-/// que se leyeran. No cuesta nada: quien llama acá viene de leer las etiquetas
-/// del archivo igual —el barrido las lee todas—, así que lo único que se agrega
-/// es un `UPDATE` de dos columnas.
+/// No devuelve cuál de las dos cosas hizo: quien llama ya lo sabe —viene de
+/// mirar [`known_mtimes_under`]— y preguntárselo a SQLite de nuevo sería pedir
+/// dos veces lo mismo.
 ///
-/// Los otros campos no se tocan: que una etiqueta editada se vea sigue pendiente
-/// y es harina de otro costal —el barrido no distingue todavía un archivo que
-/// cambió de uno que no—.
-pub fn insert_track_if_not_exists(conn: &Connection, track: &Track) -> Result<bool, String> {
-    let affected = conn
-        .execute(
-            "
-            INSERT OR IGNORE INTO tracks
-                (path, title, artist, album, album_artist, track_no, duration_seconds)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-            ",
-            params![
-                track.path,
-                track.title,
-                track.artist,
-                track.album,
-                track.album_artist,
-                track.track_no,
-                track.duration_seconds
-            ],
-        )
-        .map_err(|e| format!("No se pudo insertar track en SQLite: {e}"))?;
-
-    if affected > 0 {
-        return Ok(true);
-    }
-
+/// Entero y no dos columnas: quien llama acá es el barrido, y llega sólo cuando
+/// el archivo es nuevo o cambió de fecha. Si cambió, lo que vale es lo que dice
+/// el archivo ahora — que es lo que hace que corregir una etiqueta se vea.
+///
+/// El `mtime` se guarda con el resto: es la respuesta a «¿hace falta volver a
+/// abrir este archivo?» la próxima vez.
+pub fn index_track(conn: &Connection, track: &Track, mtime: i64) -> Result<(), String> {
     conn.execute(
         "
-        UPDATE tracks SET album_artist = ?2, track_no = ?3
-        WHERE path = ?1 AND (album_artist <> ?2 OR track_no <> ?3)
-        ",
-        params![track.path, track.album_artist, track.track_no],
+            INSERT INTO tracks
+                (path, title, artist, album, album_artist, track_no, duration_seconds, mtime)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            ON CONFLICT(path) DO UPDATE SET
+                title = excluded.title,
+                artist = excluded.artist,
+                album = excluded.album,
+                album_artist = excluded.album_artist,
+                track_no = excluded.track_no,
+                duration_seconds = excluded.duration_seconds,
+                mtime = excluded.mtime
+            ",
+        params![
+            track.path,
+            track.title,
+            track.artist,
+            track.album,
+            track.album_artist,
+            track.track_no,
+            track.duration_seconds,
+            mtime
+        ],
     )
-    .map_err(|e| format!("No se pudo refrescar el track en SQLite: {e}"))?;
+    .map_err(|e| format!("No se pudo indexar el track en SQLite: {e}"))?;
 
-    Ok(false)
+    Ok(())
+}
+
+/// Lo que la biblioteca ya sabe de los archivos que cuelgan de una carpeta:
+/// ruta y fecha de modificación.
+///
+/// Una consulta por carpeta y no una por archivo. Con esto el barrido sabe, sin
+/// volver a preguntar, qué archivos ya están, cuáles cambiaron y —lo que no se
+/// puede saber archivo por archivo— cuáles están en la base y ya no en el disco.
+pub fn known_mtimes_under(conn: &Connection, root: &str) -> Result<HashMap<String, i64>, String> {
+    let patron = format!("{}/%", root.trim_end_matches('/'));
+
+    let mut stmt = conn
+        .prepare("SELECT path, mtime FROM tracks WHERE path = ?1 OR path LIKE ?2")
+        .map_err(|e| format!("No se pudo preparar la consulta de fechas: {e}"))?;
+
+    let filas = stmt
+        .query_map(params![root, patron], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })
+        .map_err(|e| format!("No se pudieron consultar las fechas: {e}"))?;
+
+    let mut conocidos = HashMap::new();
+    for fila in filas {
+        let (path, mtime) = fila.map_err(|e| format!("No se pudo leer una fecha: {e}"))?;
+        conocidos.insert(path, mtime);
+    }
+
+    Ok(conocidos)
+}
+
+/// Da de baja los temas que ya no están en el disco.
+///
+/// Las listas se limpian solas: `playlist_tracks` tiene la clave foránea con
+/// `ON DELETE CASCADE` y los `PRAGMA` la activan. El historial de escuchas **no**
+/// se toca, y es a propósito: que un archivo se borre no borra que sonó.
+pub fn remove_tracks(conn: &mut Connection, paths: &[String]) -> Result<usize, String> {
+    if paths.is_empty() {
+        return Ok(0);
+    }
+
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("No se pudo abrir la transacción de baja: {e}"))?;
+
+    let mut dados_de_baja = 0;
+    {
+        let mut stmt = tx
+            .prepare("DELETE FROM tracks WHERE path = ?1")
+            .map_err(|e| format!("No se pudo preparar la baja: {e}"))?;
+
+        for path in paths {
+            dados_de_baja += stmt
+                .execute(params![path])
+                .map_err(|e| format!("No se pudo dar de baja {path}: {e}"))?;
+        }
+    }
+
+    tx.commit()
+        .map_err(|e| format!("No se pudo confirmar la baja: {e}"))?;
+
+    Ok(dados_de_baja)
+}
+
+/// Lee un ajuste de la biblioteca.
+pub fn get_setting(conn: &Connection, key: &str) -> Option<String> {
+    conn.query_row(
+        "SELECT value FROM settings WHERE key = ?1",
+        params![key],
+        |row| row.get(0),
+    )
+    .ok()
+}
+
+/// Guarda un ajuste de la biblioteca.
+pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![key, value],
+    )
+    .map_err(|e| format!("No se pudo guardar el ajuste {key}: {e}"))?;
+
+    Ok(())
 }
 
 /// Guarda lo que la ventana sabe de un tema.
@@ -720,6 +814,11 @@ mod tests {
         }
     }
 
+    /// Mete el tema en la biblioteca, como lo haría un barrido.
+    fn indexar(conn: &Connection, track: &Track) {
+        index_track(conn, track, 0).expect("indexar");
+    }
+
     fn temp_database() -> (tempfile::TempDir, Connection) {
         let dir = tempfile::tempdir().expect("temp dir");
         let conn = open_database(&dir.path().join("resonance.db")).expect("open");
@@ -729,7 +828,7 @@ mod tests {
     #[test]
     fn a_new_track_is_searchable_immediately() {
         let (_dir, conn) = temp_database();
-        insert_track_if_not_exists(
+        indexar(
             &conn,
             &track(
                 "/m/a.mp3",
@@ -737,8 +836,7 @@ mod tests {
                 "Queen",
                 "A Night at the Opera",
             ),
-        )
-        .expect("insert");
+        );
 
         let by_title = search_tracks_fts(&conn, "bohemian", 10).expect("search");
         assert_eq!(by_title.len(), 1);
@@ -758,8 +856,7 @@ mod tests {
     #[test]
     fn editing_a_track_updates_what_it_is_found_by() {
         let (_dir, conn) = temp_database();
-        insert_track_if_not_exists(&conn, &track("/m/a.mp3", "Old Title", "Artist", "Album"))
-            .expect("insert");
+        indexar(&conn, &track("/m/a.mp3", "Old Title", "Artist", "Album"));
 
         upsert_track(&conn, &track("/m/a.mp3", "New Title", "Artist", "Album")).expect("upsert");
 
@@ -780,11 +877,10 @@ mod tests {
     #[test]
     fn el_disco_guarda_el_numero_de_pista_y_el_artista_del_album() {
         let (_dir, conn) = temp_database();
-        insert_track_if_not_exists(
+        indexar(
             &conn,
             &pista("/m/03.mp3", "Tercera", "Alguien", "Varios", 3),
-        )
-        .expect("insert");
+        );
 
         let guardado = list_tracks(&conn).expect("list").pop().expect("una fila");
         assert_eq!(guardado.track_no, 3);
@@ -792,25 +888,113 @@ mod tests {
     }
 
     #[test]
-    fn un_barrido_le_pone_los_datos_nuevos_a_un_tema_ya_indexado() {
-        // El caso de una biblioteca indexada antes de que estos dos campos se
-        // leyeran: el barrido vuelve a pasar, lee las etiquetas igual, y lo que
-        // antes tiraba ahora lo guarda.
+    fn volver_a_indexar_un_tema_actualiza_la_fila_entera() {
+        // El archivo cambió y el barrido lo relee: lo que vale es lo que dice
+        // el archivo ahora. Esto es lo que hace que corregir una etiqueta se
+        // vea, que antes no pasaba nunca.
         let (_dir, conn) = temp_database();
-        insert_track_if_not_exists(&conn, &track("/m/03.mp3", "Tercera", "Alguien", "Un álbum"))
-            .expect("insert");
-        assert_eq!(list_tracks(&conn).expect("list")[0].track_no, 0);
-
-        let inserto = insert_track_if_not_exists(
+        indexar(
             &conn,
-            &pista("/m/03.mp3", "Tercera", "Alguien", "Varios", 3),
+            &track("/m/03.mp3", "Titulo viejo", "Alguien", "Un álbum"),
+        );
+
+        index_track(
+            &conn,
+            &pista("/m/03.mp3", "Título corregido", "Alguien", "Varios", 3),
+            1_700_000_000,
         )
         .expect("segundo barrido");
 
-        assert!(!inserto, "el tema ya estaba: no se inserta de nuevo");
         let guardado = list_tracks(&conn).expect("list").pop().expect("una fila");
+        assert_eq!(guardado.title, "Título corregido");
         assert_eq!(guardado.track_no, 3);
         assert_eq!(guardado.album_artist, "Varios");
+        assert_eq!(
+            list_tracks(&conn).expect("list").len(),
+            1,
+            "sigue siendo una fila"
+        );
+    }
+
+    #[test]
+    fn la_fecha_del_archivo_queda_guardada() {
+        let (_dir, conn) = temp_database();
+        index_track(
+            &conn,
+            &track("/m/a.mp3", "Un tema", "Alguien", "Un álbum"),
+            1_700_000_000,
+        )
+        .expect("indexar");
+
+        let conocidos = known_mtimes_under(&conn, "/m").expect("consultar");
+        assert_eq!(conocidos.get("/m/a.mp3"), Some(&1_700_000_000));
+    }
+
+    #[test]
+    fn las_fechas_que_se_consultan_son_las_de_esa_carpeta() {
+        // La baja de lo que ya no está se calcula con esto, así que traer de
+        // más sería dar de baja temas de otra carpeta que nadie barrió.
+        let (_dir, conn) = temp_database();
+        indexar(
+            &conn,
+            &track("/m/adentro.mp3", "Adentro", "Alguien", "Un álbum"),
+        );
+        indexar(
+            &conn,
+            &track("/otra/afuera.mp3", "Afuera", "Alguien", "Un álbum"),
+        );
+        // Una carpeta que empieza igual pero es otra.
+        indexar(
+            &conn,
+            &track("/musica-vieja/x.mp3", "Otra", "Alguien", "Un álbum"),
+        );
+
+        let conocidos = known_mtimes_under(&conn, "/m").expect("consultar");
+
+        assert_eq!(conocidos.len(), 1);
+        assert!(conocidos.contains_key("/m/adentro.mp3"));
+    }
+
+    #[test]
+    fn dar_de_baja_saca_el_tema_y_lo_saca_de_las_listas() {
+        let (_dir, mut conn) = temp_database();
+        indexar(&conn, &track("/m/a.mp3", "Se va", "Alguien", "Un álbum"));
+        let entrada = list_tracks(&conn).expect("list").remove(0);
+        let lista = create_playlist(&conn, "Una lista").expect("create");
+        add_track_to_playlist(&conn, lista.id, entrada.id).expect("add");
+
+        let bajas = remove_tracks(&mut conn, &["/m/a.mp3".to_string()]).expect("baja");
+
+        assert_eq!(bajas, 1);
+        assert!(list_tracks(&conn).expect("list").is_empty());
+        assert!(list_playlist_tracks(&conn, lista.id)
+            .expect("contents")
+            .is_empty());
+    }
+
+    #[test]
+    fn dar_de_baja_no_borra_lo_que_se_escucho() {
+        // Que un archivo se borre no borra que sonó.
+        let (_dir, mut conn) = temp_database();
+        indexar(&conn, &track("/m/a.mp3", "Se va", "Alguien", "Un álbum"));
+        record_play(&conn, "/m/a.mp3", 1_700_000_000).expect("anotar");
+
+        remove_tracks(&mut conn, &["/m/a.mp3".to_string()]).expect("baja");
+
+        assert_eq!(escuchas(&conn, "/m/a.mp3"), 1);
+    }
+
+    #[test]
+    fn los_ajustes_de_la_biblioteca_se_guardan_y_se_releen() {
+        let (_dir, conn) = temp_database();
+
+        assert_eq!(get_setting(&conn, "scan_version"), None);
+
+        set_setting(&conn, "scan_version", "1").expect("guardar");
+        assert_eq!(get_setting(&conn, "scan_version").as_deref(), Some("1"));
+
+        set_setting(&conn, "scan_version", "2").expect("pisar");
+        assert_eq!(get_setting(&conn, "scan_version").as_deref(), Some("2"));
     }
 
     #[test]
@@ -820,11 +1004,10 @@ mod tests {
         // esto, abrir la aplicación pisaba con ellos lo que el barrido acababa
         // de leer del archivo.
         let (_dir, conn) = temp_database();
-        insert_track_if_not_exists(
+        indexar(
             &conn,
             &pista("/m/03.mp3", "Tercera", "Alguien", "Varios", 3),
-        )
-        .expect("el barrido");
+        );
 
         upsert_track(&conn, &track("/m/03.mp3", "Tercera", "Alguien", "Un álbum"))
             .expect("el caché de la ventana");
@@ -837,8 +1020,7 @@ mod tests {
     #[test]
     fn pero_un_disco_de_verdad_si_pisa_lo_que_habia() {
         let (_dir, conn) = temp_database();
-        insert_track_if_not_exists(&conn, &track("/m/03.mp3", "Tercera", "Alguien", "Un álbum"))
-            .expect("insert");
+        indexar(&conn, &track("/m/03.mp3", "Tercera", "Alguien", "Un álbum"));
 
         upsert_track(
             &conn,
@@ -891,8 +1073,8 @@ mod tests {
         let (_dir, conn) = temp_database();
         let same = track("/m/a.mp3", "Title", "Artist", "Album");
 
-        assert!(insert_track_if_not_exists(&conn, &same).expect("first"));
-        assert!(!insert_track_if_not_exists(&conn, &same).expect("second"));
+        indexar(&conn, &same);
+        indexar(&conn, &same);
         assert_eq!(list_tracks(&conn).expect("list").len(), 1);
     }
 
@@ -905,8 +1087,7 @@ mod tests {
 
         {
             let conn = open_database(&path).expect("open");
-            insert_track_if_not_exists(&conn, &track("/m/a.mp3", "Title", "Artist", "Album"))
-                .expect("insert");
+            indexar(&conn, &track("/m/a.mp3", "Title", "Artist", "Album"));
         }
 
         let conn = open_database(&path).expect("reopen");
@@ -962,8 +1143,7 @@ mod tests {
         // Sin clave foránea a propósito: un archivo que se mueve o se borra no
         // tiene por qué llevarse puesto el registro de que sonó.
         let (_dir, conn) = temp_database();
-        insert_track_if_not_exists(&conn, &track("/m/a.mp3", "Un tema", "Alguien", "Un álbum"))
-            .expect("insert");
+        indexar(&conn, &track("/m/a.mp3", "Un tema", "Alguien", "Un álbum"));
         record_play(&conn, "/m/a.mp3", 1_700_000_000).expect("anotar");
 
         conn.execute("DELETE FROM tracks WHERE path = '/m/a.mp3'", [])
@@ -1046,8 +1226,7 @@ mod tests {
 
         {
             let conn = open_database(&path).expect("open");
-            insert_track_if_not_exists(&conn, &track("/m/a.mp3", "Findable", "Artist", "Album"))
-                .expect("insert");
+            indexar(&conn, &track("/m/a.mp3", "Findable", "Artist", "Album"));
         }
 
         // As a fresh process would see it.
@@ -1078,8 +1257,8 @@ mod tests {
     #[test]
     fn playlists_hold_their_tracks_in_order() {
         let (_dir, conn) = temp_database();
-        insert_track_if_not_exists(&conn, &track("/m/a.mp3", "First", "Artist", "Album")).unwrap();
-        insert_track_if_not_exists(&conn, &track("/m/b.mp3", "Second", "Artist", "Album")).unwrap();
+        indexar(&conn, &track("/m/a.mp3", "First", "Artist", "Album"));
+        indexar(&conn, &track("/m/b.mp3", "Second", "Artist", "Album"));
 
         let tracks = list_tracks(&conn).expect("list");
         let playlist = create_playlist(&conn, "Road trip").expect("create");
@@ -1110,7 +1289,7 @@ mod tests {
     #[test]
     fn deleting_a_track_removes_it_everywhere() {
         let (_dir, conn) = temp_database();
-        insert_track_if_not_exists(&conn, &track("/m/a.mp3", "Doomed", "Artist", "Album")).unwrap();
+        indexar(&conn, &track("/m/a.mp3", "Doomed", "Artist", "Album"));
         let entry = list_tracks(&conn).expect("list").remove(0);
 
         let playlist = create_playlist(&conn, "List").expect("create");

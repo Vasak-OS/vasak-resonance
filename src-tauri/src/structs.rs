@@ -40,8 +40,14 @@ pub struct LibraryTrack {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanSummary {
     pub scanned_files: usize,
+    /// Temas que no estaban en la biblioteca.
     pub inserted_tracks: usize,
-    pub skipped_duplicates: usize,
+    /// Temas que ya estaban y cuyo archivo cambió desde la última vez.
+    pub updated_tracks: usize,
+    /// Temas que ya estaban y cuyo archivo no cambió: no se abrieron siquiera.
+    pub unchanged_tracks: usize,
+    /// Temas que estaban en la biblioteca y ya no en el disco.
+    pub removed_tracks: usize,
     pub skipped_non_audio: usize,
     pub failed_files: usize,
 }
