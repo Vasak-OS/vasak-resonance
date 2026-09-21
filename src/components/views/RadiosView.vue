@@ -8,6 +8,7 @@ import type { RadioStation } from '@/services/radio.service';
 import {
 	fetchRadioStations,
 	getCachedStations,
+	getStaleCachedStations,
 	playRadioStation,
 	setCachedStations,
 } from '@/services/radio.service';
@@ -85,26 +86,38 @@ async function loadStations() {
 	loading.value = true;
 	error.value = '';
 
+	const etiquetas = [selectedTag.value];
+
 	try {
-		// Check cache first
-		const cached = getCachedStations();
-		if (cached && cached.length > 0) {
-			stations.value = cached;
+		// Lo guardado hace menos de una hora alcanza: se muestra y no se
+		// pregunta. Antes se preguntaba igual siempre, así que abrir la vista
+		// era una consulta al directorio aunque acabara de hacerse.
+		const fresco = getCachedStations(etiquetas);
+		if (fresco) {
+			stations.value = fresco;
+			return;
 		}
 
-		// Fetch fresh data
-		const freshStations = await fetchRadioStations([selectedTag.value]);
+		// Lo viejo se muestra mientras llega lo nuevo, para no dejar la lista
+		// en blanco. Y si no hay nada guardado para esta etiqueta, la lista se
+		// vacía: dejar la de la etiqueta anterior la haría pasar por ésta —y si
+		// además falla la consulta, se queda así—.
+		stations.value = getStaleCachedStations(etiquetas) ?? [];
+
+		const freshStations = await fetchRadioStations(etiquetas);
 		stations.value = freshStations;
-		setCachedStations(freshStations);
+		setCachedStations(etiquetas, freshStations);
 	} catch (err) {
 		const errorMsg = err instanceof Error ? err.message : String(err);
 		error.value = t('radios.loadError').replace('{0}', () => errorMsg);
 		console.error('Radio stations error:', err);
 
-		// If we have cached stations, keep them available
-		const cached = getCachedStations();
-		if (cached && cached.length > 0) {
-			stations.value = cached;
+		// Sin el directorio, lo que haya guardado **de esta etiqueta** aunque
+		// esté viejo: es justamente cuando más falta hace. Si no hay, la lista
+		// queda vacía con su error, que es lo honesto.
+		const cached = getStaleCachedStations(etiquetas);
+		stations.value = cached ?? [];
+		if (cached) {
 			error.value = t('radios.usingCache').replace('{0}', () => errorMsg);
 		}
 	} finally {
