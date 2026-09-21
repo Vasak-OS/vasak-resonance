@@ -289,9 +289,41 @@ impl MprisPlayerInterface {
         build_metadata(&snapshot)
     }
 
+    /// Cómo se repite, según lo último que avisó la ventana.
+    ///
+    /// Si el estado todavía no está registrado —sólo posible entre que arranca
+    /// MPRIS y que termina el arranque de la aplicación— contesta lo que
+    /// contestaba antes en vez de caerse.
     #[zbus(property)]
     fn loop_status(&self) -> String {
-        "None".to_string()
+        use tauri::Manager;
+
+        self.app_handle
+            .try_state::<crate::modos::ModosDeReproduccion>()
+            .map(|modos| modos.loop_status())
+            .unwrap_or_else(|| crate::modos::SIN_REPETICION.to_string())
+    }
+
+    /// El panel del escritorio cambiando el modo.
+    ///
+    /// No se guarda acá: se le pasa a la ventana, que es la que tiene la cola y
+    /// la que lo va a persistir. Vuelve por `set_playback_modes`, igual que
+    /// cuando el cambio sale de sus propios botones.
+    #[zbus(property)]
+    fn set_loop_status(&self, loop_status: String) -> zbus::Result<()> {
+        let Some(nombre) = crate::modos::nombre_de_la_ventana(&loop_status) else {
+            return Err(zbus::Error::from(fdo::Error::InvalidArgs(format!(
+                "LoopStatus desconocido: {loop_status}"
+            ))));
+        };
+
+        self.app_handle
+            .emit("mpris-loop-status-request", nombre)
+            .map_err(|e| {
+                zbus::Error::from(fdo::Error::Failed(format!(
+                    "No se pudo emitir el cambio de repetición: {e}"
+                )))
+            })
     }
 
     #[zbus(property)]
@@ -336,9 +368,26 @@ impl MprisPlayerInterface {
             .map_err(|e| zbus::Error::from(fdo::Error::Failed(e)))
     }
 
+    /// Si la cola suena salteada, según lo último que avisó la ventana.
     #[zbus(property)]
     fn shuffle(&self) -> bool {
-        false
+        use tauri::Manager;
+
+        self.app_handle
+            .try_state::<crate::modos::ModosDeReproduccion>()
+            .map(|modos| modos.aleatorio())
+            .unwrap_or(false)
+    }
+
+    #[zbus(property)]
+    fn set_shuffle(&self, aleatorio: bool) -> zbus::Result<()> {
+        self.app_handle
+            .emit("mpris-shuffle-request", aleatorio)
+            .map_err(|e| {
+                zbus::Error::from(fdo::Error::Failed(format!(
+                    "No se pudo emitir el cambio de aleatorio: {e}"
+                )))
+            })
     }
 
     #[zbus(property)]

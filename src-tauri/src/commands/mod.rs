@@ -1,11 +1,12 @@
 pub mod audio_control;
+pub mod discord;
 pub mod indexing;
 pub mod library;
 pub mod lyrics;
 pub mod metadata;
+pub mod modos;
 pub mod playback;
 pub mod playlists;
 pub mod radio;
-pub mod discord;
 pub mod reveal;
 pub mod window;

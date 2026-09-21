@@ -29,6 +29,7 @@ onMounted(async () => {
 	await playerStore.initMprisNextListener();
 	await playerStore.initMprisPreviousListener();
 	await playerStore.initMprisStopListener();
+	await playerStore.initMprisModeListeners();
 });
 
 /**

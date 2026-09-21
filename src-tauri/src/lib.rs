@@ -8,6 +8,7 @@ mod historial;
 mod layer_shell;
 mod lyrics;
 mod metadata_fetcher;
+mod modos;
 #[cfg(target_os = "linux")]
 mod mpris;
 mod radio;
@@ -128,6 +129,8 @@ pub fn run() {
                 }
             }
 
+            app.manage(modos::ModosDeReproduccion::nuevo());
+
             remote_control::start_remote_control_service(app.handle().clone(), audio_state.clone());
             app.manage(audio_state.clone());
 
@@ -196,6 +199,7 @@ pub fn run() {
             show_in_file_manager,
             commands::discord::update_discord_presence,
             commands::discord::discord_presence_activa,
+            commands::modos::set_playback_modes,
             commands::discord::clear_discord_presence,
         ])
         .build(tauri::generate_context!())

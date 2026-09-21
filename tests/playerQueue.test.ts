@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import {
 	createQueueEntries,
+	elegirSiguiente,
 	findQueueEntry,
 	moveQueueEntry,
 	queuePaths,
 	removeQueueEntry,
+	siguienteRepeticion,
 } from '../src/stores/playerQueue';
 
 /** La cola avanza sola: la canción que sonaba terminó y sale la primera. */
@@ -113,5 +115,115 @@ describe('la cola de reproducción', () => {
 
 		expect(moveQueueEntry(entries, 'no-existe', entries[0].id)).toBe(entries);
 		expect(moveQueueEntry(entries, entries[0].id, entries[0].id)).toBe(entries);
+	});
+});
+
+describe('qué suena después', () => {
+	const cola = (...paths: string[]) => createQueueEntries(paths);
+
+	test('sin repetir ni aleatorio, la primera de la cola', () => {
+		const { siguiente, cola: quedan } = elegirSiguiente(
+			cola('/m/a.mp3', '/m/b.mp3'),
+			'/m/actual.mp3',
+			'ninguna',
+			false
+		);
+
+		expect(siguiente).toBe('/m/a.mp3');
+		expect(queuePaths(quedan)).toEqual(['/m/b.mp3']);
+	});
+
+	test('repetir una vuelve a la misma y no toca la cola', () => {
+		// Lo que haya después sigue esperando su turno para cuando se apague.
+		const original = cola('/m/a.mp3', '/m/b.mp3');
+
+		const { siguiente, cola: quedan } = elegirSiguiente(original, '/m/actual.mp3', 'uno', false);
+
+		expect(siguiente).toBe('/m/actual.mp3');
+		expect(queuePaths(quedan)).toEqual(['/m/a.mp3', '/m/b.mp3']);
+	});
+
+	test('repetir todo manda al final la que se va', () => {
+		const { siguiente, cola: quedan } = elegirSiguiente(
+			cola('/m/a.mp3', '/m/b.mp3'),
+			'/m/actual.mp3',
+			'todo',
+			false
+		);
+
+		expect(siguiente).toBe('/m/a.mp3');
+		expect(queuePaths(quedan)).toEqual(['/m/b.mp3', '/m/actual.mp3']);
+	});
+
+	test('con repetir todo la cola da vueltas y no se agota', () => {
+		let actual = '/m/a.mp3';
+		let quedan = cola('/m/b.mp3', '/m/c.mp3');
+		const sonaron: string[] = [];
+
+		for (let vuelta = 0; vuelta < 6; vuelta += 1) {
+			const paso = elegirSiguiente(quedan, actual, 'todo', false);
+			actual = paso.siguiente as string;
+			quedan = paso.cola;
+			sonaron.push(actual);
+		}
+
+		expect(sonaron).toEqual([
+			'/m/b.mp3',
+			'/m/c.mp3',
+			'/m/a.mp3',
+			'/m/b.mp3',
+			'/m/c.mp3',
+			'/m/a.mp3',
+		]);
+	});
+
+	test('el aleatorio elige de cualquier lugar, sin mezclar la cola', () => {
+		// Apagar el aleatorio tiene que devolver el orden de siempre, así que la
+		// cola no se toca: sólo cambia de dónde se saca la que sigue.
+		const { siguiente, cola: quedan } = elegirSiguiente(
+			cola('/m/a.mp3', '/m/b.mp3', '/m/c.mp3'),
+			null,
+			'ninguna',
+			true,
+			() => 0.7
+		);
+
+		expect(siguiente).toBe('/m/c.mp3');
+		expect(queuePaths(quedan)).toEqual(['/m/a.mp3', '/m/b.mp3']);
+	});
+
+	test('el aleatorio llega a todas las posiciones', () => {
+		const elegidas = new Set<string>();
+		for (const azar of [0, 0.4, 0.9]) {
+			const { siguiente } = elegirSiguiente(
+				cola('/m/a.mp3', '/m/b.mp3', '/m/c.mp3'),
+				null,
+				'ninguna',
+				true,
+				() => azar
+			);
+			elegidas.add(siguiente as string);
+		}
+
+		expect(elegidas.size).toBe(3);
+	});
+
+	test('un azar que devuelve 1 no se sale de la cola', () => {
+		// `Math.random` nunca devuelve 1, pero esto recibe cualquier función.
+		const { siguiente } = elegirSiguiente(cola('/m/a.mp3'), null, 'ninguna', true, () => 1);
+
+		expect(siguiente).toBe('/m/a.mp3');
+	});
+
+	test('con la cola vacía no suena nada, salvo que se repita una', () => {
+		expect(elegirSiguiente([], '/m/actual.mp3', 'ninguna', false).siguiente).toBeNull();
+		expect(elegirSiguiente([], '/m/actual.mp3', 'todo', false).siguiente).toBeNull();
+		expect(elegirSiguiente([], '/m/actual.mp3', 'uno', false).siguiente).toBe('/m/actual.mp3');
+	});
+
+	test('el botón de repetir cicla por los tres estados', () => {
+		expect(siguienteRepeticion('ninguna')).toBe('todo');
+		expect(siguienteRepeticion('todo')).toBe('uno');
+		expect(siguienteRepeticion('uno')).toBe('ninguna');
 	});
 });

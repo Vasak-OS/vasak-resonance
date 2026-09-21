@@ -157,6 +157,17 @@ export const fetchLyrics = (params: {
 	});
 };
 
+/**
+ * Le cuenta al backend cómo está el reproductor.
+ *
+ * La cola vive en la ventana, así que esto no cambia cómo se reproduce: es para
+ * que MPRIS pueda decir la verdad, que es de donde lee el panel del escritorio.
+ */
+export const setPlaybackModes = (repeticion: string, aleatorio: boolean): Promise<void> => {
+	devLog('[player.service] setPlaybackModes invoke:', repeticion, aleatorio);
+	return invoke<void>('set_playback_modes', { repeticion, aleatorio });
+};
+
 export const stopPlayback = (): Promise<void> => {
 	devLog('[player.service] stopPlayback invoke');
 	return invoke<void>('stop');

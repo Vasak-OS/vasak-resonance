@@ -161,6 +161,13 @@ transport:
   next: Siguiente
   suggested: Sugerida
   open: Abrir
+  repeat: Repetir
+  repeatNone: Sin repetir
+  repeatAll: Repetir todo
+  repeatOne: Repetir esta
+  shuffle: Aleatorio
+  shuffleOn: Aleatorio activado
+  shuffleOff: Aleatorio desactivado
 volume:
   label: Volumen
 window:

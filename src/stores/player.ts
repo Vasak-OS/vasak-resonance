@@ -23,16 +23,20 @@ import {
 } from '@/services/player.service';
 import {
 	createQueueEntries,
+	elegirSiguiente,
 	findQueueEntry,
 	moveQueueEntry,
 	type QueueEntry,
 	queuePaths,
+	type Repeticion,
 	removeQueueEntry,
 } from '@/stores/playerQueue';
+import { useSettingsStore } from '@/stores/settings';
 import { type EstadoParaDiscord, hayQueAvisar } from '@/tools/discordPresence';
 
 export const usePlayerStore = defineStore('player', () => {
 	const { t } = useI18n();
+	const settingsStore = useSettingsStore();
 	const currentTrack = ref<DroppedPlaybackTrack | null>(null);
 	const currentPath = ref<string | null>(null);
 	/**
@@ -65,6 +69,7 @@ export const usePlayerStore = defineStore('player', () => {
 	let unlistenMprisNext: UnlistenFn | null = null;
 	let unlistenMprisPrevious: UnlistenFn | null = null;
 	let unlistenMprisStop: UnlistenFn | null = null;
+	let unlistenMprisModos: UnlistenFn[] = [];
 	let beforeUnloadHandler: (() => void) | null = null;
 	const playbackStorage = ref<any | null>(null);
 
@@ -121,7 +126,13 @@ export const usePlayerStore = defineStore('player', () => {
 		}
 		return null;
 	});
-	const hasNextTrack = computed(() => queuedCount.value > 0 || Boolean(nextSuggestionPath.value));
+	const hasNextTrack = computed(() => {
+		// Repitiendo una, siempre hay algo después: la misma.
+		if (settingsStore.repeticion === 'uno' && currentPath.value) {
+			return true;
+		}
+		return queuedCount.value > 0 || Boolean(nextSuggestionPath.value);
+	});
 	const nextActionLabel = computed(() =>
 		queuedCount.value === 0 && nextSuggestionPath.value
 			? t('transport.suggested')
@@ -452,16 +463,22 @@ export const usePlayerStore = defineStore('player', () => {
 			return;
 		}
 
-		// Se saca la primera entrada y las demás siguen siendo las mismas, con su
-		// identificador intacto: si hay un menú abierto sobre alguna, sigue
-		// hablando de esa canción y no de la que le quedó el lugar.
-		const [nextEntry, ...rest] = queueEntries.value;
-		if (!nextEntry) {
+		// Quién sigue y cómo queda la cola lo decide `elegirSiguiente`, que es
+		// donde vive toda la regla de repetir y del aleatorio. Las entradas que
+		// quedan conservan su identificador: si hay un menú abierto sobre alguna,
+		// sigue hablando de esa canción y no de la que le quedó el lugar.
+		const { siguiente, cola } = elegirSiguiente(
+			queueEntries.value,
+			currentPath.value,
+			settingsStore.repeticion,
+			settingsStore.aleatorio
+		);
+		if (!siguiente) {
 			return;
 		}
 
-		const nextPath = nextEntry.path;
-		queueEntries.value = rest;
+		const nextPath = siguiente;
+		queueEntries.value = cola;
 		isAdvancingQueue.value = true;
 		try {
 			await playDropped(nextPath);
@@ -485,7 +502,8 @@ export const usePlayerStore = defineStore('player', () => {
 	};
 
 	const advancePlayback = async () => {
-		if (queue.value.length > 0) {
+		// Repitiendo una, la cola vacía no es el final: vuelve a sonar la misma.
+		if (queue.value.length > 0 || (settingsStore.repeticion === 'uno' && currentPath.value)) {
 			await playNextInQueue();
 			return;
 		}
@@ -821,6 +839,36 @@ export const usePlayerStore = defineStore('player', () => {
 		unlistenMprisStop = await listen('mpris-stop-request', () => {
 			void stopPlayback();
 		});
+	};
+
+	/**
+	 * Atiende los modos cambiados desde el panel del escritorio.
+	 *
+	 * El panel puede tocar repetir y aleatorio por MPRIS, y hasta ahora los dos
+	 * eran de sólo lectura con un valor fijo: se dibujaban los botones y no
+	 * hacían nada. El cambio entra por acá y sigue el mismo camino que si
+	 * hubiera salido de los botones de la ventana, así que queda guardado igual.
+	 */
+	const initMprisModeListeners = async () => {
+		if (unlistenMprisModos.length > 0) {
+			return;
+		}
+
+		unlistenMprisModos = [
+			await listen<string>('mpris-loop-status-request', (event) => {
+				void settingsStore.setRepeticion(event.payload as Repeticion);
+			}),
+			await listen<boolean>('mpris-shuffle-request', (event) => {
+				void settingsStore.setAleatorio(Boolean(event.payload));
+			}),
+		];
+	};
+
+	const disposeMprisModeListeners = () => {
+		for (const dejarDeEscuchar of unlistenMprisModos) {
+			dejarDeEscuchar();
+		}
+		unlistenMprisModos = [];
 	};
 
 	const disposeProgressListener = () => {
@@ -1255,6 +1303,8 @@ export const usePlayerStore = defineStore('player', () => {
 		initMprisNextListener,
 		initMprisPreviousListener,
 		initMprisStopListener,
+		initMprisModeListeners,
+		disposeMprisModeListeners,
 		favoritePaths,
 		favoriteEntries,
 		globalBadgeMessage,

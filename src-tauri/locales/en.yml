@@ -164,6 +164,13 @@ transport:
   next: Next
   suggested: Suggested
   open: Open
+  repeat: Repeat
+  repeatNone: No repeat
+  repeatAll: Repeat all
+  repeatOne: Repeat this one
+  shuffle: Shuffle
+  shuffleOn: Shuffle on
+  shuffleOff: Shuffle off
 volume:
   label: Volume
 window:

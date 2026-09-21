@@ -15,10 +15,12 @@ import {
 	searchLibraryTracks,
 } from '@/services/player.service';
 import { usePlayerStore } from '@/stores/player';
+import { useSettingsStore } from '@/stores/settings';
 
 const { t } = useI18n();
 const { artistLabel, albumLabel } = useMetadataLabels();
 const playerStore = usePlayerStore();
+const settingsStore = useSettingsStore();
 const { onTrackContextMenu } = useTrackContextMenu();
 const libraryTracks = ref<LibraryTrack[]>([]);
 const isLoading = ref(false);
@@ -186,6 +188,19 @@ const playTrack = async (path: string) => {
 	await playerStore.playDropped(path);
 };
 
+/**
+ * Poner todo lo que se está viendo, salteado.
+ *
+ * Antes esto mezclaba la lista con `sort(() => Math.random() - 0.5)` y la
+ * encolaba ya revuelta. Eso tenía dos problemas: un comparador que contesta al
+ * azar **no baraja parejo** —el resultado depende de qué algoritmo de
+ * ordenamiento use el motor, y las posiciones quedan sesgadas—, y lo que se
+ * agregara después entraba en orden igual, porque el aleatorio no era un modo
+ * sino una mezcla de una vez.
+ *
+ * Ahora se prende el modo y la cola se encola en orden: de dónde sale cada
+ * canción lo decide `elegirSiguiente`, canción por canción.
+ */
 const playRandomFiltered = async () => {
 	const list = sortedTracks.value ?? [];
 	if (list.length === 0) {
@@ -193,18 +208,13 @@ const playRandomFiltered = async () => {
 		return;
 	}
 
-	// Crear una copia y mezclar aleatoriamente
-	const shuffled = [...list].sort(() => Math.random() - 0.5);
-	const firstTrack = shuffled[0];
-	const restTracks = shuffled.slice(1);
+	await settingsStore.setAleatorio(true);
 
-	// Reproducir la primera canción
-	await playerStore.playDropped(firstTrack.path);
+	const paths = list.map((track) => track.path);
+	const primera = paths[Math.floor(Math.random() * paths.length)];
 
-	// Agregar el resto a la cola
-	if (restTracks.length > 0) {
-		playerStore.enqueuePaths(restTracks.map((t) => t.path));
-	}
+	await playerStore.playDropped(primera);
+	playerStore.enqueuePaths(paths.filter((path) => path !== primera));
 };
 
 const toggleFavorite = (path: string) => {

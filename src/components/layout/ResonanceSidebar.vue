@@ -9,9 +9,12 @@ import { useTrackSubtitle } from '@/composables/useTrackSubtitle';
 import { useTrackTitle } from '@/composables/useTrackTitle';
 import { fetchAlbumCover } from '@/services/album-cover.service';
 import { usePlayerStore } from '@/stores/player';
+import { siguienteRepeticion } from '@/stores/playerQueue';
+import { useSettingsStore } from '@/stores/settings';
 
 const { t } = useI18n();
 const playerStore = usePlayerStore();
+const settingsStore = useSettingsStore();
 const router = useRouter();
 const route = useRoute();
 
@@ -172,9 +175,13 @@ const onSelectSection = async (id: string) => {
 				:busy="playerStore.busy"
 				:is-paused="playerStore.isPaused"
 				:next-action-label="playerStore.nextActionLabel"
+				:repeticion="settingsStore.repeticion"
+				:aleatorio="settingsStore.aleatorio"
 				@prev="playerStore.playPreviousTrack"
 				@toggle="playerStore.togglePlayPause"
 				@next="playerStore.advanceQueue"
+				@repeat="settingsStore.setRepeticion(siguienteRepeticion(settingsStore.repeticion))"
+				@shuffle="settingsStore.setAleatorio(!settingsStore.aleatorio)"
 			/>
 		</section>
 	</aside>

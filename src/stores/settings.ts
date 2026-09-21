@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
-import { setCrossfade } from '@/services/player.service';
+import { setCrossfade, setPlaybackModes } from '@/services/player.service';
+import { REPETICIONES, type Repeticion } from '@/stores/playerQueue';
 
 /** Where the settings live on disk, next to `resonance-playback.json`. */
 const STORE_FILE = 'resonance-settings.json';
@@ -21,6 +22,8 @@ export const MIN_CROSSFADE_SECONDS = 1;
 interface PersistedSettings {
 	crossfadeEnabled?: boolean;
 	crossfadeSeconds?: number;
+	repeticion?: Repeticion;
+	aleatorio?: boolean;
 }
 
 /**
@@ -38,6 +41,14 @@ interface SettingsStorage {
 
 export const useSettingsStore = defineStore('settings', () => {
 	const crossfadeEnabled = ref(true);
+	/**
+	 * Cómo se repite, y si la cola suena en orden o salteada.
+	 *
+	 * Se guardan por el mismo motivo que el encadenado: apagar el aleatorio y
+	 * que vuelva prendido en el próximo arranque es molesto de la misma forma.
+	 */
+	const repeticion = ref<Repeticion>('ninguna');
+	const aleatorio = ref(false);
 	/**
 	 * Kept separately from `crossfadeEnabled` so turning the overlap off and on
 	 * again returns to the length that was chosen, rather than to the default.
@@ -100,6 +111,8 @@ export const useSettingsStore = defineStore('settings', () => {
 		const payload: PersistedSettings = {
 			crossfadeEnabled: crossfadeEnabled.value,
 			crossfadeSeconds: crossfadeSeconds.value,
+			repeticion: repeticion.value,
+			aleatorio: aleatorio.value,
 		};
 		try {
 			await initStorage();
@@ -137,6 +150,21 @@ export const useSettingsStore = defineStore('settings', () => {
 	 * without this a person who turned the overlap off would hear it again on
 	 * every launch.
 	 */
+	/**
+	 * Le cuenta al backend cómo está el reproductor.
+	 *
+	 * No es para que reproduzca distinto —la cola vive en la ventana— sino para
+	 * que MPRIS diga la verdad: el panel del escritorio lee de ahí, y hasta
+	 * ahora leía dos valores fijos.
+	 */
+	const applyModes = async () => {
+		try {
+			await setPlaybackModes(repeticion.value, aleatorio.value);
+		} catch (applyError) {
+			console.error('[settings] no se pudieron aplicar los modos:', applyError);
+		}
+	};
+
 	const load = (): Promise<void> => {
 		if (!loading) {
 			loading = (async () => {
@@ -148,11 +176,30 @@ export const useSettingsStore = defineStore('settings', () => {
 					if (typeof persisted.crossfadeSeconds === 'number') {
 						crossfadeSeconds.value = clampSeconds(persisted.crossfadeSeconds);
 					}
+					if (persisted.repeticion && REPETICIONES.includes(persisted.repeticion)) {
+						repeticion.value = persisted.repeticion;
+					}
+					if (typeof persisted.aleatorio === 'boolean') {
+						aleatorio.value = persisted.aleatorio;
+					}
 				}
 				await applyCrossfade();
+				await applyModes();
 			})();
 		}
 		return loading;
+	};
+
+	const setRepeticion = async (modo: Repeticion) => {
+		repeticion.value = REPETICIONES.includes(modo) ? modo : 'ninguna';
+		await applyModes();
+		await persist();
+	};
+
+	const setAleatorio = async (activo: boolean) => {
+		aleatorio.value = activo;
+		await applyModes();
+		await persist();
 	};
 
 	const setCrossfadeEnabled = async (enabled: boolean) => {
@@ -178,6 +225,10 @@ export const useSettingsStore = defineStore('settings', () => {
 		crossfadeEnabled,
 		crossfadeSeconds,
 		effectiveCrossfade,
+		repeticion,
+		aleatorio,
+		setRepeticion,
+		setAleatorio,
 		load,
 		setCrossfadeEnabled,
 		setCrossfadeSeconds,
