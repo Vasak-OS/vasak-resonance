@@ -25,6 +25,7 @@ const route = useRoute();
 const sections = computed(() => [
 	{ id: 'home', label: t('sidebar.home'), icon: 'go-home-symbolic' },
 	{ id: 'albums', label: t('sidebar.albums'), icon: 'folder-music-symbolic' },
+	{ id: 'artists', label: t('sidebar.artists'), icon: 'system-users-symbolic' },
 	{ id: 'favorites', label: t('sidebar.favorites'), icon: 'starred-symbolic' },
 	{ id: 'playlists', label: t('sidebar.playlists'), icon: 'view-list-symbolic' },
 	{ id: 'radios', label: t('sidebar.radios'), icon: 'media-playback-start-symbolic' },

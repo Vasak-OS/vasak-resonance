@@ -10,6 +10,19 @@ albums:
   queueAlbum: Encolar álbum
   playingAlbum: "Reproduciendo álbum: {0}"
   queuedAlbum: "Álbum encolado: {0}"
+artists:
+  eyebrow: Artistas
+  title: Biblioteca por artista
+  searchPlaceholder: Nombre del artista
+  empty: Todavía no hay artistas en la biblioteca. Barré una carpeta de música o reproducí algo para empezar.
+  albumCountOne: "{0} álbum"
+  albumCountOther: "{0} álbumes"
+  playAll: Reproducir todo
+  queueAll: Encolar todo
+  open: "Ver {0}"
+  back: Volver
+  playing: "Reproduciendo: {0}"
+  queued: "Encolado: {0}"
 audioDrop:
   hint: Soltá un archivo de audio para reproducirlo
 common:
@@ -142,6 +155,7 @@ sidebar:
   playlists: Listas
   radios: Radios
   settings: Ajustes
+  artists: Artistas
 sort:
   recent: Recientes primero
   titleAsc: Título A-Z
