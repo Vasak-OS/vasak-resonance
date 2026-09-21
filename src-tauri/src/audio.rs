@@ -379,11 +379,24 @@ pub fn extract_dominant_color_hex(image_data: &[u8]) -> Option<String> {
     Some(format!("#{:02X}{:02X}{:02X}", color.r, color.g, color.b))
 }
 
-pub fn is_supported_audio_file(path: &Path) -> bool {
-    const SUPPORTED_EXTENSIONS: &[&str] = &[
-        "mp3", "flac", "ogg", "oga", "wav", "m4a", "aac", "opus", "wma", "aiff", "alac",
-    ];
+/// Qué archivos entran a la biblioteca al barrer una carpeta.
+///
+/// La lista no describe lo que se puede reproducir —de eso se encarga ffmpeg,
+/// que decodifica bastante más— sino lo que vale la pena abrir buscando música.
+/// El límite de verdad es **`lofty`**: un archivo cuyas etiquetas no se pueden
+/// leer no entra a la biblioteca aunque suene, así que sumar una extensión que
+/// `lofty` no entiende sólo convierte un archivo que hoy se saltea en silencio
+/// en uno que cuenta como fallido.
+///
+/// Por eso no está `mka`: Matroska sí lo reproduce ffmpeg, pero `lofty` 0.21 no
+/// lo reconoce —«No format could be determined»— y el barrido lo contaría como
+/// un fallo. Cuando lo soporte, es una palabra más.
+const SUPPORTED_EXTENSIONS: &[&str] = &[
+    "mp3", "flac", "ogg", "oga", "wav", "m4a", "m4b", "aac", "opus", "wma", "aiff", "aif", "ape",
+    "wv",
+];
 
+pub fn is_supported_audio_file(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
         .map(|ext| SUPPORTED_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str()))
@@ -741,5 +754,43 @@ mod tests {
         assert!(is_supported_audio_file(Path::new("/m/tema.Opus")));
         assert!(!is_supported_audio_file(Path::new("/m/tapa.jpg")));
         assert!(!is_supported_audio_file(Path::new("/m/sin-extension")));
+    }
+
+    #[test]
+    fn aiff_se_reconoce_con_las_dos_extensiones() {
+        // Dos archivos idénticos se indexaban o no según cómo estuviera escrito
+        // el nombre: `aiff` estaba en la lista y `aif` —como lo escribe medio
+        // mundo— no.
+        assert!(is_supported_audio_file(Path::new("/m/tema.aiff")));
+        assert!(is_supported_audio_file(Path::new("/m/tema.aif")));
+    }
+
+    #[test]
+    fn entran_los_formatos_sin_perdida_que_faltaban() {
+        // Monkey's Audio y WavPack son comunes en colecciones ripeadas, y
+        // `lofty` lee las etiquetas de los dos.
+        assert!(is_supported_audio_file(Path::new("/m/tema.ape")));
+        assert!(is_supported_audio_file(Path::new("/m/tema.wv")));
+    }
+
+    #[test]
+    fn el_audiolibro_es_el_mismo_contenedor_que_el_m4a() {
+        assert!(is_supported_audio_file(Path::new("/m/libro.m4b")));
+    }
+
+    #[test]
+    fn alac_no_es_una_extension() {
+        // ALAC es un códec, no un contenedor: un archivo ALAC se llama `.m4a`
+        // —que ya estaba— o `.caf`. La entrada no hacía nada salvo delatar que
+        // la lista se armó de memoria.
+        assert!(!is_supported_audio_file(Path::new("/m/tema.alac")));
+    }
+
+    #[test]
+    fn matroska_queda_afuera_a_proposito() {
+        // ffmpeg lo reproduce, pero `lofty` 0.21 no reconoce el formato, así que
+        // el archivo entraría al barrido sólo para contarse como fallido. Si un
+        // día `lofty` lo soporta, esto es lo que hay que dar vuelta.
+        assert!(!is_supported_audio_file(Path::new("/m/tema.mka")));
     }
 }
