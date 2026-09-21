@@ -40,10 +40,11 @@ use tauri::Manager;
 /// missing, which aborts startup: on a machine where nothing had created
 /// `~/.config/vasak` yet, the player panicked before opening a window.
 fn ensure_vasak_config_dir() {
-    let Some(base) = std::env::var_os("XDG_CONFIG_HOME")
-        .map(std::path::PathBuf::from)
-        .or_else(|| dirs::home_dir().map(|home| home.join(".config")))
-    else {
+    // Through `dirs` and filtered to an absolute path: any value was accepted,
+    // including the empty string and any relative path, which the spec says to
+    // ignore. A directory is created right below, so a relative base made it
+    // under the process's working directory instead of the user's config.
+    let Some(base) = dirs::config_dir().filter(|base| base.is_absolute()) else {
         return;
     };
 

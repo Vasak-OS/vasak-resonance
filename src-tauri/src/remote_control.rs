@@ -125,19 +125,14 @@ async fn run_remote_control_service(
         return Ok(());
     }
 
-    let token = config
-        .token
-        .filter(|value| !value.is_empty())
-        .map(Arc::new);
+    let token = config.token.filter(|value| !value.is_empty()).map(Arc::new);
 
     // Never expose the service beyond loopback without a token.
     let bind_ip = if config.bind_lan {
         if token.is_some() {
             "0.0.0.0"
         } else {
-            eprintln!(
-                "[resonance] bind_lan=true sin token; se fuerza loopback por seguridad"
-            );
+            eprintln!("[resonance] bind_lan=true sin token; se fuerza loopback por seguridad");
             "127.0.0.1"
         }
     } else {
@@ -151,7 +146,11 @@ async fn run_remote_control_service(
 
     eprintln!(
         "[resonance] control remoto escuchando en {address} (auth {})",
-        if token.is_some() { "requerida" } else { "no requerida" }
+        if token.is_some() {
+            "requerida"
+        } else {
+            "no requerida"
+        }
     );
 
     loop {
@@ -206,16 +205,16 @@ async fn handle_connection(
                         websocket
                             .send(Message::Text(json!({"ok": true}).to_string()))
                             .await
-                            .map_err(|error| format!("No se pudo responder por WebSocket: {error}"))?;
+                            .map_err(|error| {
+                                format!("No se pudo responder por WebSocket: {error}")
+                            })?;
                     } else {
                         // Reject and close: never process commands unauthenticated.
                         let _ = websocket
-                            .send(
-                                Message::Text(
-                                    json!({"ok": false, "error": "autenticación requerida"})
-                                        .to_string(),
-                                ),
-                            )
+                            .send(Message::Text(
+                                json!({"ok": false, "error": "autenticación requerida"})
+                                    .to_string(),
+                            ))
                             .await;
                         break;
                     }
