@@ -10,6 +10,19 @@ albums:
   queueAlbum: Queue album
   playingAlbum: "Playing album: {0}"
   queuedAlbum: "Album queued: {0}"
+artists:
+  eyebrow: Artists
+  title: Library by artist
+  searchPlaceholder: Artist name
+  empty: No artists in the library yet. Scan a music folder or play something to get started.
+  albumCountOne: "{0} album"
+  albumCountOther: "{0} albums"
+  playAll: Play all
+  queueAll: Queue all
+  open: "View {0}"
+  back: Back
+  playing: "Now playing: {0}"
+  queued: "Queued: {0}"
 audioDrop:
   hint: Drop an audio file to play it
 common:
@@ -145,6 +158,7 @@ sidebar:
   playlists: Playlists
   radios: Radios
   settings: Settings
+  artists: Artists
 sort:
   recent: Most recent first
   titleAsc: Title A-Z
