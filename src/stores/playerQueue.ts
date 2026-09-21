@@ -70,3 +70,72 @@ export const moveQueueEntry = (
 
 export const findQueueEntry = (entries: QueueEntry[], id: string): QueueEntry | undefined =>
 	entries.find((entry) => entry.id === id);
+
+/**
+ * Cómo se repite lo que suena.
+ *
+ * Los tres nombres se corresponden con los tres valores que define MPRIS
+ * —`None`, `Track`, `Playlist`—, que es lo que lee el panel del escritorio.
+ */
+export type Repeticion = 'ninguna' | 'uno' | 'todo';
+
+export const REPETICIONES: Repeticion[] = ['ninguna', 'todo', 'uno'];
+
+/** La siguiente en el ciclo del botón. */
+export const siguienteRepeticion = (actual: Repeticion): Repeticion =>
+	REPETICIONES[(REPETICIONES.indexOf(actual) + 1) % REPETICIONES.length];
+
+/**
+ * Qué suena después, y cómo queda la cola.
+ *
+ * Toda la regla de repetir y del aleatorio vive acá, como función pura, porque
+ * es lo único de esto que se puede equivocar en silencio.
+ *
+ * `azar` se recibe para poder probarla: la reproducción normal le pasa
+ * `Math.random`.
+ */
+export function elegirSiguiente(
+	entries: QueueEntry[],
+	actual: string | null,
+	repeticion: Repeticion,
+	aleatorio: boolean,
+	azar: () => number = Math.random
+): { siguiente: string | null; cola: QueueEntry[] } {
+	// Repetir una sola no toca la cola: lo que haya después sigue esperando su
+	// turno para cuando se apague.
+	if (repeticion === 'uno' && actual) {
+		return { siguiente: actual, cola: entries };
+	}
+
+	if (entries.length === 0) {
+		return { siguiente: null, cola: [] };
+	}
+
+	// Con el aleatorio, la elegida sale de cualquier lugar de la cola en vez de
+	// la primera. La cola **no se mezcla**: así apagar el aleatorio vuelve al
+	// orden de siempre sin tener que acordarse de cuál era.
+	const elegida = aleatorio ? Math.floor(clamp01(azar()) * entries.length) : 0;
+	const siguiente = entries[elegida];
+	const cola = entries.filter((_, indice) => indice !== elegida);
+
+	// Repetir todo: la que se va vuelve al final, y así la cola da vueltas.
+	if (repeticion === 'todo' && actual) {
+		cola.push(createQueueEntry(actual));
+	}
+
+	return { siguiente: siguiente.path, cola };
+}
+
+/**
+ * Deja el azar dentro de `[0, 1)`.
+ *
+ * `Math.random` ya cumple, pero esto recibe cualquier función: un 1 devuelto
+ * por un doble de prueba —o por una implementación distraída— elegiría un
+ * índice que no existe.
+ */
+const clamp01 = (valor: number): number => {
+	if (!Number.isFinite(valor) || valor < 0) {
+		return 0;
+	}
+	return valor >= 1 ? 0.999999 : valor;
+};
