@@ -46,8 +46,14 @@ export interface PlaybackProgressEvent {
 
 export interface ScanSummary {
 	scanned_files: number;
+	/** Temas que no estaban en la biblioteca. */
 	inserted_tracks: number;
-	skipped_duplicates: number;
+	/** Temas que ya estaban y cuyo archivo cambió desde la última vez. */
+	updated_tracks: number;
+	/** Temas que ya estaban y cuyo archivo no cambió: no se abrieron siquiera. */
+	unchanged_tracks: number;
+	/** Temas que estaban en la biblioteca y ya no en el disco. */
+	removed_tracks: number;
 	skipped_non_audio: number;
 	failed_files: number;
 }
