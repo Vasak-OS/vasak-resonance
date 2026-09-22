@@ -26,15 +26,30 @@ export interface FilaDeCuadricula<T> {
 export function enFilas<T>(
 	elementos: readonly T[],
 	columnas: number,
-	claveDe: (elemento: T) => string
+	claveDe: (elemento: T) => string | undefined | null
 ): FilaDeCuadricula<T>[] {
 	const porFila = Math.max(1, Math.floor(columnas));
 	const filas: FilaDeCuadricula<T>[] = [];
 
 	for (let desde = 0; desde < elementos.length; desde += porFila) {
 		const dela = elementos.slice(desde, desde + porFila);
-		filas.push({ clave: claveDe(dela[0]), elementos: dela });
+		filas.push({ clave: claveDeLaFila(claveDe(dela[0]), desde), elementos: dela });
 	}
 
 	return filas;
+}
+
+/**
+ * La clave de una fila, que **no puede faltar**.
+ *
+ * `DynamicScroller` tira una excepción —`Key is undefined on item`— si un
+ * elemento no trae la clave, y Vue se la traga: el componente no dibuja nada y
+ * la lista entera queda en blanco, con los datos cargados y sin un solo error a
+ * la vista. Un elemento con el dato faltante no puede costar toda la lista.
+ *
+ * Cuando el primero de la fila no tiene clave se usa su posición, que es única
+ * entre filas y con un prefijo que no puede chocar con una clave de verdad.
+ */
+export function claveDeLaFila(propia: string | undefined | null, desde: number): string {
+	return typeof propia === 'string' && propia !== '' ? propia : `fila-sin-clave-${desde}`;
 }

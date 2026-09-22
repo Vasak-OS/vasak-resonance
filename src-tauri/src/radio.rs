@@ -59,7 +59,14 @@ const LARGO_CODEC: usize = 32;
 /// Una emisora, tal como la devuelve Radio Browser.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RadioStation {
-    #[serde(rename = "stationuuid")]
+    /// Sólo al **leer** del directorio, que lo llama `stationuuid`.
+    ///
+    /// Con `rename` a secas el renombre vale para los dos lados, así que la
+    /// ventana recibía `stationuuid` mientras su tipo declaraba `uuid`: el campo
+    /// llegaba siempre vacío y nadie se enteraba. De ahí salían el icono roto de
+    /// una emisora escondiendo el de todas —el conjunto se indexa por uuid— y el
+    /// indicador de carga sin saber de cuál era.
+    #[serde(rename(deserialize = "stationuuid"))]
     pub uuid: String,
     pub name: String,
     pub url: String,
@@ -314,6 +321,37 @@ async fn pedir_estaciones(url: &str) -> Result<Vec<RadioStation>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// El nombre del campo **en los dos sentidos**, que no es el mismo.
+    ///
+    /// El directorio lo llama `stationuuid` y la ventana lo espera como `uuid`.
+    /// Con un `rename` a secas el renombre valía para los dos lados y la ventana
+    /// recibía un campo que su tipo no declara: `station.uuid` era `undefined`
+    /// en las cincuenta y tres emisoras, sin un solo error. Lo que se veía era
+    /// otra cosa —un icono roto escondía el de todas, porque el conjunto de
+    /// «este icono no carga» se indexa por uuid— y costaba llegar hasta acá.
+    #[test]
+    fn el_uuid_entra_como_stationuuid_y_sale_como_uuid() {
+        let del_directorio = r#"{
+            "stationuuid": "9617a958-0601-11e8-ae97-52543be04c81",
+            "name": "Una emisora",
+            "url": "https://ejemplo/stream"
+        }"#;
+
+        let leida: RadioStation = serde_json::from_str(del_directorio).expect("se lee");
+        assert_eq!(leida.uuid, "9617a958-0601-11e8-ae97-52543be04c81");
+
+        let hacia_la_ventana = serde_json::to_value(&leida).expect("se serializa");
+        assert_eq!(
+            hacia_la_ventana.get("uuid").and_then(|v| v.as_str()),
+            Some("9617a958-0601-11e8-ae97-52543be04c81"),
+            "la ventana lo espera como `uuid`"
+        );
+        assert!(
+            hacia_la_ventana.get("stationuuid").is_none(),
+            "y no como `stationuuid`, que es el nombre del directorio"
+        );
+    }
 
     fn estacion() -> RadioStation {
         RadioStation {
