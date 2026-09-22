@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use tauri::{AppHandle, Emitter, Listener, Manager};
+use zbus::connection::Builder as ConstructorDeConexion;
 use zbus::fdo;
 use zbus::zvariant::{OwnedValue, Value};
-use zbus::ConnectionBuilder;
 
 use crate::audio_manager::AudioState;
 
@@ -27,7 +27,7 @@ async fn run_mpris_service(app_handle: AppHandle, audio_state: AudioState) -> Re
         audio_state: audio_state.clone(),
     };
 
-    let connection = ConnectionBuilder::session()
+    let connection = ConstructorDeConexion::session()
         .map_err(|e| format!("No se pudo abrir bus de sesión: {e}"))?
         .name(MPRIS_BUS_NAME)
         .map_err(|e| format!("No se pudo registrar nombre MPRIS: {e}"))?
@@ -46,7 +46,7 @@ async fn run_mpris_service(app_handle: AppHandle, audio_state: AudioState) -> Re
         .interface::<_, MprisPlayerInterface>(MPRIS_OBJECT_PATH)
         .await
         .map_err(|e| format!("No se pudo obtener la interfaz MPRIS: {e}"))?;
-    let ctxt = iface_ref.signal_context().clone();
+    let ctxt = iface_ref.signal_emitter().clone();
 
     // The audio loop emits `audio-playback-progress` every 500ms and on every
     // state change. Bridge it to an async channel and only signal the
@@ -208,7 +208,7 @@ impl MprisPlayerInterface {
     async fn seek(
         &self,
         offset: i64,
-        #[zbus(signal_context)] ctxt: zbus::SignalContext<'_>,
+        #[zbus(signal_emitter)] ctxt: zbus::object_server::SignalEmitter<'_>,
     ) -> fdo::Result<()> {
         let snapshot = self
             .audio_state
@@ -241,7 +241,7 @@ impl MprisPlayerInterface {
         &self,
         track_id: zbus::zvariant::OwnedObjectPath,
         position: i64,
-        #[zbus(signal_context)] ctxt: zbus::SignalContext<'_>,
+        #[zbus(signal_emitter)] ctxt: zbus::object_server::SignalEmitter<'_>,
     ) -> fdo::Result<()> {
         // Only one track exists at a time here, so the id is not used to look
         // anything up — but it is part of the signature clients call.
@@ -273,7 +273,10 @@ impl MprisPlayerInterface {
     /// Announces a jump. Clients poll `Position` while playing and rely on this
     /// to notice anything that is not the clock simply advancing.
     #[zbus(signal)]
-    async fn seeked(ctxt: &zbus::SignalContext<'_>, position: i64) -> zbus::Result<()>;
+    async fn seeked(
+        ctxt: &zbus::object_server::SignalEmitter<'_>,
+        position: i64,
+    ) -> zbus::Result<()>;
 
     #[zbus(property)]
     fn playback_status(&self) -> fdo::Result<String> {
