@@ -79,8 +79,23 @@ export function useConfigStore() {
 	return { config: {}, loadConfig: async () => {} };
 }
 
-export async function listen(_nombre: string, _manejador: () => unknown) {
-	return () => {};
+/** Los oyentes registrados por evento, para poder dispararlos desde una prueba. */
+const listeners = new Map<string, Set<(evento: { payload: unknown }) => unknown>>();
+
+export async function listen(nombre: string, manejador: (evento: { payload: unknown }) => unknown) {
+	const suyos = listeners.get(nombre) ?? new Set();
+	suyos.add(manejador);
+	listeners.set(nombre, suyos);
+	return () => {
+		suyos.delete(manejador);
+	};
+}
+
+/** Dispara un evento del backend y espera a que lo atiendan. */
+export async function emit(nombre: string, payload: unknown = null) {
+	for (const manejador of [...(listeners.get(nombre) ?? [])]) {
+		await manejador({ payload });
+	}
 }
 
 /**
@@ -91,12 +106,26 @@ export async function listen(_nombre: string, _manejador: () => unknown) {
  * por nombre, una prueba que quiera comprobar que el botón de silencio pide el
  * altavoz mudo y no el de volumen alto necesita ver el nombre en el `src`.
  */
+/**
+ * Lo que el tema contesta para un nombre, cuando la prueba lo dice.
+ *
+ * Sin esto el doble contesta siempre lo mismo y un cambio de tema no se puede
+ * comprobar: la fuente sale igual antes y después, así que la prueba pasaría
+ * con el componente desconectado del tema.
+ */
+const themeIcons = new Map<string, string>();
+
+/** Pone —o cambia— lo que el tema devuelve para un nombre. */
+export function setThemeIcon(nombre: string, fuente: string) {
+	themeIcons.set(nombre, fuente);
+}
+
 export async function getIconSource(nombre: string) {
-	return `icono:${nombre}`;
+	return themeIcons.get(nombre) ?? `icono:${nombre}`;
 }
 
 export async function getSymbolSource(nombre: string) {
-	return `simbolo:${nombre}`;
+	return themeIcons.get(nombre) ?? `simbolo:${nombre}`;
 }
 
 export function olvidarTodo() {
@@ -105,4 +134,6 @@ export function olvidarTodo() {
 	respuestas.clear();
 	respuestas.set('plugin:store|get', [undefined, false]);
 	rotos.clear();
+	listeners.clear();
+	themeIcons.clear();
 }
