@@ -52,6 +52,37 @@ describe('cuántas columnas dibuja la cuadrícula', () => {
 		}
 	});
 
+	/**
+	 * Manda el corte de mayor `desde`, no el de más columnas.
+	 *
+	 * Con los cortes que usa la aplicación los dos criterios dan lo mismo —a más
+	 * ancho, más columnas—, así que esto sólo se ve con una tabla que baje. Es
+	 * la regla de una consulta de medios: la última que entra manda.
+	 */
+	test('con una tabla que baja, manda el corte de más arriba', () => {
+		const queBaja: Corte[] = [
+			{ desde: 640, columnas: 3 },
+			{ desde: 1280, columnas: 2 },
+		];
+
+		expect(columnasPara(639, queBaja)).toBe(1);
+		expect(columnasPara(640, queBaja)).toBe(3);
+		expect(columnasPara(1279, queBaja)).toBe(3);
+		expect(columnasPara(1280, queBaja)).toBe(2);
+		expect(columnasPara(4000, queBaja)).toBe(2);
+	});
+
+	/** Y tampoco cambia si vienen desordenados. */
+	test('la tabla que baja, desordenada, da lo mismo', () => {
+		const queBaja: Corte[] = [
+			{ desde: 1280, columnas: 2 },
+			{ desde: 640, columnas: 3 },
+		];
+
+		expect(columnasPara(1280, queBaja)).toBe(2);
+		expect(columnasPara(700, queBaja)).toBe(3);
+	});
+
 	test('sin cortes, siempre una', () => {
 		expect(columnasPara(5000, [])).toBe(1);
 	});

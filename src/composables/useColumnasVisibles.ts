@@ -18,14 +18,26 @@ export interface Corte {
 /**
  * Las columnas que corresponden a un ancho.
  *
- * Gana el corte más alto que el ancho alcance, así que el orden en que vengan
- * no importa. Sin ningún corte alcanzado, una columna: es lo que hace
- * `grid-cols-1`.
+ * Gana el corte de mayor `desde` entre los que el ancho alcanza, que es como se
+ * comporta una consulta de medios: la última regla que entra manda. El orden en
+ * que vengan los cortes no importa. Sin ninguno alcanzado, una columna, que es
+ * lo que hace `grid-cols-1`.
+ *
+ * **No** gana el que tenga más columnas. Con los cortes de acá los dos criterios
+ * dan lo mismo —a más ancho, más columnas—, pero no es lo que dice la regla: con
+ * un corte de 3 columnas a los 640 y uno de 2 a los 1280, a 1280 manda el
+ * segundo. Elegir por cantidad devolvería 3 y la cuadrícula dibujaría una
+ * columna de más sobre filas de dos.
  */
 export function columnasPara(ancho: number, cortes: Corte[]): number {
-	return cortes
+	const manda = cortes
 		.filter((corte) => ancho >= corte.desde)
-		.reduce((mayor, corte) => Math.max(mayor, corte.columnas), 1);
+		.reduce<Corte | null>(
+			(elegido, corte) => (elegido === null || corte.desde > elegido.desde ? corte : elegido),
+			null
+		);
+
+	return manda?.columnas ?? 1;
 }
 
 /**
