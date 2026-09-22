@@ -26,3 +26,9 @@ jobs:
     # el rango no se mueve solo y la receta instala con él.
     with:
       bibliotecas_cortan: true
+      # Y el candado también. La línea de arriba decía «ya está al día» siendo
+      # falso: el rango pedía `^1.2.0` —que admite la 1.4.0— y `bun.lock` se
+      # había quedado en la 1.2.0, así que se empaquetaba ésa con el CI en
+      # verde. Ahora que la comprobación existe (Vasak-OS/.github#7), se
+      # enciende acá.
+      candado_corta: true
