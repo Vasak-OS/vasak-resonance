@@ -1385,7 +1385,12 @@ fn publish_snapshot(
     // El registro de lo escuchado se lleva acá y no en la ventana: esto es por
     // dónde pasa la reproducción de verdad, y así lo que se anota no depende de
     // qué vista esté abierta. Casi todos los tics son dos comparaciones.
-    crate::historial::anotar_si_corresponde(&snapshot);
+    let novedades = crate::historial::anotar_si_corresponde(&snapshot);
+
+    // Y lo mismo afuera, si alguien lo configuró. Va después y con lo que el
+    // historial ya decidió: la regla de cuándo cuenta una escucha es una sola,
+    // y resulta que la local y la de Last.fm son la misma.
+    crate::lastfm::contar(&novedades, &snapshot);
 
     // Strip the metadata from the twice-a-second tick unless the track changed.
     //

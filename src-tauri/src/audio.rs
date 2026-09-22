@@ -137,6 +137,16 @@ fn tapa_de_la_carpeta(audio: &Path, cache: &mut TapaPorCarpeta) -> Option<TapaDe
     leida
 }
 
+/// Lo que se guarda cuando la etiqueta no lo dice.
+///
+/// Son constantes y no literales sueltos porque hay quien tiene que
+/// **reconocerlos**: el scrobbling no manda a Last.fm un tema cuyo artista es
+/// esto, y un perfil lleno de «Unknown Artist» es peor que un hueco. Dos copias
+/// a mano de la misma cadena son dos copias que se separan.
+pub const TITULO_DESCONOCIDO: &str = "Unknown Title";
+pub const ARTISTA_DESCONOCIDO: &str = "Unknown Artist";
+pub const ALBUM_DESCONOCIDO: &str = "Unknown Album";
+
 /// Con qué reglas se leyeron las etiquetas de la biblioteca.
 ///
 /// **Se sube cuando esta función empieza a producir algo distinto** de lo que
@@ -163,7 +173,7 @@ pub fn extract_track_from_file(path: &Path) -> Result<Track, String> {
     let fallback_name = path
         .file_stem()
         .and_then(|s| s.to_str())
-        .unwrap_or("Unknown Title")
+        .unwrap_or(TITULO_DESCONOCIDO)
         .to_string();
 
     let title = primary_tag
@@ -172,11 +182,11 @@ pub fn extract_track_from_file(path: &Path) -> Result<Track, String> {
 
     let artist = primary_tag
         .and_then(|tag| tag.artist().map(|v| v.to_string()))
-        .unwrap_or_else(|| "Unknown Artist".to_string());
+        .unwrap_or_else(|| ARTISTA_DESCONOCIDO.to_string());
 
     let album = primary_tag
         .and_then(|tag| tag.album().map(|v| v.to_string()))
-        .unwrap_or_else(|| "Unknown Album".to_string());
+        .unwrap_or_else(|| ALBUM_DESCONOCIDO.to_string());
 
     // El artista del álbum: lo que mantiene junta una recopilación. `lofty` lo
     // expone como texto libre; vacío es «no lo dice», y entonces el del tema
@@ -285,7 +295,7 @@ pub fn extract_now_playing_metadata_with_cover_cache(
     let fallback_name = path
         .file_stem()
         .and_then(|s| s.to_str())
-        .unwrap_or("Unknown Title")
+        .unwrap_or(TITULO_DESCONOCIDO)
         .to_string();
 
     let title = primary_tag
@@ -294,11 +304,11 @@ pub fn extract_now_playing_metadata_with_cover_cache(
 
     let artist = primary_tag
         .and_then(|tag| tag.artist().map(|v| v.to_string()))
-        .unwrap_or_else(|| "Unknown Artist".to_string());
+        .unwrap_or_else(|| ARTISTA_DESCONOCIDO.to_string());
 
     let album = primary_tag
         .and_then(|tag| tag.album().map(|v| v.to_string()))
-        .unwrap_or_else(|| "Unknown Album".to_string());
+        .unwrap_or_else(|| ALBUM_DESCONOCIDO.to_string());
 
     let album_artist = primary_tag
         .and_then(|tag| tag.get_string(&ItemKey::AlbumArtist))

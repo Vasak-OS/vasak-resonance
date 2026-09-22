@@ -1,6 +1,6 @@
 [package]
 name = "vasak-resonance"
-version = "0.7.4"
+version = "0.7.5"
 description = "A Vasak Application (template)"
 authors = ["Vasak Group", "Joaquin (Pato) Decima"]
 edition = "2021"
@@ -42,6 +42,10 @@ tokio = { version = "1", features = ["net", "macros", "rt-multi-thread", "sync"]
 tokio-tungstenite = "0.24"
 urlencoding = "2"
 discord-rich-presence = "1.1"
+# El único md5 de acá adentro, y no es de seguridad: Last.fm firma cada llamada
+# con el md5 de sus propios parámetros y es lo que la API pide. Sale de
+# RustCrypto, que ya está en el árbol por `digest`.
+md-5 = "0.11"
 tauri-plugin-vsk-journal = "2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
