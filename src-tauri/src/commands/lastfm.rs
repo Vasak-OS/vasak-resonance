@@ -27,9 +27,7 @@ pub async fn lastfm_status() -> Estado {
 /// apruebe en esa página, cambiarlo por una sesión falla.
 #[tauri::command]
 pub async fn lastfm_start_authorization() -> Result<String, String> {
-    let (token, direccion) = en_otro_hilo(lastfm::pedir_autorizacion)
-        .await
-        .map_err(|error| error)??;
+    let (token, direccion) = en_otro_hilo(lastfm::pedir_autorizacion).await??;
 
     abrir_en_el_navegador(&direccion)?;
 
