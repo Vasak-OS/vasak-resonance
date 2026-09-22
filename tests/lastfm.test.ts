@@ -111,6 +111,30 @@ describe('la sección de ajustes', () => {
 	});
 
 	/**
+	 * Dos clics seguidos son un pedido, no dos.
+	 *
+	 * Sin la guarda son dos pestañas del navegador y dos tokens, y el que vuelve
+	 * segundo pisa al primero: la persona autoriza uno y se confirma el otro,
+	 * que nadie autorizó.
+	 */
+	test('dos clics en vincular piden una sola autorización', async () => {
+		const vista = await conEstado({ configurado: true, usuario: null });
+		contestar('lastfm_start_authorization', 'token-1');
+		invocaciones.length = 0;
+
+		const boton = vista
+			.findAll('button')
+			.find((candidato) => candidato.text().includes('settings.lastfmLink'));
+		expect(boton, 'el botón de vincular tiene que estar').toBeDefined();
+
+		await boton?.trigger('click');
+		await boton?.trigger('click');
+		await new Promise((listo) => setTimeout(listo, 10));
+
+		expect(invocaciones.filter((c) => c === 'lastfm_start_authorization')).toHaveLength(1);
+	});
+
+	/**
 	 * El nombre entra por `.replace('{0}', …)` y no por `t()`, que en este
 	 * taller no interpola. En las pruebas `t()` devuelve la clave, así que el
 	 * relleno se comprueba sobre el texto de verdad.

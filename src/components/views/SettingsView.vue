@@ -18,6 +18,16 @@ const lastfm = ref<EstadoDeLastfm>({ configurado: false, usuario: null });
 const tokenPendiente = ref<string | null>(null);
 const errorDeLastfm = ref<string | null>(null);
 
+/**
+ * Si hay una operación de Last.fm en curso.
+ *
+ * Sin esto, dos clics seguidos en «Vincular» son dos pedidos y dos pestañas del
+ * navegador, y el token que vuelve segundo pisa al primero: la persona autoriza
+ * uno y se confirma el otro, que nadie autorizó. Se pone antes del primer
+ * `await`, así el segundo clic del mismo tic ya lo ve puesto.
+ */
+const lastfmOcupado = ref(false);
+
 const pasoLastfm = computed(() => pasoDeLastfm(lastfm.value, tokenPendiente.value));
 
 const vinculadoComo = computed(() =>
@@ -34,20 +44,28 @@ async function recargarLastfm() {
 }
 
 async function onVincular() {
+	if (lastfmOcupado.value) {
+		return;
+	}
+
+	lastfmOcupado.value = true;
 	errorDeLastfm.value = null;
 	try {
 		tokenPendiente.value = await empezarAutorizacion();
 	} catch (error) {
 		errorDeLastfm.value = String(error);
+	} finally {
+		lastfmOcupado.value = false;
 	}
 }
 
 async function onConfirmar() {
 	const token = tokenPendiente.value;
-	if (!token) {
+	if (!token || lastfmOcupado.value) {
 		return;
 	}
 
+	lastfmOcupado.value = true;
 	errorDeLastfm.value = null;
 	try {
 		lastfm.value = await terminarAutorizacion(token);
@@ -56,6 +74,8 @@ async function onConfirmar() {
 		tokenPendiente.value = null;
 	} catch (error) {
 		errorDeLastfm.value = String(error);
+	} finally {
+		lastfmOcupado.value = false;
 	}
 }
 
@@ -65,11 +85,18 @@ function onCancelar() {
 }
 
 async function onDesvincular() {
+	if (lastfmOcupado.value) {
+		return;
+	}
+
+	lastfmOcupado.value = true;
 	errorDeLastfm.value = null;
 	try {
 		lastfm.value = await desvincularLastfm();
 	} catch (error) {
 		errorDeLastfm.value = String(error);
+	} finally {
+		lastfmOcupado.value = false;
 	}
 }
 
@@ -168,6 +195,7 @@ const onSeconds = (event: Event) => {
 				<button
 					type="button"
 					class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-1.5 text-xs font-medium text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
+					:disabled="lastfmOcupado"
 					@click="onDesvincular"
 				>
 					{{ t('settings.lastfmUnlink') }}
@@ -187,6 +215,7 @@ const onSeconds = (event: Event) => {
 					<button
 						type="button"
 						class="rounded-corner border border-primary/40 bg-primary/15 px-3 py-1.5 text-xs font-medium text-tx-main transition-colors duration-200 hover:bg-primary/25"
+						:disabled="lastfmOcupado"
 						@click="onConfirmar"
 					>
 						{{ t('settings.lastfmConfirm') }}
@@ -198,6 +227,7 @@ const onSeconds = (event: Event) => {
 				<button
 					type="button"
 					class="rounded-corner border border-primary/40 bg-primary/15 px-3 py-1.5 text-xs font-medium text-tx-main transition-colors duration-200 hover:bg-primary/25"
+					:disabled="lastfmOcupado"
 					@click="onVincular"
 				>
 					{{ t('settings.lastfmLink') }}

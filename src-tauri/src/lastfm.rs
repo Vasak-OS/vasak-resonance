@@ -233,9 +233,15 @@ fn sesion_guardada() -> Option<Sesion> {
     })
 }
 
+/// Las dos filas o ninguna.
+///
+/// En una transacción porque son una sola cosa: con la clave escrita y el
+/// nombre no, queda una sesión a medias en la base. Leerla no rompe —hace falta
+/// que las dos tengan algo—, pero al desvincular dejaría la clave de sesión
+/// borrada y el nombre de usuario puesto, que es basura que nadie va a limpiar.
 fn guardar_sesion(sesion: Option<&Sesion>) -> Result<(), String> {
     let db_path = crate::db::get_database_path()?;
-    let conn = crate::db::open_database(&db_path)?;
+    let mut conn = crate::db::open_database(&db_path)?;
 
     let (clave, usuario) = match sesion {
         Some(sesion) => (sesion.clave.as_str(), sesion.usuario.as_str()),
@@ -244,8 +250,16 @@ fn guardar_sesion(sesion: Option<&Sesion>) -> Result<(), String> {
         None => ("", ""),
     };
 
-    crate::db::set_setting(&conn, CLAVE_DE_SESION, clave)?;
-    crate::db::set_setting(&conn, CLAVE_DE_USUARIO, usuario)
+    let transaccion = conn
+        .transaction()
+        .map_err(|error| format!("No se pudo abrir la transacción: {error}"))?;
+
+    crate::db::set_setting(&transaccion, CLAVE_DE_SESION, clave)?;
+    crate::db::set_setting(&transaccion, CLAVE_DE_USUARIO, usuario)?;
+
+    transaccion
+        .commit()
+        .map_err(|error| format!("No se pudo guardar la sesión de Last.fm: {error}"))
 }
 
 /// El que habla con la API.
@@ -407,6 +421,30 @@ pub fn momento_de_inicio(ahora: i64, posicion_segundos: u64) -> i64 {
     ahora.saturating_sub(posicion_segundos as i64).max(0)
 }
 
+/// Cuándo empezó la cursada que está sonando.
+///
+/// Se calcula al estrenar el tema y se guarda hasta que el tema cambie.
+static COMENZO_EN: Mutex<Option<i64>> = Mutex::new(None);
+
+/// El momento que va en el scrobble: el guardado, o uno nuevo si esto estrena.
+///
+/// **No se recalcula al final.** `position_seconds` es la posición de
+/// reproducción y no avanza durante la pausa: un tema que estuvo veinte minutos
+/// en pausa llega al umbral con `ahora - posicion` veinte minutos más tarde de
+/// cuando arrancó de verdad, y el historial de allá queda ordenado por algo que
+/// no pasó.
+pub fn momento_de_la_cursada(
+    guardado: Option<i64>,
+    estrena: bool,
+    ahora: i64,
+    posicion_segundos: u64,
+) -> i64 {
+    match guardado {
+        Some(momento) if !estrena => momento,
+        _ => momento_de_inicio(ahora, posicion_segundos),
+    }
+}
+
 enum Mensaje {
     Suena(Box<Escucha>),
     Scrobble(Box<Escucha>),
@@ -518,12 +556,27 @@ pub fn contar(
         .map(|desde| desde.as_secs() as i64)
         .unwrap_or_default();
 
+    let momento = {
+        let Ok(mut guardado) = COMENZO_EN.lock() else {
+            return;
+        };
+
+        let momento = momento_de_la_cursada(
+            *guardado,
+            novedades.empezo,
+            ahora,
+            snapshot.position_seconds,
+        );
+        *guardado = Some(momento);
+        momento
+    };
+
     let Some(escucha) = escucha_publicable(
         &sonando.artist,
         &sonando.title,
         &sonando.album,
         sonando.duration_seconds,
-        momento_de_inicio(ahora, snapshot.position_seconds),
+        momento,
     ) else {
         return;
     };
@@ -572,8 +625,14 @@ pub fn confirmar(token: &str) -> Result<Estado, String> {
 /// Desvincula la cuenta. No le avisa a Last.fm: la sesión no vence y lo único
 /// que hay que hacer es dejar de usarla.
 pub fn desvincular() -> Result<Estado, String> {
-    guardar_sesion(None)?;
+    // Al hilo **primero**, y pase lo que pase con la base. Si se avisara
+    // después del `?`, un disco lleno dejaría el scrobbling andando: alguien
+    // pidió desvincular, la escritura falló, y sus escuchas seguirían saliendo
+    // hasta cerrar la aplicación. Dejar de mandar es siempre la dirección
+    // segura; empezar a mandar no lo es, que es por qué `confirmar` hace lo
+    // contrario y sólo avisa si la sesión quedó guardada.
     enviar(Mensaje::Sesion(None));
+    guardar_sesion(None)?;
 
     Ok(estado())
 }
@@ -711,6 +770,41 @@ mod pruebas {
     fn el_momento_es_el_del_principio_del_tema() {
         assert_eq!(momento_de_inicio(1_000, 120), 880);
         assert_eq!(momento_de_inicio(1_000, 0), 1_000);
+    }
+
+    /// Una pausa larga no corre el momento de arranque.
+    ///
+    /// Es lo que pasa en la vida real: alguien pone un tema, lo pausa, vuelve
+    /// media hora después y lo termina. La posición no avanzó durante la pausa,
+    /// así que recalcular al final pondría la escucha media hora más tarde de
+    /// cuando arrancó.
+    #[test]
+    fn una_pausa_larga_no_corre_el_momento() {
+        // Estrena a las 1000, desde el principio.
+        let al_estrenar = momento_de_la_cursada(None, true, 1_000, 0);
+        assert_eq!(al_estrenar, 1_000);
+
+        // Media hora de pausa y recién ahí cruza el umbral, en el segundo 90.
+        let al_anotar = momento_de_la_cursada(Some(al_estrenar), false, 2_890, 90);
+
+        assert_eq!(al_anotar, 1_000, "sigue siendo cuando arrancó");
+        assert_ne!(
+            al_anotar, 2_800,
+            "y no cuando habría dicho la cuenta de antes"
+        );
+    }
+
+    /// Y estrenar otro tema sí recalcula: lo guardado es de la cursada anterior.
+    #[test]
+    fn estrenar_otro_tema_calcula_uno_nuevo() {
+        assert_eq!(momento_de_la_cursada(Some(1_000), true, 5_000, 0), 5_000);
+    }
+
+    /// Sin nada guardado no queda más que calcularlo, que es lo que pasaba
+    /// siempre antes.
+    #[test]
+    fn sin_nada_guardado_se_calcula() {
+        assert_eq!(momento_de_la_cursada(None, false, 1_000, 120), 880);
     }
 
     /// Un reloj que todavía no arrancó no puede dar un momento negativo, que
