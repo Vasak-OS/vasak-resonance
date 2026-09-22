@@ -19,7 +19,7 @@ fn find_socket() -> Option<PathBuf> {
         }
     }
 
-    if let Some(display) = env::var("WAYLAND_DISPLAY").ok() {
+    if let Ok(display) = env::var("WAYLAND_DISPLAY") {
         let p = runtime_dir.join(format!("wayfire-{}-.socket", display));
         if p.exists() {
             return Some(p);

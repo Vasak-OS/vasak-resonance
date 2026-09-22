@@ -538,7 +538,7 @@ mod tests {
         for _ in 0..8 {
             // MPEG-1 Layer III, 128 kbps, 44,1 kHz: 417 bytes por trama.
             bytes.extend_from_slice(&[0xFF, 0xFB, 0x90, 0x00]);
-            bytes.extend(std::iter::repeat(0u8).take(413));
+            bytes.extend(std::iter::repeat_n(0u8, 413));
         }
         fs::write(&audio, &bytes).expect("no se pudo escribir el audio");
 
