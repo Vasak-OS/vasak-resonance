@@ -47,9 +47,13 @@ export function enFilas<T>(
  * la lista entera queda en blanco, con los datos cargados y sin un solo error a
  * la vista. Un elemento con el dato faltante no puede costar toda la lista.
  *
- * Cuando el primero de la fila no tiene clave se usa su posición, que es única
- * entre filas y con un prefijo que no puede chocar con una clave de verdad.
+ * Cuando el primero de la fila no tiene clave se usa su posición. **Las dos
+ * salidas van marcadas**, y no sólo la de respaldo: si el respaldo fuera lo
+ * único con marca, un elemento cuya clave de verdad fuera justo esa cadena
+ * chocaría con la fila sin clave de esa posición, y dos filas con la misma
+ * clave son otra vez una lista mal dibujada. Marcando las dos no hay forma de
+ * que se crucen.
  */
 export function claveDeLaFila(propia: string | undefined | null, desde: number): string {
-	return typeof propia === 'string' && propia !== '' ? propia : `fila-sin-clave-${desde}`;
+	return typeof propia === 'string' && propia !== '' ? `clave:${propia}` : `posicion:${desde}`;
 }
