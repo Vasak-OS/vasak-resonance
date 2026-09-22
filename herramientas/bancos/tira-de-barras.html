@@ -122,31 +122,27 @@ const conTransform = (barras, momento) => {
 const quieto = () => {};
 
 async function medir() {
-  const resultado = { motor: navigator.userAgent, variantes: {} };
-
-  // El orden se alterna entre pasadas para que un bajón de la máquina no le
-  // caiga siempre a la misma variante.
-  // La carga real es 110 barras. Las de 330 y 1100 no son realistas: están para
-  // ver **si el mecanismo se separa alguna vez**. Si ni a diez veces la carga
-  // `height` se distingue de `transform`, entonces cambiar uno por otro no
-  // compra nada en este motor, y a 110 mucho menos.
-  const pasadas = [
-    ['110 barras, height', 110, conAltura],
-    ['110 barras, transform', 110, conTransform],
-    ['110 barras, sin tocar nada', 110, quieto],
-    ['55 barras, height', 55, conAltura],
-    ['330 barras, height', 330, conAltura],
-    ['330 barras, transform', 330, conTransform],
-    ['1100 barras, height', 1100, conAltura],
-    ['1100 barras, transform', 1100, conTransform],
-    ['1100 barras, sin tocar nada', 1100, quieto],
-    ['110 barras, transform', 110, conTransform],
-    ['110 barras, height', 110, conAltura],
-  ];
+  const resultado = { motor: navigator.userAgent, pasadas: [] };
 
   rellenar(40);
 
-  for (const [nombre, cantidad, escribir] of pasadas) {
+  /**
+   * Las dos variantes de cada tamaño, **alternando cuál va primero** entre
+   * rondas.
+   *
+   * Con un orden fijo, lo que le pase a la máquina a lo largo de la corrida
+   * —que se caliente, que otra cosa le pida el procesador— le cae siempre a la
+   * misma variante y se confunde con una diferencia entre mecanismos. Cada
+   * medición se anota además con el turno en que corrió, así se puede mirar si
+   * el orden explica algo.
+   */
+  const tamanos = [110, 330, 1100];
+  const variantes = { height: conAltura, transform: conTransform };
+  const RONDAS = 4;
+
+  let turno = 0;
+
+  async function pasada(nombre, cantidad, escribir) {
     const barras = armar(cantidad);
     if (escribir === conTransform) {
       for (const barra of barras) {
@@ -155,8 +151,23 @@ async function medir() {
       }
     }
     const medida = await correr(barras, escribir);
-    (resultado.variantes[nombre] ||= []).push(medida);
+    resultado.pasadas.push({ variante: nombre, barras: cantidad, turno: turno++, ...medida });
   }
+
+  for (let ronda = 0; ronda < RONDAS; ronda++) {
+    const orden = ronda % 2 === 0 ? ['height', 'transform'] : ['transform', 'height'];
+    for (const cantidad of tamanos) {
+      for (const nombre of orden) {
+        await pasada(nombre, cantidad, variantes[nombre]);
+      }
+    }
+  }
+
+  // Los testigos: la misma página sin escribir nada, y la tira a la mitad.
+  await pasada('sin tocar nada', 110, quieto);
+  await pasada('sin tocar nada', 1100, quieto);
+  await pasada('height', 55, conAltura);
+  await pasada('transform', 55, conTransform);
 
   window.webkit.messageHandlers.resultado.postMessage(JSON.stringify(resultado));
 }

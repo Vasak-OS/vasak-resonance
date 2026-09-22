@@ -52,11 +52,16 @@ def main() -> int:
     gestor.connect("script-message-received::resultado", recibir)
     gestor.register_script_message_handler("resultado")
 
+    # Cerrar la ventana a mano tiene que terminar acá y no dentro de diez
+    # minutos: sin esto, la medición interrumpida se queda esperando el tope.
+    ventana.connect("destroy", lambda _ventana: Gtk.main_quit())
+
     vista.load_uri(pagina.as_uri())
     ventana.show_all()
 
-    # Un tope, para que una página rota no cuelgue la sesión.
-    GLib.timeout_add_seconds(180, Gtk.main_quit)
+    # Un tope, para que una página rota no cuelgue la sesión. Da para los bancos
+    # largos: el de la tira son diecisiete pasadas de unos cuatro segundos.
+    GLib.timeout_add_seconds(600, Gtk.main_quit)
     Gtk.main()
 
     if "datos" not in salida:

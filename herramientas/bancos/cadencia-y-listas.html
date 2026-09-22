@@ -123,13 +123,26 @@ function armarLista(filas) {
   return { armado_ms: +(performance.now() - arranque).toFixed(1), alto_px: alto };
 }
 
-/** Desplaza a un cuadro por vez y mide los intervalos. */
+/**
+ * Desplaza a un cuadro por vez y mide los intervalos.
+ *
+ * Rebota al llegar a los extremos. Sin eso, una lista corta toca el fondo a los
+ * setenta y pico de cuadros y los demás miden una escritura que **no desplaza
+ * nada**: la lista de 60 filas salía comparando contra sí misma quieta.
+ *
+ * El tope se calcula una vez y la posición se lleva acá. Leer `scrollTop` en
+ * cada cuadro obligaría a rehacer la caja antes de tiempo, que es parte de lo
+ * que se está midiendo.
+ */
 function desplazar() {
   return new Promise((listo) => {
     const lista = document.getElementById('lista');
     const deltas = [];
+    const tope = Math.max(0, lista.scrollHeight - lista.clientHeight);
     let anterior = null;
     let n = 0;
+    let posicion = 0;
+    let paso = 40;
     lista.scrollTop = 0;
 
     function cuadro(ahora) {
@@ -137,7 +150,14 @@ function desplazar() {
       anterior = ahora;
       n++;
       if (n > 220) { listo(estadisticas(deltas)); return; }
-      lista.scrollTop += 40;
+
+      posicion += paso;
+      if (posicion >= tope || posicion <= 0) {
+        posicion = Math.max(0, Math.min(tope, posicion));
+        paso = -paso;
+      }
+      lista.scrollTop = posicion;
+
       requestAnimationFrame(cuadro);
     }
 
@@ -154,9 +174,25 @@ async function medir() {
   armarTira(0);
   resultado.listas = {};
   for (const filas of [60, 500, 2000, 8000]) {
-    const armado = armarLista(filas);
+    // Armar se mide tres veces y se informa la mediana: es un número que salta
+    // bastante entre corridas —la primera vez llegó a variar casi al doble— y
+    // una sola muestra decide por casualidad cuál se publica.
+    const armados = [];
+    let alto = 0;
+    for (let vez = 0; vez < 3; vez++) {
+      const medida = armarLista(filas);
+      armados.push(medida.armado_ms);
+      alto = medida.alto_px;
+    }
+    armados.sort((a, b) => a - b);
+
     const desplazamiento = await desplazar();
-    resultado.listas[filas + ' filas'] = { ...armado, desplazando: desplazamiento };
+    resultado.listas[filas + ' filas'] = {
+      armado_ms: armados[1],
+      armado_las_tres: armados,
+      alto_px: alto,
+      desplazando: desplazamiento,
+    };
   }
 
   window.webkit.messageHandlers.resultado.postMessage(JSON.stringify(resultado));
