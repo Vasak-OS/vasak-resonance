@@ -1,14 +1,77 @@
 <script setup lang="ts">
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
+import {
+	desvincularLastfm,
+	type EstadoDeLastfm,
+	empezarAutorizacion,
+	estadoDeLastfm,
+	terminarAutorizacion,
+} from '@/services/lastfm.service';
 import { MAX_CROSSFADE_SECONDS, MIN_CROSSFADE_SECONDS, useSettingsStore } from '@/stores/settings';
+import { pasoDeLastfm } from '@/tools/lastfm';
 
 const { t } = useI18n();
 const settings = useSettingsStore();
 
+const lastfm = ref<EstadoDeLastfm>({ configurado: false, usuario: null });
+const tokenPendiente = ref<string | null>(null);
+const errorDeLastfm = ref<string | null>(null);
+
+const pasoLastfm = computed(() => pasoDeLastfm(lastfm.value, tokenPendiente.value));
+
+const vinculadoComo = computed(() =>
+	t('settings.lastfmLinkedAs').replace('{0}', lastfm.value.usuario ?? '')
+);
+
 onMounted(() => {
 	void settings.load();
+	void recargarLastfm();
 });
+
+async function recargarLastfm() {
+	lastfm.value = await estadoDeLastfm();
+}
+
+async function onVincular() {
+	errorDeLastfm.value = null;
+	try {
+		tokenPendiente.value = await empezarAutorizacion();
+	} catch (error) {
+		errorDeLastfm.value = String(error);
+	}
+}
+
+async function onConfirmar() {
+	const token = tokenPendiente.value;
+	if (!token) {
+		return;
+	}
+
+	errorDeLastfm.value = null;
+	try {
+		lastfm.value = await terminarAutorizacion(token);
+		// Sólo al salir bien: si la persona todavía no autorizó allá, esto falla
+		// y tiene que poder volver a apretar sin empezar la vuelta de nuevo.
+		tokenPendiente.value = null;
+	} catch (error) {
+		errorDeLastfm.value = String(error);
+	}
+}
+
+function onCancelar() {
+	tokenPendiente.value = null;
+	errorDeLastfm.value = null;
+}
+
+async function onDesvincular() {
+	errorDeLastfm.value = null;
+	try {
+		lastfm.value = await desvincularLastfm();
+	} catch (error) {
+		errorDeLastfm.value = String(error);
+	}
+}
 
 const secondsLabel = computed(() =>
 	t(settings.crossfadeSeconds === 1 ? 'settings.secondsOne' : 'settings.secondsOther').replace(
@@ -87,6 +150,63 @@ const onSeconds = (event: Event) => {
 					{{ t('settings.restoreDefaults') }}
 				</button>
 			</div>
+		</section>
+
+		<!-- Sin clave de API no se dibuja nada: es el caso de casi todo el mundo,
+		     y una sección que promete vincular algo que no se puede vincular es
+		     peor que no tenerla. Igual que la presencia en Discord. -->
+		<section
+			v-if="pasoLastfm !== 'oculto'"
+			class="grid gap-3 rounded-corner border border-ui-border bg-ui-surface/55 p-4"
+			:aria-label="t('settings.lastfmGroup')"
+		>
+			<h2 class="text-sm font-semibold text-tx-main">{{ t('settings.lastfmGroup') }}</h2>
+			<p class="text-xs text-tx-muted">{{ t('settings.lastfmHint') }}</p>
+
+			<div v-if="pasoLastfm === 'vinculado'" class="flex items-center justify-between gap-4">
+				<span class="text-sm text-tx-main">{{ vinculadoComo }}</span>
+				<button
+					type="button"
+					class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-1.5 text-xs font-medium text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
+					@click="onDesvincular"
+				>
+					{{ t('settings.lastfmUnlink') }}
+				</button>
+			</div>
+
+			<div v-else-if="pasoLastfm === 'autorizando'" class="grid gap-2">
+				<p class="text-sm text-tx-main">{{ t('settings.lastfmAuthorizing') }}</p>
+				<div class="flex justify-end gap-2">
+					<button
+						type="button"
+						class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-1.5 text-xs font-medium text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
+						@click="onCancelar"
+					>
+						{{ t('settings.lastfmCancel') }}
+					</button>
+					<button
+						type="button"
+						class="rounded-corner border border-primary/40 bg-primary/15 px-3 py-1.5 text-xs font-medium text-tx-main transition-colors duration-200 hover:bg-primary/25"
+						@click="onConfirmar"
+					>
+						{{ t('settings.lastfmConfirm') }}
+					</button>
+				</div>
+			</div>
+
+			<div v-else class="flex justify-end">
+				<button
+					type="button"
+					class="rounded-corner border border-primary/40 bg-primary/15 px-3 py-1.5 text-xs font-medium text-tx-main transition-colors duration-200 hover:bg-primary/25"
+					@click="onVincular"
+				>
+					{{ t('settings.lastfmLink') }}
+				</button>
+			</div>
+
+			<p v-if="errorDeLastfm" class="text-xs text-red-400" role="alert">
+				{{ t('settings.lastfmError').replace('{0}', errorDeLastfm) }}
+			</p>
 		</section>
 	</div>
 </template>

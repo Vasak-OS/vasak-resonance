@@ -143,6 +143,15 @@ settings:
   crossfadeHint: La canción que termina se cruza con la que empieza, sin silencio en el medio.
   crossfadeLength: Duración del cruce
   crossfadeSegueWarning: "Conviene desactivarlo para discos en vivo, sets de DJ o música clásica: ahí el cruce tapa el empalme que la grabación trae a propósito."
+  lastfmGroup: Last.fm
+  lastfmHint: "Mandá a tu perfil lo que escuchás. Cuenta igual que acá: cuando el tema pasó la mitad o los cuatro minutos, lo que pase primero."
+  lastfmLink: Vincular cuenta
+  lastfmAuthorizing: Autorizá en el navegador y volvé acá.
+  lastfmConfirm: Ya autoricé
+  lastfmCancel: Cancelar
+  lastfmLinkedAs: "Vinculado como {0}"
+  lastfmUnlink: Desvincular
+  lastfmError: "No se pudo vincular la cuenta: {0}"
   restoreDefaults: Restaurar valores por omisión
   secondsOne: "{0} segundo"
   secondsOther: "{0} segundos"

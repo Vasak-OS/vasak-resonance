@@ -26,6 +26,17 @@ export function romper(comando: string) {
 	rotos.add(comando);
 }
 
+/**
+ * Lo vuelve a arreglar.
+ *
+ * `romper` no tenía vuelta atrás y el conjunto es de todo el archivo, así que
+ * una prueba que rompía un comando se lo dejaba roto a las que venían después
+ * —que fallaban por algo que no estaban probando—.
+ */
+export function arreglar(comando: string) {
+	rotos.delete(comando);
+}
+
 export async function invoke(comando: string) {
 	invocaciones.push(comando);
 	if (rotos.has(comando)) throw new Error(`el backend rechazó ${comando}`);

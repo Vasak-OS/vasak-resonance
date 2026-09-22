@@ -50,6 +50,19 @@ pub fn umbral(duration_seconds: Option<u64>) -> Option<u64> {
     Some((duracion / 2).min(TOPE_SEGUNDOS))
 }
 
+/// Qué pasó en este tic, para quien además quiera contar la escucha afuera.
+///
+/// Las dos son una vez por tema, y casi todos los tics no traen ninguna. Existe
+/// para que el scrobbling no tenga que volver a decidir cuándo cuenta una
+/// escucha: la regla está acá, escrita una vez, y es **la misma de Last.fm**.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Novedades {
+    /// Arrancó otro tema, o el mismo otra vez desde el principio.
+    pub empezo: bool,
+    /// La escucha quedó anotada recién ahora: es cuando cuenta.
+    pub anotada: bool,
+}
+
 /// Lo que se sabe del tema que suena ahora.
 struct Cursada {
     path: String,
@@ -72,6 +85,13 @@ struct Cursada {
 #[derive(Default)]
 pub struct Historial {
     actual: Option<Cursada>,
+    /// Si la última pasada de [`Historial::observar`] estrenó un tema.
+    ///
+    /// Aparte del valor de retorno y no adentro: `observar` contesta «qué hay
+    /// que anotar», y estrenar un tema no es algo que anotar —todavía no
+    /// cuenta— sino algo que avisar, y sólo le interesa a quien lo cuente
+    /// afuera.
+    recien_empezo: bool,
 }
 
 impl Historial {
@@ -89,7 +109,10 @@ impl Historial {
     ) -> Option<String> {
         let Some(path) = path else {
             // No suena nada: la próxima vez que suene algo es otra escucha.
+            // Y la señal se apaga acá también, o queda encendida la del tema
+            // anterior y el scrobbling avisaría que suena algo en el silencio.
             self.actual = None;
+            self.recien_empezo = false;
             return None;
         };
 
@@ -101,6 +124,8 @@ impl Historial {
             }
             None => true,
         };
+
+        self.recien_empezo = empieza_de_nuevo;
 
         if empieza_de_nuevo {
             self.actual = Some(Cursada {
@@ -118,6 +143,11 @@ impl Historial {
         }
 
         Some(cursada.path.clone())
+    }
+
+    /// Si la última pasada de [`Historial::observar`] estrenó un tema.
+    pub fn recien_empezo(&self) -> bool {
+        self.recien_empezo
     }
 
     /// Avisa que la escucha de ese tema quedó guardada.
@@ -155,25 +185,35 @@ static HISTORIAL: OnceLock<Mutex<Historial>> = OnceLock::new();
 ///
 /// Que falle no se le cuenta a nadie. Esto es contabilidad: la música no puede
 /// cortarse porque la base esté ocupada.
-pub fn anotar_si_corresponde(snapshot: &PlaybackProgressEvent) {
+pub fn anotar_si_corresponde(snapshot: &PlaybackProgressEvent) -> Novedades {
     let historial = HISTORIAL.get_or_init(|| Mutex::new(Historial::default()));
 
     let Ok(mut historial) = historial.lock() else {
-        return;
+        return Novedades::default();
     };
 
-    let Some(path) = historial.observar(
+    let pendiente = historial.observar(
         snapshot.path.as_deref(),
         snapshot.position_seconds,
         snapshot.duration_seconds,
-    ) else {
-        return;
+    );
+
+    let mut novedades = Novedades {
+        empezo: historial.recien_empezo(),
+        anotada: false,
+    };
+
+    let Some(path) = pendiente else {
+        return novedades;
     };
 
     // Fuera del candado del historial no hace falta: la escritura es una fila en
     // una base local y el hilo de audio es uno solo.
     match anotar(&path) {
-        Ok(()) => historial.confirmar(&path),
+        Ok(()) => {
+            historial.confirmar(&path);
+            novedades.anotada = true;
+        }
         // Sin confirmar: el próximo tic vuelve a ofrecerla. Una base ocupada
         // —un barrido escribiendo en ese momento, por ejemplo— se destraba
         // sola en milisegundos, y la escucha no se pierde por eso.
@@ -183,6 +223,8 @@ pub fn anotar_si_corresponde(snapshot: &PlaybackProgressEvent) {
             }
         }
     }
+
+    novedades
 }
 
 fn anotar(path: &str) -> Result<(), String> {
@@ -228,6 +270,50 @@ mod tests {
         // Es el caso de la radio, y es la única razón por la que no hace falta
         // nombrarla en ningún lado.
         assert_eq!(umbral(None), None);
+    }
+
+    /// Estrenar un tema es lo que le avisa al scrobbling que hay algo nuevo
+    /// sonando. Pasa una vez por tema y no en cada tic: mandarle
+    /// `updateNowPlaying` a Last.fm dos veces por segundo sería una llamada de
+    /// red cada medio segundo mientras dure la canción.
+    #[test]
+    fn estrenar_un_tema_se_avisa_una_sola_vez() {
+        let mut historial = Historial::default();
+
+        historial.observar(Some("/m/a.mp3"), 0, DURACION);
+        assert!(historial.recien_empezo(), "el primero estrena");
+
+        historial.observar(Some("/m/a.mp3"), 1, DURACION);
+        assert!(!historial.recien_empezo(), "el mismo tema andando, no");
+
+        historial.observar(Some("/m/b.mp3"), 0, DURACION);
+        assert!(historial.recien_empezo(), "otro tema, sí");
+    }
+
+    /// Y poner de nuevo el mismo tema ya contado también estrena: es otra
+    /// escucha, y Last.fm tiene que enterarse igual que la biblioteca.
+    #[test]
+    fn volver_a_poner_el_mismo_tema_tambien_estrena() {
+        let mut historial = Historial::default();
+
+        historial.observar(Some("/m/a.mp3"), 0, DURACION);
+        observar_y_confirmar(&mut historial, "/m/a.mp3", 90, DURACION);
+        assert!(!historial.recien_empezo(), "sigue siendo la misma escucha");
+
+        historial.observar(Some("/m/a.mp3"), 0, DURACION);
+        assert!(historial.recien_empezo(), "lo pusieron de nuevo");
+    }
+
+    /// Sin nada sonando no se estrena nada. La radio pasa por acá con duración
+    /// desconocida y no tiene que disparar un scrobble.
+    #[test]
+    fn el_silencio_no_estrena_nada() {
+        let mut historial = Historial::default();
+
+        historial.observar(Some("/m/a.mp3"), 0, DURACION);
+        historial.observar(None, 0, None);
+
+        assert!(!historial.recien_empezo());
     }
 
     /// Lo que hace el llamador cuando la base contesta que sí.

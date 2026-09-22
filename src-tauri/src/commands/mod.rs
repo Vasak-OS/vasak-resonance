@@ -1,6 +1,7 @@
 pub mod audio_control;
 pub mod discord;
 pub mod indexing;
+pub mod lastfm;
 pub mod library;
 pub mod lyrics;
 pub mod metadata;

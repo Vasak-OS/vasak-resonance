@@ -6,6 +6,7 @@ mod commands;
 mod db;
 mod discord;
 mod historial;
+mod lastfm;
 #[cfg(target_os = "linux")]
 mod layer_shell;
 mod lyrics;
@@ -210,6 +211,10 @@ pub fn run() {
             show_in_file_manager,
             commands::discord::update_discord_presence,
             commands::discord::discord_presence_activa,
+            commands::lastfm::lastfm_status,
+            commands::lastfm::lastfm_start_authorization,
+            commands::lastfm::lastfm_finish_authorization,
+            commands::lastfm::lastfm_disconnect,
             commands::modos::set_playback_modes,
             commands::discord::clear_discord_presence,
         ])

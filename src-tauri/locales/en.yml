@@ -146,6 +146,15 @@ settings:
   crossfadeHint: The ending song blends into the next one, with no silence in between.
   crossfadeLength: Overlap length
   crossfadeSegueWarning: Worth turning off for live records, DJ sets or classical music, where the crossfade covers up a join the recording makes on purpose.
+  lastfmGroup: Last.fm
+  lastfmHint: "Send what you listen to to your profile. It counts the same way it does here: once the track is past halfway or four minutes, whichever comes first."
+  lastfmLink: Link account
+  lastfmAuthorizing: Authorise it in the browser, then come back here.
+  lastfmConfirm: I authorised it
+  lastfmCancel: Cancel
+  lastfmLinkedAs: "Linked as {0}"
+  lastfmUnlink: Unlink
+  lastfmError: "The account could not be linked: {0}"
   restoreDefaults: Restore defaults
   secondsOne: "{0} second"
   secondsOther: "{0} seconds"
