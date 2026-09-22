@@ -165,6 +165,18 @@ impl<M: Mando> Tray for Bandeja<M> {
     }
 }
 
+/// Qué avisarle al icono ante un estado nuevo, según lo último que se le avisó.
+///
+/// `None` significa no tocarlo. Está aparte y sin nada de Tauri adentro porque
+/// es la única parte de este archivo que decide algo, y el resto del arranque
+/// —un `spawn` de D-Bus y un bucle de eventos— no se puede probar.
+fn proximo_aviso(ultimo_avisado: Option<bool>, sonando: bool) -> Option<bool> {
+    match ultimo_avisado {
+        Some(anterior) if anterior == sonando => None,
+        _ => Some(sonando),
+    }
+}
+
 /// Levanta el icono y lo deja al día mientras la aplicación viva.
 ///
 /// No corta el arranque si falla: una sesión sin StatusNotifierItem —o con el
@@ -196,18 +208,28 @@ pub fn iniciar(app_handle: tauri::AppHandle, audio_state: crate::audio_manager::
             let _ = tx.send(());
         });
 
-        let mut ultimo = mando.esta_sonando();
-        while rx.recv().await.is_some() {
-            let sonando = mando.esta_sonando();
-            if sonando == ultimo {
-                continue;
+        // Lo que el icono ya sabe, que arranca sin saber nada. `Bandeja::nueva`
+        // miró el reproductor **antes** de `spawn`, y en el medio hay un viaje
+        // a D-Bus: si la música arrancó ahí —que es justo lo que pasa cuando el
+        // gestor de archivos abre un tema— el icono quedó con la etiqueta de
+        // antes y ningún aviso posterior la corrige, porque el estado ya no
+        // vuelve a cambiar. Empezar sin saber nada hace que el primer aviso
+        // salga siempre.
+        let mut avisado: Option<bool> = None;
+
+        loop {
+            if let Some(sonando) = proximo_aviso(avisado, mando.esta_sonando()) {
+                avisado = Some(sonando);
+                manija
+                    .update(move |bandeja: &mut Bandeja<MandoDeTauri>| {
+                        bandeja.anotar_que_suena(sonando);
+                    })
+                    .await;
             }
-            ultimo = sonando;
-            manija
-                .update(move |bandeja: &mut Bandeja<MandoDeTauri>| {
-                    bandeja.anotar_que_suena(sonando);
-                })
-                .await;
+
+            if rx.recv().await.is_none() {
+                break;
+            }
         }
     });
 }
@@ -443,6 +465,30 @@ mod pruebas {
             etiquetas(&bandeja),
             vec!["Show", "—", "Play", "Previous", "Next", "—", "Quit"]
         );
+    }
+
+    /// El primer aviso sale siempre, aunque coincida con lo que la bandeja
+    /// creía. Es lo que arregla arrancar con un tema: entre construir la
+    /// bandeja y registrarla en D-Bus la música ya empezó, y sin esto el menú
+    /// se queda diciendo «Reproducir» hasta el próximo cambio de estado.
+    #[test]
+    fn el_primer_aviso_sale_siempre() {
+        assert_eq!(proximo_aviso(None, true), Some(true));
+        assert_eq!(proximo_aviso(None, false), Some(false));
+    }
+
+    /// Y no se repite: el hilo de audio avisa cada 500 ms, y cada aviso hace
+    /// que el panel vuelva a pedir el menú entero.
+    #[test]
+    fn lo_ya_avisado_no_se_repite() {
+        assert_eq!(proximo_aviso(Some(true), true), None);
+        assert_eq!(proximo_aviso(Some(false), false), None);
+    }
+
+    #[test]
+    fn el_cambio_si_se_avisa() {
+        assert_eq!(proximo_aviso(Some(true), false), Some(false));
+        assert_eq!(proximo_aviso(Some(false), true), Some(true));
     }
 
     /// El identificador tiene que ser el mismo entre sesiones: el panel lo usa
