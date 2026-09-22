@@ -2,12 +2,15 @@
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { EmptyState, ThemeIcon } from '@vasakgroup/vue-libvasak';
 import { computed, onMounted, type Ref, ref } from 'vue';
+import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller';
 import LabeledField from '@/components/layout/LabeledField.vue';
+import { useColumnasVisibles } from '@/composables/useColumnasVisibles';
 import { useMetadataLabels } from '@/composables/useMetadataLabels';
 import { useTrackContextMenu } from '@/composables/useTrackContextMenu';
 import { fetchAlbumCover } from '@/services/album-cover.service';
 import { usePlayerStore } from '@/stores/player';
 import { agruparEnDiscos } from '@/tools/albumes';
+import { enFilas } from '@/tools/listas';
 
 const { t } = useI18n();
 const { artistLabel, albumLabel } = useMetadataLabels();
@@ -88,6 +91,28 @@ const filteredAlbums = computed(() => {
 	});
 });
 
+/**
+ * Las columnas que dibujaba `grid sm:grid-cols-2 xl:grid-cols-3`, ahora dichas
+ * a mano porque el scroller coloca las filas él y no puede leerlas del CSS.
+ */
+const columnas = useColumnasVisibles([
+	{ desde: 640, columnas: 2 },
+	{ desde: 1280, columnas: 3 },
+]);
+
+const filasDeDiscos = computed(() =>
+	enFilas(filteredAlbums.value, columnas.value, (album) => album.key)
+);
+
+/**
+ * Lo que el scroller supone que mide una fila hasta medirla de verdad.
+ *
+ * Es una estimación y no un compromiso: `DynamicScroller` mide cada fila al
+ * dibujarla y corrige. Sale de medir la tarjeta en WebKitGTK, que va de 532 px
+ * a 606 según el ancho; el mínimo es el de las tarjetas más anchas.
+ */
+const ALTO_MINIMO_DE_TARJETA = 532;
+
 const extractTrackName = (path: string): string => {
 	const normalized = path.replace(/\\/g, '/');
 	const parts = normalized.split('/');
@@ -131,7 +156,7 @@ const onPlayAlbum = async (paths: string[]) => {
 </script>
 
 <template>
-	<section class="h-full overflow-y-auto p-4">
+	<section class="flex h-full flex-col gap-4 overflow-hidden p-4">
 		<div class="mb-4">
 			<p class="text-xs uppercase tracking-[0.16em] text-tx-muted">{{ t('albums.eyebrow') }}</p>
 			<h2 class="text-lg font-semibold text-tx-main">{{ t('albums.title') }}</h2>
@@ -168,9 +193,33 @@ const onPlayAlbum = async (paths: string[]) => {
 
 		<!-- Un solo menú para toda la cuadrícula; cada canción de la vista previa
 		     dice cuál es la suya con `data-track-path`. -->
-		<div v-else class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" @contextmenu="onTrackContextMenu">
+		<div v-else class="min-h-0 flex-1 overflow-hidden" @contextmenu="onTrackContextMenu">
+			<!-- Se virtualiza **por filas**: una fila de la cuadrícula es un
+			     elemento del scroller y adentro va el `grid` de siempre.
+			     `DynamicScroller` y no `RecycleScroller` porque la tarjeta no
+			     tiene un alto fijo: medida en WebKitGTK, la misma tarjeta va de
+			     606 px a 280 de ancho a 532 px a 720. Un alto declarado a mano
+			     recortaría canciones de la vista previa en la mitad de los
+			     anchos, y nada avisaría. -->
+			<DynamicScroller
+				:items="filasDeDiscos"
+				:min-item-size="ALTO_MINIMO_DE_TARJETA"
+				key-field="clave"
+				class="h-full overflow-y-auto"
+				v-slot="{ item: fila, index, active }"
+			>
+				<DynamicScrollerItem
+					:item="fila"
+					:active="active"
+					:index="index"
+					:size-dependencies="[columnas, fila.elementos.length]"
+				>
+					<div
+						class="mb-4 grid gap-4"
+						:style="{ gridTemplateColumns: `repeat(${columnas}, minmax(0, 1fr))` }"
+					>
 			<article
-				v-for="album in filteredAlbums"
+				v-for="album in fila.elementos"
 				:key="album.key"
 				class="rounded-corner border border-ui-border bg-ui-bg/80 p-4"
 			>
@@ -231,6 +280,9 @@ const onPlayAlbum = async (paths: string[]) => {
 					</li>
 				</ul>
 			</article>
+					</div>
+				</DynamicScrollerItem>
+			</DynamicScroller>
 		</div>
 	</section>
 </template>

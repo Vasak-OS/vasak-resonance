@@ -6,6 +6,12 @@ import { createApp } from 'vue';
 import App from '@/App.vue';
 import { sanearUrl } from '@/tools/csp';
 import '@/assets/main.css';
+// El estilo de las listas virtualizadas, que **no estaba importado**. Sin él,
+// `RecycleScroller` y `DynamicScroller` pierden el posicionamiento de sus
+// elementos: la lista puede quedarse directamente en blanco, con los datos
+// cargados y sin nada dibujado. Venía faltando desde que `HomeView` estrenó la
+// virtualización.
+import 'vue-virtual-scroller/dist/vue-virtual-scroller.css';
 import { captureFailures } from '@vasakgroup/plugin-vsk-journal';
 import { router } from '@/router';
 
