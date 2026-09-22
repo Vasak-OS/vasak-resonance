@@ -1,0 +1,202 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>La cadencia real del reproductor, y las listas sin virtualizar</title>
+<style>
+  html, body { margin: 0; background: #14121c; color: #eee; font: 13px system-ui, sans-serif; }
+  #tira { display: flex; align-items: flex-end; gap: 2px; height: 16px; overflow: hidden; width: 100%; }
+  #tira > span { flex: 1; border-radius: 2px; background: #c86; }
+  #lista { height: 620px; overflow-y: auto; }
+  #lista .fila { display: flex; gap: 12px; padding: 10px 12px; border-bottom: 1px solid #2a2636; }
+  #lista .fila .tapa { width: 40px; height: 40px; border-radius: 6px; background: #332c44; }
+  #lista .fila .texto { flex: 1; }
+</style>
+
+<div id="tira"></div>
+<div id="lista"></div>
+
+<script>
+/**
+ * Dos preguntas que la tira sola no contesta.
+ *
+ * 1. **La cadencia real.** El reproductor no redibuja la tira en cada cuadro:
+ *    la escribe cuando llega un tic de posición, dos veces por segundo. Medir
+ *    por cuadro es un techo, no lo que pasa. Acá se escribe cada 500 ms y se
+ *    mira el cuadro que **carga** esa escritura contra los demás.
+ *
+ * 2. **Las listas sin virtualizar.** Álbumes, Favoritos, Listas y Radios
+ *    recorren la colección entera con un `v-for` liso. Lo que se mide es lo que
+ *    eso cuesta de verdad: armarlas, y desplazarlas.
+ */
+
+const CADENCIA_MS = 500;
+const SEGUNDOS = 14;
+
+function alturaDe(i, momento) {
+  const fase = (i + 1) * 0.65 + momento * 0.38;
+  return Math.round(5 + (Math.sin(fase) * 0.5 + 0.5) * 11);
+}
+
+function estadisticas(muestras) {
+  if (!muestras.length) return null;
+  const ordenadas = [...muestras].sort((a, b) => a - b);
+  const en = (p) => ordenadas[Math.min(ordenadas.length - 1, Math.floor(ordenadas.length * p))];
+  return {
+    cuadros: muestras.length,
+    mediana: +en(0.5).toFixed(2),
+    p95: +en(0.95).toFixed(2),
+    peor: +ordenadas[ordenadas.length - 1].toFixed(2),
+  };
+}
+
+function armarTira(cantidad) {
+  const tira = document.getElementById('tira');
+  tira.textContent = '';
+  const barras = [];
+  for (let i = 0; i < cantidad; i++) {
+    const barra = document.createElement('span');
+    barra.style.height = '8px';
+    tira.appendChild(barra);
+    barras.push(barra);
+  }
+  return barras;
+}
+
+/** Escribe cada 500 ms, como el reproductor, y separa los cuadros. */
+function cadenciaReal(barras) {
+  return new Promise((listo) => {
+    const conEscritura = [];
+    const sinEscritura = [];
+    let anterior = null;
+    let ultimaEscritura = -Infinity;
+    let escribioRecien = false;
+    let momento = 0;
+    const fin = performance.now() + SEGUNDOS * 1000;
+
+    function cuadro(ahora) {
+      if (anterior !== null) {
+        (escribioRecien ? conEscritura : sinEscritura).push(ahora - anterior);
+      }
+      anterior = ahora;
+      escribioRecien = false;
+
+      if (ahora >= fin) {
+        listo({ cuadro_del_tic: estadisticas(conEscritura), cuadro_normal: estadisticas(sinEscritura) });
+        return;
+      }
+
+      if (ahora - ultimaEscritura >= CADENCIA_MS) {
+        ultimaEscritura = ahora;
+        momento += 0.5;
+        for (let i = 0; i < barras.length; i++) {
+          barras[i].style.height = alturaDe(i, momento) + 'px';
+        }
+        escribioRecien = true;
+      }
+
+      requestAnimationFrame(cuadro);
+    }
+
+    requestAnimationFrame(cuadro);
+  });
+}
+
+function armarLista(filas) {
+  const lista = document.getElementById('lista');
+  lista.textContent = '';
+  const arranque = performance.now();
+  const trozo = document.createDocumentFragment();
+  for (let i = 0; i < filas; i++) {
+    const fila = document.createElement('div');
+    fila.className = 'fila';
+    const tapa = document.createElement('div');
+    tapa.className = 'tapa';
+    const texto = document.createElement('div');
+    texto.className = 'texto';
+    texto.innerHTML = '<div>Un tema número ' + i + '</div><div style="opacity:.6">Un artista • Un disco</div>';
+    fila.append(tapa, texto);
+    trozo.appendChild(fila);
+  }
+  lista.appendChild(trozo);
+  // Forzar el layout acá adentro **sí** corresponde: lo que se mide es cuánto
+  // tarda en quedar armada y medida, no cuánto tarda en anotarse.
+  const alto = lista.scrollHeight;
+  return { armado_ms: +(performance.now() - arranque).toFixed(1), alto_px: alto };
+}
+
+/**
+ * Desplaza a un cuadro por vez y mide los intervalos.
+ *
+ * Rebota al llegar a los extremos. Sin eso, una lista corta toca el fondo a los
+ * setenta y pico de cuadros y los demás miden una escritura que **no desplaza
+ * nada**: la lista de 60 filas salía comparando contra sí misma quieta.
+ *
+ * El tope se calcula una vez y la posición se lleva acá. Leer `scrollTop` en
+ * cada cuadro obligaría a rehacer la caja antes de tiempo, que es parte de lo
+ * que se está midiendo.
+ */
+function desplazar() {
+  return new Promise((listo) => {
+    const lista = document.getElementById('lista');
+    const deltas = [];
+    const tope = Math.max(0, lista.scrollHeight - lista.clientHeight);
+    let anterior = null;
+    let n = 0;
+    let posicion = 0;
+    let paso = 40;
+    lista.scrollTop = 0;
+
+    function cuadro(ahora) {
+      if (anterior !== null && n > 20) deltas.push(ahora - anterior);
+      anterior = ahora;
+      n++;
+      if (n > 220) { listo(estadisticas(deltas)); return; }
+
+      posicion += paso;
+      if (posicion >= tope || posicion <= 0) {
+        posicion = Math.max(0, Math.min(tope, posicion));
+        paso = -paso;
+      }
+      lista.scrollTop = posicion;
+
+      requestAnimationFrame(cuadro);
+    }
+
+    requestAnimationFrame(cuadro);
+  });
+}
+
+async function medir() {
+  const resultado = {};
+
+  armarLista(60);
+  resultado.cadencia_del_reproductor_110_barras = await cadenciaReal(armarTira(110));
+
+  armarTira(0);
+  resultado.listas = {};
+  for (const filas of [60, 500, 2000, 8000]) {
+    // Armar se mide tres veces y se informa la mediana: es un número que salta
+    // bastante entre corridas —la primera vez llegó a variar casi al doble— y
+    // una sola muestra decide por casualidad cuál se publica.
+    const armados = [];
+    let alto = 0;
+    for (let vez = 0; vez < 3; vez++) {
+      const medida = armarLista(filas);
+      armados.push(medida.armado_ms);
+      alto = medida.alto_px;
+    }
+    armados.sort((a, b) => a - b);
+
+    const desplazamiento = await desplazar();
+    resultado.listas[filas + ' filas'] = {
+      armado_ms: armados[1],
+      armado_las_tres: armados,
+      alto_px: alto,
+      desplazando: desplazamiento,
+    };
+  }
+
+  window.webkit.messageHandlers.resultado.postMessage(JSON.stringify(resultado));
+}
+
+medir();
+</script>

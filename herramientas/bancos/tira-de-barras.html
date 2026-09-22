@@ -1,0 +1,176 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>La tira del reproductor: height contra transform</title>
+<style>
+  html, body { margin: 0; background: #14121c; color: #eee; font: 13px system-ui, sans-serif; }
+  #tira { display: flex; align-items: flex-end; gap: 2px; height: 16px; overflow: hidden; width: 100%; }
+  #tira > span { flex: 1; border-radius: 2px; background: #c86; }
+  #relleno p { margin: 2px 0; }
+</style>
+
+<!-- La tira, como la dibuja PlaybackWaves.vue -->
+<div id="tira"></div>
+
+<!-- Y algo de página debajo, para que rehacer la caja de la tira tenga a quién
+     empujar: una tira sola en una página vacía no mide lo mismo. -->
+<div id="relleno"></div>
+
+<script>
+/**
+ * Qué se mide y por qué así.
+ *
+ * Se miran los intervalos reales entre cuadros, no el tiempo de asignar los
+ * estilos. El navegador no rehace la caja cuando uno escribe `height`: lo anota
+ * y lo hace antes de pintar. Medir la asignación cuenta lo barato y se pierde
+ * lo caro, y forzar `getBoundingClientRect()` por cuadro es peor todavía —le
+ * impone a `transform` un recálculo que no necesitaba, que es lo que dio
+ * «transform más lento» en el primer intento del issue—.
+ *
+ * El trabajo se escribe adentro del `requestAnimationFrame`, así que lo que
+ * cuesta aparece en el intervalo **siguiente**. Por eso cada medición se anota
+ * contra el cuadro que viene después de escribir.
+ */
+
+const CUADROS = 240;
+const CALENTAMIENTO = 30;
+
+function armar(cantidad) {
+  const tira = document.getElementById('tira');
+  tira.textContent = '';
+  const barras = [];
+  for (let i = 0; i < cantidad; i++) {
+    const barra = document.createElement('span');
+    tira.appendChild(barra);
+    barras.push(barra);
+  }
+  return barras;
+}
+
+function rellenar(lineas) {
+  const relleno = document.getElementById('relleno');
+  relleno.textContent = '';
+  for (let i = 0; i < lineas; i++) {
+    const p = document.createElement('p');
+    p.textContent = 'una fila de la lista, de las que hay debajo del reproductor ' + i;
+    relleno.appendChild(p);
+  }
+}
+
+/** La altura que pone el componente: el mismo seno, el mismo redondeo. */
+function alturaDe(i, momento) {
+  const fase = (i + 1) * 0.65 + momento * 0.38;
+  return Math.round(5 + (Math.sin(fase) * 0.5 + 0.5) * 11);
+}
+
+function estadisticas(muestras) {
+  const ordenadas = [...muestras].sort((a, b) => a - b);
+  const en = (p) => ordenadas[Math.min(ordenadas.length - 1, Math.floor(ordenadas.length * p))];
+  return {
+    cuadros: muestras.length,
+    mediana: +en(0.5).toFixed(2),
+    p95: +en(0.95).toFixed(2),
+    peor: +ordenadas[ordenadas.length - 1].toFixed(2),
+    sobre_16ms: muestras.filter((d) => d > 16.7).length,
+    sobre_33ms: muestras.filter((d) => d > 33.4).length,
+  };
+}
+
+/**
+ * Corre una variante: escribe en cada cuadro y anota el intervalo siguiente.
+ *
+ * `escribir(barras, momento)` es lo único que cambia entre variantes.
+ */
+function correr(barras, escribir) {
+  return new Promise((listo) => {
+    const deltas = [];
+    let anterior = null;
+    let n = 0;
+
+    function cuadro(ahora) {
+      if (anterior !== null && n > CALENTAMIENTO) {
+        deltas.push(ahora - anterior);
+      }
+      anterior = ahora;
+      n++;
+
+      if (n > CUADROS + CALENTAMIENTO) {
+        listo(estadisticas(deltas));
+        return;
+      }
+
+      escribir(barras, n * 0.5);
+      requestAnimationFrame(cuadro);
+    }
+
+    requestAnimationFrame(cuadro);
+  });
+}
+
+const conAltura = (barras, momento) => {
+  for (let i = 0; i < barras.length; i++) {
+    barras[i].style.height = alturaDe(i, momento) + 'px';
+  }
+};
+
+const conTransform = (barras, momento) => {
+  for (let i = 0; i < barras.length; i++) {
+    // Misma altura dibujada, por composición: la caja mide 16 y se escala.
+    barras[i].style.transform = 'scaleY(' + (alturaDe(i, momento) / 16) + ')';
+  }
+};
+
+const quieto = () => {};
+
+async function medir() {
+  const resultado = { motor: navigator.userAgent, pasadas: [] };
+
+  rellenar(40);
+
+  /**
+   * Las dos variantes de cada tamaño, **alternando cuál va primero** entre
+   * rondas.
+   *
+   * Con un orden fijo, lo que le pase a la máquina a lo largo de la corrida
+   * —que se caliente, que otra cosa le pida el procesador— le cae siempre a la
+   * misma variante y se confunde con una diferencia entre mecanismos. Cada
+   * medición se anota además con el turno en que corrió, así se puede mirar si
+   * el orden explica algo.
+   */
+  const tamanos = [110, 330, 1100];
+  const variantes = { height: conAltura, transform: conTransform };
+  const RONDAS = 4;
+
+  let turno = 0;
+
+  async function pasada(nombre, cantidad, escribir) {
+    const barras = armar(cantidad);
+    if (escribir === conTransform) {
+      for (const barra of barras) {
+        barra.style.height = '16px';
+        barra.style.transformOrigin = 'bottom';
+      }
+    }
+    const medida = await correr(barras, escribir);
+    resultado.pasadas.push({ variante: nombre, barras: cantidad, turno: turno++, ...medida });
+  }
+
+  for (let ronda = 0; ronda < RONDAS; ronda++) {
+    const orden = ronda % 2 === 0 ? ['height', 'transform'] : ['transform', 'height'];
+    for (const cantidad of tamanos) {
+      for (const nombre of orden) {
+        await pasada(nombre, cantidad, variantes[nombre]);
+      }
+    }
+  }
+
+  // Los testigos: la misma página sin escribir nada, y la tira a la mitad.
+  await pasada('sin tocar nada', 110, quieto);
+  await pasada('sin tocar nada', 1100, quieto);
+  await pasada('height', 55, conAltura);
+  await pasada('transform', 55, conTransform);
+
+  window.webkit.messageHandlers.resultado.postMessage(JSON.stringify(resultado));
+}
+
+medir();
+</script>

@@ -6200,7 +6200,7 @@ dependencies = [
 
 [[package]]
 name = "vasak-resonance"
-version = "0.7.5"
+version = "0.7.6"
 dependencies = [
  "base64 0.23.1",
  "color-thief",
