@@ -1,6 +1,6 @@
 [package]
 name = "vasak-resonance"
-version = "0.8.2"
+version = "0.8.3"
 description = "A Vasak Application (template)"
 authors = ["Vasak Group", "Joaquin (Pato) Decima"]
 edition = "2021"
