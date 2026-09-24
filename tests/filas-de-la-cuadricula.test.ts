@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { claveDeLaFila, enFilas } from '@/tools/listas';
+import { inRows, rowKey } from '@/tools/lists';
 
 /**
  * Una cuadrícula virtualizada se parte en filas: **una fila es un elemento del
@@ -11,22 +11,22 @@ describe('partir una cuadrícula en filas', () => {
 	const clave = (n: number) => `e${n}`;
 
 	test('reparte en filas del ancho pedido', () => {
-		expect(enFilas([1, 2, 3, 4, 5], 2, clave)).toEqual([
-			{ clave: 'clave:e1', elementos: [1, 2] },
-			{ clave: 'clave:e3', elementos: [3, 4] },
-			{ clave: 'clave:e5', elementos: [5] },
+		expect(inRows([1, 2, 3, 4, 5], 2, clave)).toEqual([
+			{ key: 'key:e1', items: [1, 2] },
+			{ key: 'key:e3', items: [3, 4] },
+			{ key: 'key:e5', items: [5] },
 		]);
 	});
 
 	test('la última fila puede venir incompleta', () => {
-		const filas = enFilas([1, 2, 3, 4, 5, 6, 7], 3, clave);
+		const filas = inRows([1, 2, 3, 4, 5, 6, 7], 3, clave);
 
 		expect(filas).toHaveLength(3);
-		expect(filas[2].elementos).toEqual([7]);
+		expect(filas[2].items).toEqual([7]);
 	});
 
 	test('sin nada, ninguna fila', () => {
-		expect(enFilas([], 3, clave)).toEqual([]);
+		expect(inRows([], 3, clave)).toEqual([]);
 	});
 
 	/**
@@ -34,18 +34,18 @@ describe('partir una cuadrícula en filas', () => {
 	 * la ventana: mejor una columna que colgar la aplicación.
 	 */
 	test.each([0, -3, 0.4])('%p columnas se toma como una', (columnas) => {
-		expect(enFilas([1, 2], columnas, clave)).toEqual([
-			{ clave: 'clave:e1', elementos: [1] },
-			{ clave: 'clave:e2', elementos: [2] },
+		expect(inRows([1, 2], columnas, clave)).toEqual([
+			{ key: 'key:e1', items: [1] },
+			{ key: 'key:e2', items: [2] },
 		]);
 	});
 
 	test('cada fila conserva su clave mientras no cambie lo que tiene', () => {
 		const claves = (columnas: number) =>
-			enFilas([1, 2, 3, 4], columnas, clave).map((fila) => fila.clave);
+			inRows([1, 2, 3, 4], columnas, clave).map((fila) => fila.key);
 
-		expect(claves(2)).toEqual(['clave:e1', 'clave:e3']);
-		expect(claves(4)).toEqual(['clave:e1']);
+		expect(claves(2)).toEqual(['key:e1', 'key:e3']);
+		expect(claves(4)).toEqual(['key:e1']);
 	});
 });
 
@@ -57,15 +57,15 @@ describe('partir una cuadrícula en filas', () => {
  */
 describe('la clave de una fila', () => {
 	test('cuando el elemento la trae, se usa la suya', () => {
-		expect(claveDeLaFila('abc', 0)).toBe('clave:abc');
+		expect(rowKey('abc', 0)).toBe('key:abc');
 	});
 
 	test.each([undefined, null, ''])('cuando falta (%p) se usa la posición', (propia) => {
-		expect(claveDeLaFila(propia, 12)).toBe('posicion:12');
+		expect(rowKey(propia, 12)).toBe('position:12');
 	});
 
 	test('y dos filas sin clave no chocan entre sí', () => {
-		expect(claveDeLaFila(undefined, 0)).not.toBe(claveDeLaFila(undefined, 3));
+		expect(rowKey(undefined, 0)).not.toBe(rowKey(undefined, 3));
 	});
 
 	/**
@@ -73,17 +73,17 @@ describe('la clave de una fila', () => {
 	 * elemento traiga justo esa cadena: por eso van marcadas **las dos**.
 	 */
 	test('una clave con pinta de respaldo tampoco choca', () => {
-		expect(claveDeLaFila('posicion:0', 7)).not.toBe(claveDeLaFila(undefined, 0));
-		expect(claveDeLaFila('posicion:5', 5)).not.toBe(claveDeLaFila(undefined, 5));
+		expect(rowKey('position:0', 7)).not.toBe(rowKey(undefined, 0));
+		expect(rowKey('position:5', 5)).not.toBe(rowKey(undefined, 5));
 	});
 
 	/** Con un elemento sin clave, las filas salen igual y todas con clave. */
 	test('un elemento sin clave no deja la lista sin filas', () => {
 		const sinClave = [{ id: 'a' }, { id: undefined }, { id: 'c' }];
-		const filas = enFilas(sinClave, 1, (elemento) => elemento.id);
+		const filas = inRows(sinClave, 1, (elemento) => elemento.id);
 
 		expect(filas).toHaveLength(3);
-		expect(filas.map((fila) => fila.clave)).toEqual(['clave:a', 'posicion:1', 'clave:c']);
-		expect(filas.every((fila) => fila.clave !== '' && fila.clave != null)).toBe(true);
+		expect(filas.map((fila) => fila.key)).toEqual(['key:a', 'position:1', 'key:c']);
+		expect(filas.every((fila) => fila.key !== '' && fila.key != null)).toBe(true);
 	});
 });
