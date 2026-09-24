@@ -4,13 +4,13 @@ import { EmptyState, ThemeIcon } from '@vasakgroup/vue-libvasak';
 import { computed, onMounted, type Ref, ref } from 'vue';
 import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller';
 import LabeledField from '@/components/layout/LabeledField.vue';
-import { useColumnasVisibles } from '@/composables/useColumnasVisibles';
 import { useMetadataLabels } from '@/composables/useMetadataLabels';
 import { useTrackContextMenu } from '@/composables/useTrackContextMenu';
+import { useVisibleColumns } from '@/composables/useVisibleColumns';
 import { fetchAlbumCover } from '@/services/album-cover.service';
 import { usePlayerStore } from '@/stores/player';
 import { agruparEnDiscos } from '@/tools/albumes';
-import { enFilas } from '@/tools/listas';
+import { inRows } from '@/tools/lists';
 
 const { t } = useI18n();
 const { artistLabel, albumLabel } = useMetadataLabels();
@@ -95,14 +95,12 @@ const filteredAlbums = computed(() => {
  * Las columnas que dibujaba `grid sm:grid-cols-2 xl:grid-cols-3`, ahora dichas
  * a mano porque el scroller coloca las filas él y no puede leerlas del CSS.
  */
-const columnas = useColumnasVisibles([
-	{ desde: 640, columnas: 2 },
-	{ desde: 1280, columnas: 3 },
+const columns = useVisibleColumns([
+	{ from: 640, columns: 2 },
+	{ from: 1280, columns: 3 },
 ]);
 
-const filasDeDiscos = computed(() =>
-	enFilas(filteredAlbums.value, columnas.value, (album) => album.key)
-);
+const albumRows = computed(() => inRows(filteredAlbums.value, columns.value, (album) => album.key));
 
 /**
  * Lo que el scroller supone que mide una fila hasta medirla de verdad.
@@ -202,24 +200,24 @@ const onPlayAlbum = async (paths: string[]) => {
 			     recortaría canciones de la vista previa en la mitad de los
 			     anchos, y nada avisaría. -->
 			<DynamicScroller
-				:items="filasDeDiscos"
+				:items="albumRows"
 				:min-item-size="ALTO_MINIMO_DE_TARJETA"
-				key-field="clave"
+				key-field="key"
 				class="h-full overflow-y-auto"
-				v-slot="{ item: fila, index, active }"
+				v-slot="{ item: row, index, active }"
 			>
 				<DynamicScrollerItem
-					:item="fila"
+					:item="row"
 					:active="active"
 					:index="index"
-					:size-dependencies="[columnas, fila.elementos.length]"
+					:size-dependencies="[columns, row.items.length]"
 				>
 					<div
 						class="mb-4 grid gap-4"
-						:style="{ gridTemplateColumns: `repeat(${columnas}, minmax(0, 1fr))` }"
+						:style="{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }"
 					>
 			<article
-				v-for="album in fila.elementos"
+				v-for="album in row.items"
 				:key="album.key"
 				class="rounded-corner border border-ui-border bg-ui-bg/80 p-4"
 			>

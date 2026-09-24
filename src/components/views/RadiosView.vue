@@ -3,7 +3,9 @@ import { listen } from '@tauri-apps/api/event';
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { EmptyState, LoadingState, ThemeIcon } from '@vasakgroup/vue-libvasak';
 import { computed, onBeforeUnmount, onMounted, type Ref, reactive, ref, watch } from 'vue';
+import { RecycleScroller } from 'vue-virtual-scroller';
 import LabeledField from '@/components/layout/LabeledField.vue';
+import { useVisibleColumns } from '@/composables/useVisibleColumns';
 import type { RadioStation } from '@/services/radio.service';
 import {
 	fetchRadioStations,
@@ -12,6 +14,7 @@ import {
 	playRadioStation,
 	setCachedStations,
 } from '@/services/radio.service';
+import { inRows } from '@/tools/lists';
 
 const { t } = useI18n();
 const stations: Ref<RadioStation[]> = ref([]);
@@ -79,6 +82,29 @@ const sortedStations = computed(() => {
 		return a.name.localeCompare(b.name);
 	});
 });
+
+/**
+ * Las columnas que dibujaba `grid-cols-1 md:grid-cols-2 lg:grid-cols-3`, ahora
+ * dichas a mano porque el scroller coloca las filas él y no puede leerlas del
+ * CSS. Los cortes son los de Tailwind.
+ */
+const columns = useVisibleColumns([
+	{ from: 768, columns: 2 },
+	{ from: 1024, columns: 3 },
+]);
+
+const stationRows = computed(() =>
+	inRows(sortedStations.value, columns.value, (station) => station.uuid)
+);
+
+/**
+ * Lo que mide una fila de la cuadrícula, contando el hueco de abajo.
+ *
+ * El scroller coloca a partir de este número, así que tiene que coincidir con
+ * lo que el CSS dibuja: 116 de alto de tarjeta más los 12 del `pb-3`. Si se
+ * separan, las filas se pisan o dejan huecos y no falla nada — se ve torcido.
+ */
+const ALTO_DE_LA_FILA = 128;
 
 async function loadStations() {
 	loading.value = true;
@@ -215,7 +241,7 @@ onBeforeUnmount(() => {
 		</div>
 
 		<!-- Stations list -->
-		<div class="flex-1 overflow-y-auto px-4">
+		<div class="min-h-0 flex-1 overflow-hidden px-4">
 			<div v-if="loading" class="flex h-full items-center justify-center">
 				<LoadingState :label="t('radios.loading')" />
 			</div>
@@ -224,11 +250,33 @@ onBeforeUnmount(() => {
 				<EmptyState :title="t('radios.empty')" />
 			</div>
 
-			<div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pb-4">
+			<!--
+				Se virtualiza **por filas**: una fila de la cuadrícula es un
+				elemento del scroller y adentro va el `grid` de siempre. Es el
+				mismo camino que `AlbumsView`, y evita tener que decirle al
+				scroller el ancho de cada columna en píxeles.
+
+				La tarjeta pasa a tener alto fijo. Antes variaba —la línea de
+				votos sólo aparece cuando la emisora los trae—, y una cuadrícula
+				de altos distintos no se puede colocar sin medir. De paso se ve
+				mejor pareja.
+			-->
+			<RecycleScroller
+				v-else
+				:items="stationRows"
+				key-field="key"
+				:item-size="ALTO_DE_LA_FILA"
+				class="h-full"
+				v-slot="{ item: row }"
+			>
 				<div
-					v-for="station in sortedStations"
+					class="grid gap-3 pb-3"
+					:style="{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }"
+				>
+				<div
+					v-for="station in row.items"
 					:key="station.uuid"
-					class="bg-ui-surface/80 rounded-corner p-3 hover:bg-ui-bg/80 transition-colors cursor-pointer flex gap-3"
+					class="bg-ui-surface/80 rounded-corner p-3 hover:bg-ui-bg/80 transition-colors cursor-pointer flex gap-3 h-[116px] overflow-hidden"
 					@click="handlePlayStation(station)"
 				>
 					<!-- Station icon/image -->
@@ -294,7 +342,8 @@ onBeforeUnmount(() => {
 						</div>
 					</div>
 				</div>
-			</div>
+				</div>
+			</RecycleScroller>
 		</div>
 	</div>
 </template>

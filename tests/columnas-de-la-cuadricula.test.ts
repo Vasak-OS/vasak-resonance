@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { type Corte, columnasPara } from '@/composables/useColumnasVisibles';
+import { type Breakpoint, columnsFor } from '@/composables/useVisibleColumns';
 
 /**
  * El `RecycleScroller` coloca los elementos él, así que hay que decirle cuántas
@@ -8,39 +8,39 @@ import { type Corte, columnasPara } from '@/composables/useColumnasVisibles';
  */
 
 /** Los de Álbumes: `grid sm:grid-cols-2 xl:grid-cols-3`. */
-const DISCOS: Corte[] = [
-	{ desde: 640, columnas: 2 },
-	{ desde: 1280, columnas: 3 },
+const DISCOS: Breakpoint[] = [
+	{ from: 640, columns: 2 },
+	{ from: 1280, columns: 3 },
 ];
 
 /** Los de Radios: `grid-cols-1 md:grid-cols-2 lg:grid-cols-3`. */
-const EMISORAS: Corte[] = [
-	{ desde: 768, columnas: 2 },
-	{ desde: 1024, columnas: 3 },
+const EMISORAS: Breakpoint[] = [
+	{ from: 768, columns: 2 },
+	{ from: 1024, columns: 3 },
 ];
 
 describe('cuántas columnas dibuja la cuadrícula', () => {
 	test('sin llegar a ningún corte, una sola', () => {
-		expect(columnasPara(0, DISCOS)).toBe(1);
-		expect(columnasPara(639, DISCOS)).toBe(1);
-		expect(columnasPara(767, EMISORAS)).toBe(1);
+		expect(columnsFor(0, DISCOS)).toBe(1);
+		expect(columnsFor(639, DISCOS)).toBe(1);
+		expect(columnsFor(767, EMISORAS)).toBe(1);
 	});
 
 	test('justo en el corte ya cuenta', () => {
-		expect(columnasPara(640, DISCOS)).toBe(2);
-		expect(columnasPara(768, EMISORAS)).toBe(2);
-		expect(columnasPara(1280, DISCOS)).toBe(3);
-		expect(columnasPara(1024, EMISORAS)).toBe(3);
+		expect(columnsFor(640, DISCOS)).toBe(2);
+		expect(columnsFor(768, EMISORAS)).toBe(2);
+		expect(columnsFor(1280, DISCOS)).toBe(3);
+		expect(columnsFor(1024, EMISORAS)).toBe(3);
 	});
 
 	test('entre dos cortes manda el de abajo', () => {
-		expect(columnasPara(1279, DISCOS)).toBe(2);
-		expect(columnasPara(1023, EMISORAS)).toBe(2);
+		expect(columnsFor(1279, DISCOS)).toBe(2);
+		expect(columnsFor(1023, EMISORAS)).toBe(2);
 	});
 
 	test('y más ancho que el último corte no suma columnas', () => {
-		expect(columnasPara(4000, DISCOS)).toBe(3);
-		expect(columnasPara(4000, EMISORAS)).toBe(3);
+		expect(columnsFor(4000, DISCOS)).toBe(3);
+		expect(columnsFor(4000, EMISORAS)).toBe(3);
 	});
 
 	/** El orden en que vengan los cortes no puede cambiar el resultado. */
@@ -48,7 +48,7 @@ describe('cuántas columnas dibuja la cuadrícula', () => {
 		const alReves = [...DISCOS].reverse();
 
 		for (const ancho of [0, 639, 640, 1279, 1280, 3000]) {
-			expect(columnasPara(ancho, alReves)).toBe(columnasPara(ancho, DISCOS));
+			expect(columnsFor(ancho, alReves)).toBe(columnsFor(ancho, DISCOS));
 		}
 	});
 
@@ -60,30 +60,30 @@ describe('cuántas columnas dibuja la cuadrícula', () => {
 	 * la regla de una consulta de medios: la última que entra manda.
 	 */
 	test('con una tabla que baja, manda el corte de más arriba', () => {
-		const queBaja: Corte[] = [
-			{ desde: 640, columnas: 3 },
-			{ desde: 1280, columnas: 2 },
+		const queBaja: Breakpoint[] = [
+			{ from: 640, columns: 3 },
+			{ from: 1280, columns: 2 },
 		];
 
-		expect(columnasPara(639, queBaja)).toBe(1);
-		expect(columnasPara(640, queBaja)).toBe(3);
-		expect(columnasPara(1279, queBaja)).toBe(3);
-		expect(columnasPara(1280, queBaja)).toBe(2);
-		expect(columnasPara(4000, queBaja)).toBe(2);
+		expect(columnsFor(639, queBaja)).toBe(1);
+		expect(columnsFor(640, queBaja)).toBe(3);
+		expect(columnsFor(1279, queBaja)).toBe(3);
+		expect(columnsFor(1280, queBaja)).toBe(2);
+		expect(columnsFor(4000, queBaja)).toBe(2);
 	});
 
 	/** Y tampoco cambia si vienen desordenados. */
 	test('la tabla que baja, desordenada, da lo mismo', () => {
-		const queBaja: Corte[] = [
-			{ desde: 1280, columnas: 2 },
-			{ desde: 640, columnas: 3 },
+		const queBaja: Breakpoint[] = [
+			{ from: 1280, columns: 2 },
+			{ from: 640, columns: 3 },
 		];
 
-		expect(columnasPara(1280, queBaja)).toBe(2);
-		expect(columnasPara(700, queBaja)).toBe(3);
+		expect(columnsFor(1280, queBaja)).toBe(2);
+		expect(columnsFor(700, queBaja)).toBe(3);
 	});
 
 	test('sin cortes, siempre una', () => {
-		expect(columnasPara(5000, [])).toBe(1);
+		expect(columnsFor(5000, [])).toBe(1);
 	});
 });

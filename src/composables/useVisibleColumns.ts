@@ -10,9 +10,9 @@ import { onBeforeUnmount, onMounted, type Ref, ref } from 'vue';
  */
 
 /** Un corte: desde este ancho, tantas columnas. */
-export interface Corte {
-	desde: number;
-	columnas: number;
+export interface Breakpoint {
+	from: number;
+	columns: number;
 }
 
 /**
@@ -29,15 +29,16 @@ export interface Corte {
  * segundo. Elegir por cantidad devolvería 3 y la cuadrícula dibujaría una
  * columna de más sobre filas de dos.
  */
-export function columnasPara(ancho: number, cortes: Corte[]): number {
-	const manda = cortes
-		.filter((corte) => ancho >= corte.desde)
-		.reduce<Corte | null>(
-			(elegido, corte) => (elegido === null || corte.desde > elegido.desde ? corte : elegido),
+export function columnsFor(width: number, breakpoints: Breakpoint[]): number {
+	const winner = breakpoints
+		.filter((breakpoint) => width >= breakpoint.from)
+		.reduce<Breakpoint | null>(
+			(chosen, breakpoint) =>
+				chosen === null || breakpoint.from > chosen.from ? breakpoint : chosen,
 			null
 		);
 
-	return manda?.columnas ?? 1;
+	return winner?.columns ?? 1;
 }
 
 /**
@@ -48,31 +49,31 @@ export function columnasPara(ancho: number, cortes: Corte[]): number {
  * una cuadrícula que dependa de ellos se queda con las columnas del arranque
  * para siempre.
  */
-export function useColumnasVisibles(cortes: Corte[]): Ref<number> {
-	const columnas = ref(1);
-	let observador: ResizeObserver | null = null;
+export function useVisibleColumns(breakpoints: Breakpoint[]): Ref<number> {
+	const columns = ref(1);
+	let observer: ResizeObserver | null = null;
 
 	onMounted(() => {
-		const raiz = document.documentElement;
+		const root = document.documentElement;
 
-		const recalcular = () => {
-			columnas.value = columnasPara(raiz.clientWidth, cortes);
+		const recalculate = () => {
+			columns.value = columnsFor(root.clientWidth, breakpoints);
 		};
 
-		recalcular();
+		recalculate();
 
 		// `ResizeObserver` puede no existir en un entorno de pruebas sin DOM
 		// completo: sin él queda el ancho del arranque, que es mejor que romper.
 		if (typeof ResizeObserver === 'function') {
-			observador = new ResizeObserver(recalcular);
-			observador.observe(raiz);
+			observer = new ResizeObserver(recalculate);
+			observer.observe(root);
 		}
 	});
 
 	onBeforeUnmount(() => {
-		observador?.disconnect();
-		observador = null;
+		observer?.disconnect();
+		observer = null;
 	});
 
-	return columnas;
+	return columns;
 }

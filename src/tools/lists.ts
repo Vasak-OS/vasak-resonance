@@ -6,9 +6,9 @@
  */
 
 /** Una fila de la cuadrícula, con lo que va adentro. */
-export interface FilaDeCuadricula<T> {
-	clave: string;
-	elementos: T[];
+export interface GridRow<T> {
+	key: string;
+	items: T[];
 }
 
 /**
@@ -23,20 +23,20 @@ export interface FilaDeCuadricula<T> {
  * `clave` sale del primer elemento de cada fila, así la fila conserva su
  * identidad mientras no cambie lo que tiene adentro.
  */
-export function enFilas<T>(
-	elementos: readonly T[],
-	columnas: number,
-	claveDe: (elemento: T) => string | undefined | null
-): FilaDeCuadricula<T>[] {
-	const porFila = Math.max(1, Math.floor(columnas));
-	const filas: FilaDeCuadricula<T>[] = [];
+export function inRows<T>(
+	items: readonly T[],
+	columns: number,
+	keyOf: (item: T) => string | undefined | null
+): GridRow<T>[] {
+	const perRow = Math.max(1, Math.floor(columns));
+	const rows: GridRow<T>[] = [];
 
-	for (let desde = 0; desde < elementos.length; desde += porFila) {
-		const dela = elementos.slice(desde, desde + porFila);
-		filas.push({ clave: claveDeLaFila(claveDe(dela[0]), desde), elementos: dela });
+	for (let from = 0; from < items.length; from += perRow) {
+		const slice = items.slice(from, from + perRow);
+		rows.push({ key: rowKey(keyOf(slice[0]), from), items: slice });
 	}
 
-	return filas;
+	return rows;
 }
 
 /**
@@ -54,6 +54,6 @@ export function enFilas<T>(
  * clave son otra vez una lista mal dibujada. Marcando las dos no hay forma de
  * que se crucen.
  */
-export function claveDeLaFila(propia: string | undefined | null, desde: number): string {
-	return typeof propia === 'string' && propia !== '' ? `clave:${propia}` : `posicion:${desde}`;
+export function rowKey(own: string | undefined | null, from: number): string {
+	return typeof own === 'string' && own !== '' ? `key:${own}` : `position:${from}`;
 }
