@@ -2,6 +2,7 @@
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { EmptyState } from '@vasakgroup/vue-libvasak';
 import { computed, onMounted, ref } from 'vue';
+import { RecycleScroller } from 'vue-virtual-scroller';
 import PlayerQueuePanel from '@/components/player/PlayerQueuePanel.vue';
 import { formatSeconds } from '@/composables/useTimeFormat';
 import { useTrackContextMenu } from '@/composables/useTrackContextMenu';
@@ -33,6 +34,20 @@ const busy = ref(false);
 const error = ref('');
 
 /** Library tracks not already in the open playlist, filtered by the search box. */
+/**
+ * Lo que mide una fila de la lista, contando el hueco de abajo: 54 de alto más
+ * los 4 del `mb-1`. El scroller coloca a partir de este número, así que si se
+ * separa de lo que dibuja el CSS las filas se pisan o dejan huecos.
+ */
+const ALTO_DE_LA_FILA = 58;
+
+/** Hasta dónde crece la caja de la lista antes de desplazarse ella sola. */
+const ALTO_MAXIMO_DE_LA_LISTA = 480;
+
+const altoDeLaLista = computed(() =>
+	Math.min(playlistTracks.value.length * ALTO_DE_LA_FILA, ALTO_MAXIMO_DE_LA_LISTA)
+);
+
 const addableTracks = computed(() => {
 	const alreadyIn = new Set(playlistTracks.value.map((track) => track.track_id));
 	const needle = addSearch.value.trim().toLowerCase();
@@ -254,12 +269,35 @@ onMounted(() =>
 
 				<EmptyState v-if="playlistTracks.length === 0" :title="t('playlists.emptyList')" bordered />
 
-				<ol v-else class="flex flex-col gap-1" @contextmenu="onTrackContextMenu">
-					<li
-						v-for="(track, index) in playlistTracks"
-						:key="track.track_id"
+				<!--
+					La lista se virtualiza con alto propio y no en «modo página»:
+					en la 2 de `vue-virtual-scroller` ese modo mira el
+					desplazamiento de la ventana y no busca el contenedor que
+					desplaza de verdad —que acá es la sección—, así que colocaría
+					las filas en el lugar equivocado. Buscar el contenedor llegó
+					en la 3.0.4, y a la 3 no subimos: su `DynamicScroller` es
+					cerca del doble de lento en WebKitGTK y `AlbumsView` lo usa.
+
+					El alto sale de cuántas pistas hay, con tope: una lista de
+					tres no deja un hueco vacío, y una de mil no empuja el resto
+					de la vista fuera de la pantalla.
+				-->
+				<div
+					v-else
+					class="overflow-hidden"
+					:style="{ height: `${altoDeLaLista}px` }"
+					@contextmenu="onTrackContextMenu"
+				>
+					<RecycleScroller
+						:items="playlistTracks"
+						key-field="track_id"
+						:item-size="ALTO_DE_LA_FILA"
+						class="h-full overflow-y-auto"
+						v-slot="{ item: track, index }"
+					>
+					<div
 						:data-track-path="track.path"
-						class="flex items-center gap-3 rounded-corner border border-ui-border/60 p-2"
+						class="mb-1 flex h-[54px] items-center gap-3 rounded-corner border border-ui-border/60 p-2"
 					>
 						<span class="w-6 shrink-0 text-right text-xs text-tx-muted">{{ index + 1 }}</span>
 						<div class="min-w-0 flex-1">
@@ -278,8 +316,9 @@ onMounted(() =>
 						>
 							✕
 						</button>
-					</li>
-				</ol>
+					</div>
+					</RecycleScroller>
+				</div>
 
 				<!-- Adding from the library -->
 				<div class="flex flex-col gap-2 border-t border-ui-border pt-4">

@@ -2,6 +2,7 @@
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { EmptyState, ThemeIcon } from '@vasakgroup/vue-libvasak';
 import { computed, onMounted, ref } from 'vue';
+import { RecycleScroller } from 'vue-virtual-scroller';
 import LabeledField from '@/components/layout/LabeledField.vue';
 import { useMetadataLabels } from '@/composables/useMetadataLabels';
 import { useTrackContextMenu } from '@/composables/useTrackContextMenu';
@@ -11,6 +12,16 @@ const { t } = useI18n();
 const { artistLabel, albumLabel } = useMetadataLabels();
 const playerStore = usePlayerStore();
 const { onTrackContextMenu } = useTrackContextMenu();
+/**
+ * Lo que mide una fila de favoritos, contando el hueco de abajo.
+ *
+ * El scroller coloca las filas él a partir de este número, así que tiene que
+ * coincidir con lo que el CSS dibuja: 72 de alto más los 8 del `mb-2`. Si se
+ * separan, las filas se pisan o dejan huecos, y no falla nada — se ve torcido.
+ * Hay una prueba que compara los dos.
+ */
+const ALTO_DE_LA_FILA = 80;
+
 const searchQuery = ref('');
 const artistFilter = ref('all');
 const sortBy = ref('recent');
@@ -79,7 +90,7 @@ onMounted(async () => {
 </script>
 
 <template>
-	<section class="h-full overflow-y-auto p-4">
+	<section class="flex h-full flex-col gap-3 overflow-hidden p-4">
 		<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
 			<div>
 				<p class="text-xs uppercase tracking-[0.16em] text-tx-muted">{{ t('favorites.eyebrow') }}</p>
@@ -130,12 +141,23 @@ onMounted(async () => {
 
 		<EmptyState v-if="filteredFavoriteEntries.length === 0" :title="t('favorites.empty')" bordered />
 
-		<ul v-else class="grid gap-2" @contextmenu="onTrackContextMenu">
-			<li
-				v-for="entry in filteredFavoriteEntries"
-				:key="entry.path"
+		<!--
+			Una fila por favorito, con alto fijo: es lo que el `RecycleScroller`
+			necesita saber para colocar sin medir. `ALTO_DE_LA_FILA` la declara
+			una sola vez y la prueba lo comprueba contra la clase, porque si los
+			dos números se separan las filas se pisan o dejan huecos.
+		-->
+		<div v-else class="min-h-0 flex-1 overflow-hidden" @contextmenu="onTrackContextMenu">
+			<RecycleScroller
+				:items="filteredFavoriteEntries"
+				key-field="path"
+				:item-size="ALTO_DE_LA_FILA"
+				class="h-full overflow-y-auto"
+				v-slot="{ item: entry }"
+			>
+			<div
 				:data-track-path="entry.path"
-				class="flex items-center gap-3 rounded-corner border border-ui-border bg-ui-bg/70 px-3 py-2"
+				class="mb-2 flex h-[72px] items-center gap-3 rounded-corner border border-ui-border bg-ui-bg/70 px-3 py-2"
 			>
 				<div class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-corner border border-ui-border bg-ui-surface/45">
 					<img
@@ -176,8 +198,9 @@ onMounted(async () => {
 					<ThemeIcon name="remove" type="symbol" :size="16" />
 					{{ t('common.remove') }}
 				</button>
-			</li>
-		</ul>
+			</div>
+			</RecycleScroller>
+		</div>
 
 		<p v-if="currentPath" class="mt-3 text-xs text-tx-muted">
 			{{ t('favorites.current').replace('{0}', () => extractTrackName(currentPath)) }}

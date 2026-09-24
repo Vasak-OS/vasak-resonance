@@ -1,7 +1,7 @@
 {
   "name": "vasak-resonance",
   "private": true,
-  "version": "0.8.3",
+  "version": "0.9.0",
   "sideEffects": false,
   "type": "module",
   "scripts": {
@@ -45,7 +45,8 @@
   },
   "vasak": {
     "bibliotecasAtrasadas": {
-      "@vasakgroup/plugin-config-manager": "La 2.7.0 declara pinia ^4 y esta aplicación está en pinia 3: subir el rango arrastra un salto mayor ajeno. Por eso el rango es ~2.6.1 y no ^2.6.1, que alcanzaría una versión que no se puede instalar. Se saca al subir a pinia 4."
+      "@vasakgroup/plugin-config-manager": "La 2.7.0 declara pinia ^4 y esta aplicación está en pinia 3: subir el rango arrastra un salto mayor ajeno. Instalar no falla —bun avisa «incorrect peer dependency» y sigue—, pero el manifiesto pasa a declarar un complemento que dice necesitar una mayor que acá no está. Por eso el rango es ~2.6.1 y no ^2.6.1, que volvería a alcanzar la 2.7.0 en el próximo `bun update`. Se saca al subir a pinia 4.",
+      "vue-virtual-scroller": "La 3 se queda afuera a propósito y está medido: su `DynamicScroller` es cerca del doble de lento que el de la 2 en WebKitGTK —p50 de 81 ms contra 42 desplazando 8000 filas— y monta dos o tres veces más despacio. `AlbumsView` lo usa, porque la tarjeta de álbum no tiene alto fijo. El `RecycleScroller`, que es lo que usan las otras cuatro vistas, empata entre las dos versiones. Se sube cuando la 3 alcance a la 2 midiendo con `herramientas/medir-en-webkit.py`, o cuando `AlbumsView` deje de necesitar altos variables. Los números están en el issue #71."
     }
   }
 }
