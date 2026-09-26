@@ -78,7 +78,7 @@ describe('los modos de reproducción', () => {
 		await settings.setRepeticion('uno');
 		await settings.setAleatorio(true);
 
-		expect(invocaciones.filter((c) => c === 'set_playback_modes').length).toBe(avisosAlCargar + 2);
+		expect(invocaciones.filter((c) => c === 'set_playback_modes')).toHaveLength(avisosAlCargar + 2);
 	});
 
 	test('al arrancar también se le avisa, con lo que estaba guardado', async () => {

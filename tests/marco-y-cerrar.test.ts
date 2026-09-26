@@ -66,11 +66,11 @@ describe('la ventana grande', () => {
 		expect(ventana.findComponent(WindowFrame).exists()).toBe(true);
 		// `rounded-corner-window` es la esquina de la ventana y sale del marco.
 		// Con dos, el borde y el fondo se dibujan dos veces y se ven los dos.
-		expect(ventana.findAll('.rounded-corner-window').length).toBe(1);
+		expect(ventana.findAll('.rounded-corner-window')).toHaveLength(1);
 	});
 
 	test('lleva los tres botones', () => {
-		expect(abrirLaGrande().findComponent(WindowControls).findAll('button').length).toBe(3);
+		expect(abrirLaGrande().findComponent(WindowControls).findAll('button')).toHaveLength(3);
 	});
 });
 
@@ -89,7 +89,7 @@ describe('el mini reproductor', () => {
 
 	test('pero el borde y la esquina son los del resto del escritorio', () => {
 		// Que es lo que sí hace falta del marco compartido.
-		expect(abrirElMini().findAll('.rounded-corner-window').length).toBe(1);
+		expect(abrirElMini().findAll('.rounded-corner-window')).toHaveLength(1);
 	});
 
 	test('y nada le pide a la ventana que se cierre', async () => {
