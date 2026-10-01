@@ -128,7 +128,7 @@ describe('la tarjeta de álbum, que se mide en vez de declararse', () => {
 		const text = await read('AlbumsView');
 
 		expect(text).toContain('class="mb-3 flex h-44 justify-center"');
-		expect(text).toContain('auto-rows-[2.125rem]');
+		expect(text).toContain('auto-rows-[minmax(2.125rem,auto)]');
 		expect(text).toContain('min-h-[2.375rem]');
 		expect(text).toContain('const MIN_CARD_HEIGHT = 532;');
 	});

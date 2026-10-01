@@ -249,7 +249,7 @@ const onPlayAlbum = async (paths: string[]) => {
 									.replace('{0}', String(album.tracks.length)) }}
 							</p>
 
-							<div class="mt-3 grid auto-rows-[2.125rem] grid-cols-2 gap-2">
+							<div class="mt-3 grid auto-rows-[minmax(2.125rem,auto)] grid-cols-2 gap-2">
 								<ActionButton
 									:label="t('albums.playAlbum')"
 									icon="media-playback-start"

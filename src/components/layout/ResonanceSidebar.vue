@@ -15,7 +15,7 @@ import { useSettingsStore } from '@/stores/settings';
 const props = withDefaults(
 	defineProps<{
 		/**
-		 * Ocupar todo el ancho: en ventana angosta la barra va sola, en lugar
+		 * Ocupar el ancho entero: en ventana angosta la barra va sola, en lugar
 		 * del contenido, y no al costado con sus 18 rem.
 		 */
 		fill?: boolean;
@@ -126,7 +126,7 @@ const onSelectSection = async (id: string) => {
 	<!-- La superficie de la barra es la de `SideBar` de la librería —el mismo
 	     canto, radio y material—, pero el componente no se adopta: se pliega
 	     solo a un riel de 84 píxeles por debajo de 767 de contenedor, y acá en
-	     angosto la barra va sola, a todo el ancho, en lugar del contenido (una
+	     angosto la barra va sola, de borde a borde, en lugar del contenido (una
 	     columna por vez). Un riel de iconos dejaría 150 píxeles para la lista a
 	     240 de ancho. -->
 	<aside
