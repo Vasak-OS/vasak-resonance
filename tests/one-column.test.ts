@@ -133,7 +133,8 @@ describe('las listas de reproducción, angostas', () => {
 
 		// `v-show` deja el marcado puesto y lo esconde: lo que cuenta es qué se ve.
 		const playlistRows = () => view?.findAll('[role="button"]') ?? [];
-		const backButton = () => view?.findAll('button').find((button) => button.text().includes('artists.back'));
+		const backButton = () =>
+			view?.findAll('button').find((button) => button.text().includes('artists.back'));
 		expect(playlistRows()).toHaveLength(2);
 		expect(playlistRows()[0]?.isVisible()).toBe(true);
 		expect(backButton()?.isVisible() ?? false).toBe(false);

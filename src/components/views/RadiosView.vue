@@ -233,8 +233,9 @@ onBeforeUnmount(() => {
 			</FormGroup>
 		</div>
 
-		<!-- Error message, con el reintento al lado -->
-		<AlertMessage v-if="error" class="mx-4" tone="error" icon="auto">
+		<!-- Error message, con el reintento al lado: en franja, como antes, que
+		     pone el botón en la misma línea cuando hay lugar. -->
+		<AlertMessage v-if="error" class="mx-4 rounded-corner-m border" variant="banner" tone="error" icon="auto">
 			{{ error }}
 			<template #actions>
 				<ActionButton

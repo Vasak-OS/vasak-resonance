@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
 import { Slider } from '@vasakgroup/vue-libvasak';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { devLog } from '@/composables/useDevLog';
+import { useElementWidth } from '@/composables/useElementWidth';
 import { formatSeconds } from '@/composables/useTimeFormat';
 import { usePlayerStore } from '@/stores/player';
 
@@ -64,8 +65,25 @@ const seekValueText = computed(
 	() => `${formatSeconds(sliderValue.value)} / ${formatSeconds(totalDuration.value)}`
 );
 
+/**
+ * Cuántas barras entran en el ancho que hay.
+ *
+ * Cada barra necesita su hueco de 2 píxeles y al menos otros 2 de ancho: con
+ * las 110 de siempre en una ventana de 240, los huecos solos ocupaban más que
+ * la tira y las barras quedaban en cero —la onda desaparecía—. Con lugar,
+ * son las de siempre.
+ */
+const MIN_PIXELS_PER_BAR = 4;
+const strip = ref<HTMLElement | null>(null);
+const stripWidth = useElementWidth(strip);
+const visibleSteps = computed(() =>
+	stripWidth.value > 0
+		? Math.max(8, Math.min(props.steps, Math.floor(stripWidth.value / MIN_PIXELS_PER_BAR)))
+		: props.steps
+);
+
 const bars = computed(() => {
-	const steps = props.steps;
+	const steps = visibleSteps.value;
 	const amp = props.amplitude;
 	const phaseMul = props.phaseMultiplier;
 	const timeMul = props.timeMultiplier;
@@ -91,6 +109,7 @@ const bars = computed(() => {
 
 <template>
 	<div
+		ref="strip"
 		class="flex w-full items-end gap-0.5 overflow-hidden"
 		:class="barHeight"
 	>
