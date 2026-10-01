@@ -1,22 +1,31 @@
 <script setup lang="ts">
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
+import {
+	ActionButton,
+	AlertMessage,
+	Checkbox,
+	ConfigSection,
+	PageHeader,
+	SettingRow,
+	Slider,
+} from '@vasakgroup/vue-libvasak';
 import { computed, onMounted, ref } from 'vue';
 import {
-	desvincularLastfm,
-	type EstadoDeLastfm,
-	empezarAutorizacion,
-	estadoDeLastfm,
-	terminarAutorizacion,
+	finishLastfmAuthorization,
+	getLastfmStatus,
+	type LastfmStatus,
+	startLastfmAuthorization,
+	unlinkLastfm,
 } from '@/services/lastfm.service';
 import { MAX_CROSSFADE_SECONDS, MIN_CROSSFADE_SECONDS, useSettingsStore } from '@/stores/settings';
-import { pasoDeLastfm } from '@/tools/lastfm';
+import { lastfmStep } from '@/tools/lastfm';
 
 const { t } = useI18n();
 const settings = useSettingsStore();
 
-const lastfm = ref<EstadoDeLastfm>({ configurado: false, usuario: null });
-const tokenPendiente = ref<string | null>(null);
-const errorDeLastfm = ref<string | null>(null);
+const lastfm = ref<LastfmStatus>({ configured: false, user: null });
+const pendingToken = ref<string | null>(null);
+const lastfmError = ref<string | null>(null);
 
 /**
  * Si hay una operación de Last.fm en curso.
@@ -26,77 +35,77 @@ const errorDeLastfm = ref<string | null>(null);
  * uno y se confirma el otro, que nadie autorizó. Se pone antes del primer
  * `await`, así el segundo clic del mismo tic ya lo ve puesto.
  */
-const lastfmOcupado = ref(false);
+const lastfmBusy = ref(false);
 
-const pasoLastfm = computed(() => pasoDeLastfm(lastfm.value, tokenPendiente.value));
+const step = computed(() => lastfmStep(lastfm.value, pendingToken.value));
 
-const vinculadoComo = computed(() =>
-	t('settings.lastfmLinkedAs').replace('{0}', lastfm.value.usuario ?? '')
+const linkedAs = computed(() =>
+	t('settings.lastfmLinkedAs').replace('{0}', lastfm.value.user ?? '')
 );
 
 onMounted(() => {
 	void settings.load();
-	void recargarLastfm();
+	void reloadLastfm();
 });
 
-async function recargarLastfm() {
-	lastfm.value = await estadoDeLastfm();
+async function reloadLastfm() {
+	lastfm.value = await getLastfmStatus();
 }
 
-async function onVincular() {
-	if (lastfmOcupado.value) {
+async function onLink() {
+	if (lastfmBusy.value) {
 		return;
 	}
 
-	lastfmOcupado.value = true;
-	errorDeLastfm.value = null;
+	lastfmBusy.value = true;
+	lastfmError.value = null;
 	try {
-		tokenPendiente.value = await empezarAutorizacion();
+		pendingToken.value = await startLastfmAuthorization();
 	} catch (error) {
-		errorDeLastfm.value = String(error);
+		lastfmError.value = String(error);
 	} finally {
-		lastfmOcupado.value = false;
+		lastfmBusy.value = false;
 	}
 }
 
-async function onConfirmar() {
-	const token = tokenPendiente.value;
-	if (!token || lastfmOcupado.value) {
+async function onConfirm() {
+	const token = pendingToken.value;
+	if (!token || lastfmBusy.value) {
 		return;
 	}
 
-	lastfmOcupado.value = true;
-	errorDeLastfm.value = null;
+	lastfmBusy.value = true;
+	lastfmError.value = null;
 	try {
-		lastfm.value = await terminarAutorizacion(token);
+		lastfm.value = await finishLastfmAuthorization(token);
 		// Sólo al salir bien: si la persona todavía no autorizó allá, esto falla
 		// y tiene que poder volver a apretar sin empezar la vuelta de nuevo.
-		tokenPendiente.value = null;
+		pendingToken.value = null;
 	} catch (error) {
-		errorDeLastfm.value = String(error);
+		lastfmError.value = String(error);
 	} finally {
-		lastfmOcupado.value = false;
+		lastfmBusy.value = false;
 	}
 }
 
-function onCancelar() {
-	tokenPendiente.value = null;
-	errorDeLastfm.value = null;
+function onCancel() {
+	pendingToken.value = null;
+	lastfmError.value = null;
 }
 
-async function onDesvincular() {
-	if (lastfmOcupado.value) {
+async function onUnlink() {
+	if (lastfmBusy.value) {
 		return;
 	}
 
-	lastfmOcupado.value = true;
-	errorDeLastfm.value = null;
+	lastfmBusy.value = true;
+	lastfmError.value = null;
 	try {
-		lastfm.value = await desvincularLastfm();
+		lastfm.value = await unlinkLastfm();
 	} catch (error) {
-		errorDeLastfm.value = String(error);
+		lastfmError.value = String(error);
 	} finally {
-		lastfmOcupado.value = false;
+		lastfmBusy.value = false;
 	}
 }
 
@@ -107,136 +116,96 @@ const secondsLabel = computed(() =>
 	)
 );
 
-const onToggle = (event: Event) => {
-	void settings.setCrossfadeEnabled((event.target as HTMLInputElement).checked);
+const onToggle = (checked: boolean) => {
+	void settings.setCrossfadeEnabled(checked);
 };
 
-const onSeconds = (event: Event) => {
-	void settings.setCrossfadeSeconds(Number((event.target as HTMLInputElement).value));
+// Se guarda al soltar (`lazy`), no en cada paso del arrastre: cada valor es una
+// escritura en disco y un aviso al hilo de audio.
+const onSeconds = (seconds: number) => {
+	void settings.setCrossfadeSeconds(seconds);
 };
 </script>
 
 <template>
 	<div class="flex h-full flex-col gap-4 overflow-y-auto px-4 py-4">
-		<div>
-			<p class="text-xs uppercase tracking-[0.16em] text-tx-muted">
-				{{ t('settings.eyebrow') }}
-			</p>
-			<h1 class="text-2xl font-bold text-tx-main">{{ t('settings.title') }}</h1>
-		</div>
+		<PageHeader :eyebrow="t('settings.eyebrow')" :title="t('settings.title')" size="lg" />
 
-		<section
-			class="grid gap-4 rounded-corner border border-ui-border bg-ui-surface/55 p-4"
-			:aria-label="t('settings.playbackGroup')"
-		>
-			<h2 class="text-sm font-semibold text-tx-main">{{ t('settings.playbackGroup') }}</h2>
-
-			<label class="flex items-start justify-between gap-4">
-				<span class="grid gap-1">
-					<span class="text-sm font-medium text-tx-main">{{ t('settings.crossfade') }}</span>
-					<span class="text-xs text-tx-muted">{{ t('settings.crossfadeHint') }}</span>
-				</span>
-				<input
-					type="checkbox"
-					class="mt-1 h-4 w-4 shrink-0 accent-primary"
-					:checked="settings.crossfadeEnabled"
+		<section :aria-label="t('settings.playbackGroup')">
+		<ConfigSection :title="t('settings.playbackGroup')" as="h2" class="gap-4">
+			<!-- Una casilla, como antes: el encadenado se prende o se apaga. -->
+			<SettingRow :label="t('settings.crossfade')" :description="t('settings.crossfadeHint')" control-id="crossfade-enabled">
+				<Checkbox
+					id="crossfade-enabled"
+					:model-value="settings.crossfadeEnabled"
+					:label="t('settings.crossfade')"
+					hide-label
 					@change="onToggle"
-				>
-			</label>
+				/>
+			</SettingRow>
 
 			<!-- The slider is disabled rather than hidden: someone who turns the
 			     overlap off should still see the length it will come back with. -->
-			<label class="grid gap-1.5" :class="settings.crossfadeEnabled ? '' : 'opacity-50'">
+			<div class="grid gap-1.5" :class="settings.crossfadeEnabled ? '' : 'opacity-50'">
 				<span class="flex items-baseline justify-between gap-2">
 					<span class="text-xs uppercase tracking-[0.14em] text-tx-muted">
 						{{ t('settings.crossfadeLength') }}
 					</span>
 					<span class="text-sm font-medium text-tx-main">{{ secondsLabel }}</span>
 				</span>
-				<input
-					type="range"
-					class="w-full accent-primary"
+				<Slider
+					:model-value="settings.crossfadeSeconds"
 					:min="MIN_CROSSFADE_SECONDS"
 					:max="MAX_CROSSFADE_SECONDS"
-					step="1"
-					:value="settings.crossfadeSeconds"
+					:step="1"
+					:label="t('settings.crossfadeLength')"
+					:value-text="secondsLabel"
 					:disabled="!settings.crossfadeEnabled"
-					:aria-label="t('settings.crossfadeLength')"
+					lazy
 					@change="onSeconds"
-				>
-			</label>
+				/>
+			</div>
 
 			<p class="text-xs text-tx-muted">{{ t('settings.crossfadeSegueWarning') }}</p>
 
-			<div class="flex justify-end">
-				<button
-					type="button"
-					class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-1.5 text-xs font-medium text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
-					@click="settings.resetCrossfade()"
-				>
-					{{ t('settings.restoreDefaults') }}
-				</button>
-			</div>
+			<template #actions>
+				<ActionButton :label="t('settings.restoreDefaults')" variant="secondary" size="sm" @click="settings.resetCrossfade()" />
+			</template>
+		</ConfigSection>
 		</section>
 
 		<!-- Sin clave de API no se dibuja nada: es el caso de casi todo el mundo,
 		     y una sección que promete vincular algo que no se puede vincular es
 		     peor que no tenerla. Igual que la presencia en Discord. -->
-		<section
-			v-if="pasoLastfm !== 'oculto'"
-			class="grid gap-3 rounded-corner border border-ui-border bg-ui-surface/55 p-4"
-			:aria-label="t('settings.lastfmGroup')"
-		>
-			<h2 class="text-sm font-semibold text-tx-main">{{ t('settings.lastfmGroup') }}</h2>
-			<p class="text-xs text-tx-muted">{{ t('settings.lastfmHint') }}</p>
-
-			<div v-if="pasoLastfm === 'vinculado'" class="flex items-center justify-between gap-4">
-				<span class="text-sm text-tx-main">{{ vinculadoComo }}</span>
-				<button
-					type="button"
-					class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-1.5 text-xs font-medium text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
-					:disabled="lastfmOcupado"
-					@click="onDesvincular"
-				>
-					{{ t('settings.lastfmUnlink') }}
-				</button>
+		<section v-if="step !== 'hidden'" :aria-label="t('settings.lastfmGroup')">
+		<ConfigSection :title="t('settings.lastfmGroup')" :description="t('settings.lastfmHint')" as="h2" class="gap-3">
+			<div v-if="step === 'linked'" class="flex min-w-0 flex-wrap items-center justify-between gap-4">
+				<span class="min-w-0 break-words text-sm text-tx-main">{{ linkedAs }}</span>
+				<ActionButton
+					:label="t('settings.lastfmUnlink')"
+					variant="secondary"
+					size="sm"
+					:disabled="lastfmBusy"
+					@click="onUnlink"
+				/>
 			</div>
 
-			<div v-else-if="pasoLastfm === 'autorizando'" class="grid gap-2">
+			<div v-else-if="step === 'authorizing'" class="grid gap-2">
 				<p class="text-sm text-tx-main">{{ t('settings.lastfmAuthorizing') }}</p>
-				<div class="flex justify-end gap-2">
-					<button
-						type="button"
-						class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-1.5 text-xs font-medium text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
-						@click="onCancelar"
-					>
-						{{ t('settings.lastfmCancel') }}
-					</button>
-					<button
-						type="button"
-						class="rounded-corner border border-primary/40 bg-primary/15 px-3 py-1.5 text-xs font-medium text-tx-main transition-colors duration-200 hover:bg-primary/25"
-						:disabled="lastfmOcupado"
-						@click="onConfirmar"
-					>
-						{{ t('settings.lastfmConfirm') }}
-					</button>
+				<div class="flex flex-wrap justify-end gap-2">
+					<ActionButton :label="t('settings.lastfmCancel')" variant="secondary" size="sm" @click="onCancel" />
+					<ActionButton :label="t('settings.lastfmConfirm')" size="sm" :disabled="lastfmBusy" @click="onConfirm" />
 				</div>
 			</div>
 
 			<div v-else class="flex justify-end">
-				<button
-					type="button"
-					class="rounded-corner border border-primary/40 bg-primary/15 px-3 py-1.5 text-xs font-medium text-tx-main transition-colors duration-200 hover:bg-primary/25"
-					:disabled="lastfmOcupado"
-					@click="onVincular"
-				>
-					{{ t('settings.lastfmLink') }}
-				</button>
+				<ActionButton :label="t('settings.lastfmLink')" size="sm" :disabled="lastfmBusy" @click="onLink" />
 			</div>
 
-			<p v-if="errorDeLastfm" class="text-xs text-red-400" role="alert">
-				{{ t('settings.lastfmError').replace('{0}', errorDeLastfm) }}
-			</p>
+			<AlertMessage v-if="lastfmError" tone="error" icon="auto">
+				{{ t('settings.lastfmError').replace('{0}', lastfmError) }}
+			</AlertMessage>
+		</ConfigSection>
 		</section>
 	</div>
 </template>

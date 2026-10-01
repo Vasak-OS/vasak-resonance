@@ -18,17 +18,18 @@
  * que se podía enfocar y apretar, que un lector de pantalla anunciaba como
  * botón, y que no hacía nada. Es un `<span>`, que es lo que siempre fue.
  *
- * ── Por qué no es `SliderControl` ───────────────────────────────────────────
+ * ── Por qué es `Slider` y no `SliderControl` ───────────────────────────────
  *
- * La librería tiene el deslizador con esta misma cuenta —`SliderControl`— y es
- * de donde sale el contrato de accesibilidad de acá. No se adopta por dos
- * cosas, anotadas en vue-libvasak#52: pide el icono como **ruta ya resuelta**
- * en vez de por nombre, que es lo contrario de lo que hace el resto de la
- * librería, y viene en un solo tamaño —`w-full p-4`— pensado para una fila de
- * preferencias. Acá el control vive en una barra de título y mide `w-36`.
+ * `SliderControl` pide el icono como ruta ya resuelta y viene en un solo
+ * tamaño, pensado para una fila de preferencias (vue-libvasak#52). `Slider`,
+ * de la 2.1, es el control solo: se le da el ancho de acá (`w-36`) y trae el
+ * contrato de accesibilidad —el nombre y «47 %» en `aria-valuetext`—.
+ *
+ * Se ve cuando la barra tiene lugar, mirando su propio ancho
+ * (`@container` en `NowPlayingTopBar`) y no el de la pantalla.
  */
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
-import { ThemeIcon } from '@vasakgroup/vue-libvasak';
+import { Badge, Slider, ThemeIcon } from '@vasakgroup/vue-libvasak';
 import { computed } from 'vue';
 import { usePlayerStore } from '@/stores/player';
 
@@ -46,40 +47,30 @@ const volumeIcon = computed(() => {
 	return volumePercent.value < 50 ? 'audio-volume-low-symbolic' : 'audio-volume-high-symbolic';
 });
 
-const onInput = (e: Event) => {
-	const target = e.target as HTMLInputElement;
-	const val = Number(target.value);
-	const normalized = Math.max(0, Math.min(100, val)) / 50;
+const onInput = (value: number) => {
+	const normalized = Math.max(0, Math.min(100, value)) / 50;
 	void playerStore.setVolume(normalized);
 };
 </script>
 
 <template>
-	<div class="hidden items-center gap-2 md:flex">
-		<span class="inline-flex items-center gap-2 rounded-corner border border-ui-border bg-ui-surface/55 px-2 py-1 text-tx-main text-xs">
-			<ThemeIcon :name="volumeIcon" type="symbol" :size="16" />
-			<span class="text-tx-muted text-xs">{{ volumePercent }}%</span>
-		</span>
-		<input
-			type="range"
-			min="0"
-			max="100"
-			:value="volumePercent"
-			:aria-label="t('volume.label')"
-			:aria-valuetext="`${volumePercent}%`"
-			class="h-1 w-36 appearance-none rounded bg-ui-border/40 accent-primary/70"
-			@input="onInput"
+	<div class="hidden min-w-0 items-center gap-2 @min-[28rem]:flex">
+		<Badge size="md">
+			<span class="inline-flex items-center gap-2">
+				<ThemeIcon :name="volumeIcon" type="symbol" :size="16" />
+				<span class="text-tx-muted tabular-nums">{{ volumePercent }}%</span>
+			</span>
+		</Badge>
+		<!-- Mismo criterio que el de la canción: 32 de zona de toque, y la fila
+		     de los 26 píxeles que tenía. -->
+		<Slider
+			class="-my-[3px] w-36"
+			:model-value="volumePercent"
+			:min="0"
+			:max="100"
+			:label="t('volume.label')"
+			:value-text="`${volumePercent}%`"
+			@update:model-value="onInput"
 		/>
 	</div>
 </template>
-
-<style scoped>
-input[type="range"]::-webkit-slider-thumb {
-	-webkit-appearance: none;
-	width: 14px;
-	height: 14px;
-	border-radius: 99px;
-	background: var(--color-primary);
-	box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
-}
-</style>

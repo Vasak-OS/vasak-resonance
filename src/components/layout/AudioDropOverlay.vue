@@ -1,5 +1,13 @@
 <script setup lang="ts">
+/**
+ * El aviso de «soltá acá» mientras se arrastran archivos sobre la ventana.
+ *
+ * Es `DropZone` de la librería en su forma de capa: el velo del esquema, el
+ * recuadro punteado y el texto, que además se anuncia en voz alta. Antes era un
+ * recuadro propio con el mismo dibujo y sin anunciarse.
+ */
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
+import { DropZone } from '@vasakgroup/vue-libvasak';
 
 defineProps<{
 	isActive: boolean;
@@ -10,19 +18,5 @@ const { t } = useI18n();
 </script>
 
 <template>
-	<Transition
-		enter-active-class="transition-opacity duration-180"
-		leave-active-class="transition-opacity duration-130"
-		enter-from-class="opacity-0"
-		leave-to-class="opacity-0"
-	>
-		<div
-			v-if="isActive"
-			class="pointer-events-none absolute inset-3 z-20 flex items-center justify-center rounded-corner border-2 border-dashed border-primary/60 bg-primary/10"
-		>
-			<p class="px-4 text-center text-sm font-medium tracking-wide text-tx-main sm:text-base">
-				{{ message || t('audioDrop.hint') }}
-			</p>
-		</div>
-	</Transition>
+	<DropZone overlay :active="isActive" :label="message || t('audioDrop.hint')" icon="audio-x-generic" />
 </template>

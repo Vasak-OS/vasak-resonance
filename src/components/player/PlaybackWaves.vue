@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
+import { Slider } from '@vasakgroup/vue-libvasak';
 import { computed } from 'vue';
 import { devLog } from '@/composables/useDevLog';
+import { formatSeconds } from '@/composables/useTimeFormat';
 import { usePlayerStore } from '@/stores/player';
 
 const props = withDefaults(
@@ -29,6 +32,7 @@ const props = withDefaults(
 );
 
 const playerStore = usePlayerStore();
+const { t } = useI18n();
 
 const progressPercent = computed(() => {
 	return Math.min(100, Math.max(0, playerStore.progressPercent));
@@ -46,15 +50,19 @@ const commitSeek = (seconds: number) => {
 	playerStore.seekTo(seconds);
 };
 
-const onSliderInput = (e: Event) => {
-	const target = e.target as HTMLInputElement;
-	playerStore.positionSeconds = Number(target.value);
+// Mientras se arrastra se mueve sólo la posición que se muestra; el salto de
+// verdad va al soltar, o el hilo de audio recibiría un pedido por píxel.
+const onSliderInput = (seconds: number) => {
+	playerStore.positionSeconds = seconds;
 };
 
-const onSliderChange = (e: Event) => {
-	const target = e.target as HTMLInputElement;
-	commitSeek(Number(target.value));
+const onSliderChange = (seconds: number) => {
+	commitSeek(seconds);
 };
+
+const seekValueText = computed(
+	() => `${formatSeconds(sliderValue.value)} / ${formatSeconds(totalDuration.value)}`
+);
 
 const bars = computed(() => {
 	const steps = props.steps;
@@ -89,19 +97,26 @@ const bars = computed(() => {
 		<span
 			v-for="(bar, step) in bars"
 			:key="step"
-			class="flex-1 rounded-corner-sm transition-[height,background-color] duration-200"
+			class="flex-1 rounded-corner-xs transition-[height,background-color] duration-200"
 			:class="bar.isActive ? activeClass : inactiveClass"
 			:style="{ height: `${bar.height}px` }"
 		/>
 	</div>
-	<input
+	<!-- El deslizador de la librería, con nombre y con el tiempo en
+	     `aria-valuetext`: el `range` de antes no decía qué movía. Su zona de
+	     toque mide 32 píxeles y el `range` nativo 16 en su línea de 27: los
+	     márgenes negativos le devuelven a la barra el alto de antes (medido en
+	     el banco: 204 píxeles la barra entera) sin achicar dónde se puede
+	     apretar. -->
+	<Slider
 		v-if="totalDuration > 0"
-		type="range"
-		class="mt-1 w-full cursor-pointer accent-secondary"
+		class="-mt-0.5 -mb-[3px] w-full"
+		:model-value="sliderValue"
 		:min="0"
 		:max="totalDuration"
-		:value="sliderValue"
-		@input="onSliderInput"
+		:label="t('player.seek')"
+		:value-text="seekValueText"
+		@update:model-value="onSliderInput"
 		@change="onSliderChange"
-	>
+	/>
 </template>

@@ -92,6 +92,7 @@ lyrics:
 miniPlayer:
   backToWindow: Back
 player:
+  seek: Song position
   noTrack: Nothing playing
   playError: "The file could not be played: {0}"
   dropError: "The dropped file could not be loaded: {0}"
@@ -124,6 +125,8 @@ queue:
   dragToReorder: Drag to reorder
   nextUp: Next up
 radios:
+  tagsLabel: Tags
+  votes: Votes
   title: Radio stations
   searchPlaceholder: Search stations...
   loading: Loading stations...
@@ -205,6 +208,8 @@ volume:
   label: Volume
 window:
   appIconAlt: Application icon
+  showLibrary: Show the library
+  hideLibrary: Back to the content
 windowControls:
   miniPlayer: Mini player
   minimize: Minimise

@@ -1,10 +1,20 @@
 <script setup lang="ts">
 import { listen } from '@tauri-apps/api/event';
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
-import { EmptyState, LoadingState, ThemeIcon } from '@vasakgroup/vue-libvasak';
+import {
+	ActionButton,
+	AlertMessage,
+	Badge,
+	EmptyState,
+	FormGroup,
+	LoadingState,
+	SearchField,
+	SegmentedControl,
+	type SegmentedOption,
+	ThemeIcon,
+} from '@vasakgroup/vue-libvasak';
 import { computed, onBeforeUnmount, onMounted, type Ref, reactive, ref, watch } from 'vue';
 import { RecycleScroller } from 'vue-virtual-scroller';
-import LabeledField from '@/components/layout/LabeledField.vue';
 import { useVisibleColumns } from '@/composables/useVisibleColumns';
 import type { RadioStation } from '@/services/radio.service';
 import {
@@ -31,7 +41,7 @@ const lastRequestedUrl = ref('');
  * Un `Set` reactivo y no una marca por emisora: la lista se reemplaza entera en
  * cada búsqueda, y guardar el estado adentro de cada elemento lo perdería.
  */
-const faviconsRotos = reactive(new Set<string>());
+const brokenFavicons = reactive(new Set<string>());
 
 // Y se vacía con cada lista nueva. Un UUID marcado se quedaba marcado hasta
 // que la ventana se cerrara: si la emisora arreglaba su icono y la recarga lo
@@ -39,7 +49,7 @@ const faviconsRotos = reactive(new Set<string>());
 // Se vacía al reemplazar la lista y no al recibir cada icono porque el `@error`
 // es lo único que avisa: no hay forma de preguntar si hoy carga sin intentarlo.
 watch(stations, () => {
-	faviconsRotos.clear();
+	brokenFavicons.clear();
 });
 
 const availableTags = [
@@ -104,21 +114,32 @@ const stationRows = computed(() =>
  * lo que el CSS dibuja: 116 de alto de tarjeta más los 12 del `pb-3`. Si se
  * separan, las filas se pisan o dejan huecos y no falla nada — se ve torcido.
  */
-const ALTO_DE_LA_FILA = 128;
+const ROW_HEIGHT = 128;
+
+/** Las etiquetas como filtro de una sola opción: cuál está puesta se ve y se anuncia. */
+const tagOptions: SegmentedOption<string>[] = availableTags.map((tag) => ({
+	label: tag,
+	value: tag,
+}));
+
+const selectTag = (tag: string) => {
+	selectedTag.value = tag;
+	void loadStations();
+};
 
 async function loadStations() {
 	loading.value = true;
 	error.value = '';
 
-	const etiquetas = [selectedTag.value];
+	const tags = [selectedTag.value];
 
 	try {
 		// Lo guardado hace menos de una hora alcanza: se muestra y no se
 		// pregunta. Antes se preguntaba igual siempre, así que abrir la vista
 		// era una consulta al directorio aunque acabara de hacerse.
-		const fresco = getCachedStations(etiquetas);
-		if (fresco) {
-			stations.value = fresco;
+		const fresh = getCachedStations(tags);
+		if (fresh) {
+			stations.value = fresh;
 			return;
 		}
 
@@ -126,11 +147,11 @@ async function loadStations() {
 		// en blanco. Y si no hay nada guardado para esta etiqueta, la lista se
 		// vacía: dejar la de la etiqueta anterior la haría pasar por ésta —y si
 		// además falla la consulta, se queda así—.
-		stations.value = getStaleCachedStations(etiquetas) ?? [];
+		stations.value = getStaleCachedStations(tags) ?? [];
 
-		const freshStations = await fetchRadioStations(etiquetas);
+		const freshStations = await fetchRadioStations(tags);
 		stations.value = freshStations;
-		setCachedStations(etiquetas, freshStations);
+		setCachedStations(tags, freshStations);
 	} catch (err) {
 		const errorMsg = err instanceof Error ? err.message : String(err);
 		error.value = t('radios.loadError').replace('{0}', () => errorMsg);
@@ -139,7 +160,7 @@ async function loadStations() {
 		// Sin el directorio, lo que haya guardado **de esta etiqueta** aunque
 		// esté viejo: es justamente cuando más falta hace. Si no hay, la lista
 		// queda vacía con su error, que es lo honesto.
-		const cached = getStaleCachedStations(etiquetas);
+		const cached = getStaleCachedStations(tags);
 		stations.value = cached ?? [];
 		if (cached) {
 			error.value = t('radios.usingCache').replace('{0}', () => errorMsg);
@@ -192,53 +213,39 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-	<div class="flex flex-col h-full gap-4 overflow-hidden">
+	<div class="flex h-full flex-col gap-4 overflow-hidden">
 		<!-- Header with controls -->
 		<div class="flex flex-col gap-2 px-4 pt-4">
 			<h1 class="text-2xl font-bold">{{ t('radios.title') }}</h1>
 
-			<!-- Tag selection -->
-			<div v-once class="flex gap-2 flex-wrap">
-				<button
-					v-for="tag in availableTags"
-					:key="tag"
-					@click="selectedTag = tag; loadStations()"
-					:class="[
-						'px-3 py-1 rounded-full text-sm transition-colors',
-						selectedTag === tag
-							? 'bg-primary text-tx-on-primary'
-							: 'bg-secondary text-tx-on-primary',
-					]"
-				>
-					{{ tag }}
-				</button>
-			</div>
+			<!-- Tag selection: una sola puesta a la vez, y se ve cuál. -->
+			<SegmentedControl
+				:model-value="selectedTag"
+				:options="tagOptions"
+				:label="t('radios.tagsLabel')"
+				variant="chips"
+				@change="selectTag"
+			/>
 
 			<!-- Search -->
-			<LabeledField :label="t('common.search')" class="flex-1">
-				<div class="flex items-center gap-2 px-3 py-2 bg-ui-surface/80 rounded-corner">
-					<ThemeIcon name="file-search" type="symbol" :size="16" />
-					<input
-						v-model="searchQuery"
-						type="text"
-						:placeholder="t('radios.searchPlaceholder')"
-						class="bg-transparent flex-1 text-sm"
-					/>
-				</div>
-			</LabeledField>
+			<FormGroup class="flex-1" :label="t('common.search')" variant="eyebrow">
+				<SearchField v-model="searchQuery" :label="t('common.search')" :placeholder="t('radios.searchPlaceholder')" />
+			</FormGroup>
 		</div>
 
-		<!-- Error message -->
-		<div v-if="error" class="px-4 py-2 bg-status-error/15 text-status-error rounded mx-4 text-sm flex justify-between items-center">
-			<span>{{ error }}</span>
-			<button
-				@click="loadStations()"
-				:disabled="loading"
-				class="ml-2 px-2 py-1 bg-status-error hover:bg-status-error/85 disabled:bg-status-error/50 rounded text-xs whitespace-nowrap"
-			>
-				{{ loading ? t('radios.retrying') : t('radios.retry') }}
-			</button>
-		</div>
+		<!-- Error message, con el reintento al lado -->
+		<AlertMessage v-if="error" class="mx-4" tone="error" icon="auto">
+			{{ error }}
+			<template #actions>
+				<ActionButton
+					:label="loading ? t('radios.retrying') : t('radios.retry')"
+					:loading="loading"
+					variant="secondary"
+					size="sm"
+					@click="loadStations()"
+				/>
+			</template>
+		</AlertMessage>
 
 		<!-- Stations list -->
 		<div class="min-h-0 flex-1 overflow-hidden px-4">
@@ -265,7 +272,7 @@ onBeforeUnmount(() => {
 				v-else
 				:items="stationRows"
 				key-field="key"
-				:item-size="ALTO_DE_LA_FILA"
+				:item-size="ROW_HEIGHT"
 				class="h-full"
 				v-slot="{ item: row }"
 			>
@@ -276,11 +283,11 @@ onBeforeUnmount(() => {
 				<div
 					v-for="station in row.items"
 					:key="station.uuid"
-					class="bg-ui-surface/80 rounded-corner p-3 hover:bg-ui-bg/80 transition-colors cursor-pointer flex gap-3 h-[116px] overflow-hidden"
+					class="flex h-[116px] cursor-pointer gap-3 overflow-hidden rounded-corner-l border border-ui-line bg-ui-surface/70 p-3 transition-colors duration-200 ease-ui hover:bg-ui-hover"
 					@click="handlePlayStation(station)"
 				>
 					<!-- Station icon/image -->
-					<div class="flex-shrink-0">
+					<div class="shrink-0">
 						<!-- El icono de la emisora, y el de la aplicación cuando no hay o
 						     no carga. Acá había un `onerror="this.style.display='none'"`,
 						     que es un manejador **en línea**: la política de contenido de
@@ -290,13 +297,13 @@ onBeforeUnmount(() => {
 						     esconder el `<img>` se muestra el icono de abajo, que es lo
 						     que se ve cuando la emisora no trae ninguno. -->
 						<img
-							v-if="station.favicon && !faviconsRotos.has(station.uuid)"
+							v-if="station.favicon && !brokenFavicons.has(station.uuid)"
 							:src="station.favicon"
 							:alt="station.name"
-							class="w-12 h-12 rounded-corner"
-							@error="faviconsRotos.add(station.uuid)"
+							class="size-12 rounded-corner-m"
+							@error="brokenFavicons.add(station.uuid)"
 						/>
-						<div v-else class="w-12 h-12 bg-primary rounded-corner flex items-center justify-center">
+						<div v-else class="flex size-12 items-center justify-center rounded-corner-m bg-ui-selected-accent">
 							<ThemeIcon
 								name="media-playback-start"
 								type="symbol"
@@ -307,39 +314,30 @@ onBeforeUnmount(() => {
 					</div>
 
 					<!-- Station info -->
-					<div class="flex-1 min-w-0">
-						<h3 class="font-semibold text-sm truncate">{{ station.name }}</h3>
-						<p class="text-xs text-tx-muted truncate">{{ station.country || t('radios.unknownCountry') }}</p>
-						<div class="flex gap-1 mt-1">
-							<span
-								v-if="station.codec"
-								class="text-xs bg-secondary px-2 py-0.5 rounded text-tx-on-primary"
-							>
-								{{ station.codec }}
-							</span>
-							<span
-								v-if="station.bitrate"
-								class="text-xs bg-secondary px-2 py-0.5 rounded text-tx-on-primary"
-							>
-								{{ station.bitrate }} kbps
-							</span>
+					<div class="min-w-0 flex-1">
+						<h3 class="truncate text-sm font-semibold">{{ station.name }}</h3>
+						<p class="truncate text-xs text-tx-muted">{{ station.country || t('radios.unknownCountry') }}</p>
+						<div class="mt-1 flex min-w-0 flex-wrap gap-1">
+							<Badge v-if="station.codec">{{ station.codec }}</Badge>
+							<Badge v-if="station.bitrate">{{ station.bitrate }} kbps</Badge>
 						</div>
-						<p v-if="station.votes" class="text-xs text-tx-muted mt-1">👍 {{ station.votes }}</p>
+						<p v-if="station.votes" class="mt-1 flex items-center gap-1 text-xs text-tx-muted">
+							<ThemeIcon name="emblem-favorite-symbolic" type="symbol" :size="12" :alt="t('radios.votes')" />
+							{{ station.votes }}
+						</p>
 					</div>
 
-					<!-- Play button overlay -->
-					<div class="flex-shrink-0 flex items-center">
-						<div class="relative">
-							<button
-								class="p-2 bg-secondary rounded-full hover:bg-primary transition-colors"
-								@click.stop="handlePlayStation(station)" :aria-label="t('common.play')">
-								<ThemeIcon name="media-playback-start" type="symbol" :size="20" />
-							</button>
-							<!-- buffering indicator -->
-							<div v-if="bufferingStationUuid === station.uuid" class="absolute inset-0 flex items-center justify-center">
-								<div class="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin border-white"></div>
-							</div>
-						</div>
+					<!-- Play button, con la rueda en su lugar mientras carga -->
+					<div class="flex shrink-0 items-center">
+						<ActionButton
+							label=""
+							:icon-alt="t('common.play')"
+							:title="t('common.play')"
+							icon="media-playback-start"
+							:loading="bufferingStationUuid === station.uuid"
+							stop-propagation
+							@click="handlePlayStation(station)"
+						/>
 					</div>
 				</div>
 				</div>
@@ -347,10 +345,3 @@ onBeforeUnmount(() => {
 		</div>
 	</div>
 </template>
-
-<style scoped>
-/* Smooth scrolling */
-div {
-	scroll-behavior: smooth;
-}
-</style>

@@ -15,8 +15,12 @@
 //!   arranca.
 //! - `libsqlite3-0`, `libdbus-1-3` y `libjavascriptcoregtk-4.1-0`.
 //!
-//! `sqlite3` y `dbus` se quedan: son servicios que se usan sin enlazarlos, y la
-//! lista los tenía desde antes.
+//! `dbus` se queda: es el bus de la sesión por el que habla MPRIS, que se usa
+//! sin enlazarlo. `sqlite3` —el programa— salió: la base se abre con la
+//! biblioteca (`libsqlite3-0`) y nadie llama al programa. Y entraron los dos
+//! programas que el binario sí lanza: `ffmpeg`, que decodifica cada canción
+//! (`audio_manager.rs`), y `xdg-utils`, el `xdg-open` de «mostrar en la
+//! carpeta» y de la autorización de Last.fm.
 //!
 //! Lo que se declara se audita con `readelf -d … | grep NEEDED`, nunca con
 //! `ldd`. Estas pruebas no reemplazan esa auditoría: cuidan que no vuelva a
@@ -146,4 +150,25 @@ fn estan_las_que_no_arrastra_nadie() {
             "falta {package} en el .deb, y sin él no arranca: es {porque}"
         );
     }
+}
+
+/// Los programas que el binario lanza con `Command::new` no aparecen en
+/// ningún `NEEDED`, y sin ellos el `.deb` instala bien y no suena nada: cada
+/// canción la decodifica `ffmpeg`. Y el que no lanza nadie no se declara.
+#[test]
+fn estan_los_programas_que_lanza_y_no_los_que_no() {
+    let depends = deb_depends();
+    for (package, porque) in [
+        ("ffmpeg", "decodifica cada canción"),
+        ("xdg-utils", "abre la carpeta y la autorización de Last.fm"),
+    ] {
+        assert!(
+            depends.iter().any(|n| n == package),
+            "falta {package} en el .deb: {porque}"
+        );
+    }
+    assert!(
+        !depends.iter().any(|n| n == "sqlite3"),
+        "sqlite3 es el programa, y nadie lo llama: la base va por libsqlite3-0"
+    );
 }

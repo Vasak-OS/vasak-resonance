@@ -1,12 +1,23 @@
 <script setup lang="ts">
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
-import { EmptyState, ThemeIcon } from '@vasakgroup/vue-libvasak';
+import {
+	ActionButton,
+	CoverArt,
+	EmptyState,
+	FormGroup,
+	ListRow,
+	PageHeader,
+	SearchField,
+	SelectField,
+	type SelectOption,
+} from '@vasakgroup/vue-libvasak';
 import { computed, onMounted, ref } from 'vue';
 import { RecycleScroller } from 'vue-virtual-scroller';
-import LabeledField from '@/components/layout/LabeledField.vue';
+import { useElementWidth } from '@/composables/useElementWidth';
 import { useMetadataLabels } from '@/composables/useMetadataLabels';
 import { useTrackContextMenu } from '@/composables/useTrackContextMenu';
 import { usePlayerStore } from '@/stores/player';
+import { rowActionsWithLabels } from '@/tools/window-layout';
 
 const { t } = useI18n();
 const { artistLabel, albumLabel } = useMetadataLabels();
@@ -20,7 +31,12 @@ const { onTrackContextMenu } = useTrackContextMenu();
  * separan, las filas se pisan o dejan huecos, y no falla nada — se ve torcido.
  * Hay una prueba que compara los dos.
  */
-const ALTO_DE_LA_FILA = 80;
+const ROW_HEIGHT = 80;
+
+/** La lista, para saber si los botones de cada fila entran con su texto. */
+const list = ref<HTMLElement | null>(null);
+const listWidth = useElementWidth(list);
+const labeledActions = computed(() => rowActionsWithLabels(listWidth.value));
 
 const searchQuery = ref('');
 const artistFilter = ref('all');
@@ -84,125 +100,114 @@ const favoriteArtistOptions = computed(() => {
 	return Array.from(values).sort((left, right) => left.localeCompare(right));
 });
 
+const artistSelectOptions = computed<SelectOption<string>[]>(() => [
+	{ label: t('common.all'), value: 'all' },
+	...favoriteArtistOptions.value.map((artist) => ({ label: artistLabel(artist), value: artist })),
+]);
+
+const sortOptions = computed<SelectOption<string>[]>(() => [
+	{ label: t('sort.recent'), value: 'recent' },
+	{ label: t('sort.titleAsc'), value: 'title-asc' },
+	{ label: t('sort.artistAsc'), value: 'artist-asc' },
+]);
+
+const currentFavoriteLabel = computed(() =>
+	playerStore.isCurrentFavorite ? t('favorites.removeCurrent') : t('common.addFavorite')
+);
+
 onMounted(async () => {
 	await playerStore.ensureMetadataForFavorites();
 });
 </script>
 
 <template>
-	<section class="flex h-full flex-col gap-3 overflow-hidden p-4">
-		<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-			<div>
-				<p class="text-xs uppercase tracking-[0.16em] text-tx-muted">{{ t('favorites.eyebrow') }}</p>
-				<h2 class="text-lg font-semibold text-tx-main">{{ t('favorites.title') }}</h2>
-			</div>
-			<button
-				type="button"
-				class="inline-flex items-center gap-1 rounded-corner border border-primary/45 bg-primary px-3 py-2 text-xs font-semibold text-tx-on-primary transition-colors duration-200 hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-				:disabled="!playerStore.hasTrack"
-				:title="playerStore.isCurrentFavorite ? t('favorites.removeCurrent') : t('common.addFavorite')"
-				:aria-label="playerStore.isCurrentFavorite ? t('favorites.removeCurrent') : t('common.addFavorite')"
-				@click="playerStore.toggleCurrentFavorite"
-			>
-				<ThemeIcon
-					:name="playerStore.isCurrentFavorite ? 'remove' : 'new-star'"
-					type="symbol"
-					:size="16"
+	<!-- `@container`: los filtros se ponen en fila cuando la vista tiene lugar
+	     (antes `lg:`, 1024 de ventana; 44 rem de vista es el mismo corte). -->
+	<section class="@container flex h-full flex-col gap-3 overflow-hidden p-4">
+		<PageHeader class="mb-4" :eyebrow="t('favorites.eyebrow')" :title="t('favorites.title')" as="h2">
+			<template #actions>
+				<ActionButton
+					:label="playerStore.isCurrentFavorite ? t('favorites.removeCurrent') : t('favorites.saveCurrent')"
+					:title="currentFavoriteLabel"
+					:icon="playerStore.isCurrentFavorite ? 'remove' : 'new-star'"
+					:disabled="!playerStore.hasTrack"
+					@click="playerStore.toggleCurrentFavorite"
 				/>
-				{{ playerStore.isCurrentFavorite ? t('favorites.removeCurrent') : t('favorites.saveCurrent') }}
-			</button>
-		</div>
+			</template>
+		</PageHeader>
 
-		<div class="mb-4 grid gap-3 lg:grid-cols-[1.4fr_0.8fr_0.8fr]">
-			<LabeledField :label="t('common.search')">
-				<input
-					v-model="searchQuery"
-					type="search"
-					:placeholder="t('home.searchPlaceholder')"
-					class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main transition-colors duration-200 placeholder:text-tx-muted/70 focus:border-primary/50"
-				/>
-			</LabeledField>
+		<div class="mb-4 grid gap-3 @min-[44rem]:grid-cols-[1.4fr_0.8fr_0.8fr]">
+			<FormGroup :label="t('common.search')" variant="eyebrow">
+				<SearchField v-model="searchQuery" :label="t('common.search')" :placeholder="t('home.searchPlaceholder')" />
+			</FormGroup>
 
-			<LabeledField :label="t('common.artist')">
-				<select v-model="artistFilter" class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main transition-colors duration-200 focus:border-primary/50">
-					<option value="all">{{ t('common.all') }}</option>
-					<option v-for="artist in favoriteArtistOptions" :key="artist" :value="artist">{{ artistLabel(artist) }}</option>
-				</select>
-			</LabeledField>
+			<FormGroup v-slot="{ id }" :label="t('common.artist')" variant="eyebrow">
+				<SelectField v-bind="{ id }" v-model="artistFilter" :options="artistSelectOptions" />
+			</FormGroup>
 
-			<LabeledField :label="t('common.sortBy')">
-				<select v-model="sortBy" class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main transition-colors duration-200 focus:border-primary/50">
-					<option value="recent">{{ t('sort.recent') }}</option>
-					<option value="title-asc">{{ t('sort.titleAsc') }}</option>
-					<option value="artist-asc">{{ t('sort.artistAsc') }}</option>
-				</select>
-			</LabeledField>
+			<FormGroup v-slot="{ id }" :label="t('common.sortBy')" variant="eyebrow">
+				<SelectField v-bind="{ id }" v-model="sortBy" :options="sortOptions" />
+			</FormGroup>
 		</div>
 
 		<EmptyState v-if="filteredFavoriteEntries.length === 0" :title="t('favorites.empty')" bordered />
 
 		<!--
 			Una fila por favorito, con alto fijo: es lo que el `RecycleScroller`
-			necesita saber para colocar sin medir. `ALTO_DE_LA_FILA` la declara
-			una sola vez y la prueba lo comprueba contra la clase, porque si los
-			dos números se separan las filas se pisan o dejan huecos.
+			necesita saber para colocar sin medir. `ROW_HEIGHT` la declara una
+			sola vez y la prueba lo comprueba contra la clase, porque si los dos
+			números se separan las filas se pisan o dejan huecos.
 		-->
-		<div v-else class="min-h-0 flex-1 overflow-hidden" @contextmenu="onTrackContextMenu">
+		<div v-else ref="list" class="min-h-0 flex-1 overflow-hidden" @contextmenu="onTrackContextMenu">
 			<RecycleScroller
 				:items="filteredFavoriteEntries"
 				key-field="path"
-				:item-size="ALTO_DE_LA_FILA"
+				:item-size="ROW_HEIGHT"
 				class="h-full overflow-y-auto"
 				v-slot="{ item: entry }"
 			>
-			<div
-				:data-track-path="entry.path"
-				class="mb-2 flex h-[72px] items-center gap-3 rounded-corner border border-ui-border bg-ui-bg/70 px-3 py-2"
-			>
-				<div class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-corner border border-ui-border bg-ui-surface/45">
-					<img
-						v-if="entry.metadata?.cover_data_url"
-						:src="entry.metadata.cover_data_url"
-						:alt="entry.metadata.title || extractTrackName(entry.path)"
-						class="h-full w-full object-cover"
-					/>
-					<div v-else class="text-[10px] font-semibold uppercase tracking-[0.14em] text-tx-muted">{{ t('favorites.coverPlaceholder') }}</div>
-				</div>
+				<div :data-track-path="entry.path" class="mb-2 h-[72px]">
+					<ListRow class="h-full border border-ui-line bg-ui-surface/70">
+						<template #leading>
+							<span class="size-12">
+								<CoverArt
+									:src="entry.metadata?.cover_data_url ?? null"
+									:alt="entry.metadata?.title || extractTrackName(entry.path)"
+									:fallback-text="t('favorites.coverPlaceholder')"
+								/>
+							</span>
+						</template>
 
-				<div class="min-w-0 flex-1">
-					<p class="truncate text-sm font-medium text-tx-main">
-						{{ entry.metadata?.title || extractTrackName(entry.path) }}
-					</p>
-					<p class="truncate text-xs text-tx-muted">
-						{{ artistLabel(entry.metadata?.artist) }} • {{ albumLabel(entry.metadata?.album) }}
-					</p>
-					<p class="truncate text-[11px] text-tx-muted/80">{{ entry.path }}</p>
+						<span class="truncate text-label-m">{{ entry.metadata?.title || extractTrackName(entry.path) }}</span>
+						<span class="truncate text-xs text-tx-muted">
+							{{ artistLabel(entry.metadata?.artist) }} • {{ albumLabel(entry.metadata?.album) }}
+						</span>
+						<span class="truncate text-[11px] text-tx-muted">{{ entry.path }}</span>
+
+						<template #trailing>
+							<ActionButton
+								:label="labeledActions ? t('common.play') : ''"
+								:icon-alt="t('common.play')"
+								:title="t('common.play')"
+								icon="media-playback-start"
+								variant="secondary"
+								@click="playerStore.playDropped(entry.path)"
+							/>
+							<ActionButton
+								:label="labeledActions ? t('common.remove') : ''"
+								:icon-alt="t('common.remove')"
+								:title="t('common.remove')"
+								icon="remove"
+								variant="secondary"
+								@click="playerStore.toggleFavoritePath(entry.path)"
+							/>
+						</template>
+					</ListRow>
 				</div>
-				<button
-					type="button"
-					class="inline-flex items-center gap-1 rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-1.5 text-xs font-medium text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
-					:title="t('common.play')"
-					:aria-label="t('common.play')"
-					@click="playerStore.playDropped(entry.path)"
-				>
-					<ThemeIcon name="media-playback-start" type="symbol" :size="16" />
-					{{ t('common.play') }}
-				</button>
-				<button
-					type="button"
-					class="inline-flex items-center gap-1 rounded-corner border border-status-error/35 bg-status-error/10 px-3 py-1.5 text-xs font-medium text-status-error transition-colors duration-200 hover:bg-status-error/20"
-					:title="t('common.remove')"
-					:aria-label="t('common.remove')"
-					@click="playerStore.toggleFavoritePath(entry.path)"
-				>
-					<ThemeIcon name="remove" type="symbol" :size="16" />
-					{{ t('common.remove') }}
-				</button>
-			</div>
 			</RecycleScroller>
 		</div>
 
-		<p v-if="currentPath" class="mt-3 text-xs text-tx-muted">
+		<p v-if="currentPath" class="mt-3 min-w-0 break-words text-xs text-tx-muted">
 			{{ t('favorites.current').replace('{0}', () => extractTrackName(currentPath)) }}
 		</p>
 	</section>

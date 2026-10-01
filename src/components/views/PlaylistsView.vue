@@ -1,9 +1,20 @@
 <script setup lang="ts">
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
-import { EmptyState } from '@vasakgroup/vue-libvasak';
+import {
+	ActionButton,
+	AlertMessage,
+	EmptyState,
+	FormGroup,
+	ListRow,
+	PageHeader,
+	SearchField,
+	SectionHeading,
+	TextInput,
+} from '@vasakgroup/vue-libvasak';
 import { computed, onMounted, ref } from 'vue';
 import { RecycleScroller } from 'vue-virtual-scroller';
 import PlayerQueuePanel from '@/components/player/PlayerQueuePanel.vue';
+import { useElementWidth } from '@/composables/useElementWidth';
 import { formatSeconds } from '@/composables/useTimeFormat';
 import { useTrackContextMenu } from '@/composables/useTrackContextMenu';
 import { type LibraryTrack, listLibraryTracks } from '@/services/player.service';
@@ -33,20 +44,34 @@ const addSearch = ref('');
 const busy = ref(false);
 const error = ref('');
 
-/** Library tracks not already in the open playlist, filtered by the search box. */
 /**
  * Lo que mide una fila de la lista, contando el hueco de abajo: 54 de alto más
  * los 4 del `mb-1`. El scroller coloca a partir de este número, así que si se
  * separa de lo que dibuja el CSS las filas se pisan o dejan huecos.
  */
-const ALTO_DE_LA_FILA = 58;
+const ROW_HEIGHT = 58;
 
 /** Hasta dónde crece la caja de la lista antes de desplazarse ella sola. */
-const ALTO_MAXIMO_DE_LA_LISTA = 480;
+const MAX_LIST_HEIGHT = 480;
 
-const altoDeLaLista = computed(() =>
-	Math.min(playlistTracks.value.length * ALTO_DE_LA_FILA, ALTO_MAXIMO_DE_LA_LISTA)
+const listHeight = computed(() =>
+	Math.min(playlistTracks.value.length * ROW_HEIGHT, MAX_LIST_HEIGHT)
 );
+
+/**
+ * Una columna por vez cuando la vista es angosta: la lista de listas, y al
+ * elegir una, su detalle con «Volver». Es el mismo corte que separa las dos
+ * columnas (44 rem de vista, el `lg:` de antes con la barra al costado).
+ */
+const TWO_COLUMNS_MIN_WIDTH = 704;
+const view = ref<HTMLElement | null>(null);
+const viewWidth = useElementWidth(view);
+const singleColumn = computed(() => viewWidth.value > 0 && viewWidth.value < TWO_COLUMNS_MIN_WIDTH);
+/** En una columna: si se está mirando el detalle de la lista elegida. */
+const detailOpen = ref(false);
+
+const showPlaylists = computed(() => !singleColumn.value || !detailOpen.value);
+const showDetail = computed(() => !singleColumn.value || detailOpen.value);
 
 const addableTracks = computed(() => {
 	const alreadyIn = new Set(playlistTracks.value.map((track) => track.track_id));
@@ -103,6 +128,7 @@ const loadTracks = async () => {
 const selectPlaylist = (playlist: Playlist) =>
 	run(async () => {
 		selectedPlaylist.value = playlist;
+		detailOpen.value = true;
 		await loadTracks();
 	});
 
@@ -175,72 +201,71 @@ onMounted(() =>
 </script>
 
 <template>
-	<section class="h-full overflow-y-auto p-4">
-		<div class="mb-4">
-			<p class="text-xs uppercase tracking-[0.16em] text-tx-muted">{{ t('playlists.eyebrow') }}</p>
-			<h2 class="text-lg font-semibold text-tx-main">{{ t('playlists.title') }}</h2>
-		</div>
+	<!-- `@container`: las dos columnas van juntas cuando la vista tiene lugar
+	     (antes `lg:`, 1024 de ventana; 44 rem de vista con la barra al
+	     costado). Más angosta, una por vez. -->
+	<section ref="view" class="@container h-full overflow-y-auto p-4">
+		<PageHeader class="mb-4" :eyebrow="t('playlists.eyebrow')" :title="t('playlists.title')" as="h2" />
 
-		<p
-			v-if="error"
-			class="mb-4 rounded-corner border border-status-error/30 bg-status-error/10 p-2 text-sm text-status-error"
-		>
+		<AlertMessage v-if="error" class="mb-4" tone="error" icon="auto">
 			{{ error }}
-		</p>
+		</AlertMessage>
 
-		<div class="grid gap-4 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
+		<div class="grid gap-4 @min-[44rem]:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
 			<!-- The lists themselves -->
-			<div class="flex flex-col gap-3">
-				<form class="flex gap-2" @submit.prevent="submitNewPlaylist">
-					<input
+			<div v-show="showPlaylists" class="flex min-w-0 flex-col gap-3">
+				<form class="flex min-w-0 gap-2" @submit.prevent="submitNewPlaylist">
+					<TextInput
 						v-model="newPlaylistName"
-						type="text"
-:placeholder="t('playlists.namePlaceholder')"
-						class="min-w-0 flex-1 rounded-corner border border-ui-border bg-ui-surface/40 p-2 text-sm text-tx-main focus:ring-2 focus:ring-primary"
+						class="flex-1"
+						:placeholder="t('playlists.namePlaceholder')"
+						:ariaLabel="t('playlists.namePlaceholder')"
 					/>
-					<button
+					<ActionButton
 						type="submit"
+						:label="t('playlists.create')"
 						:disabled="busy || !newPlaylistName.trim()"
-						class="rounded-corner bg-primary px-3 py-2 text-sm font-semibold text-tx-on-primary disabled:opacity-50"
-					>
-						{{ t('playlists.create') }}
-					</button>
+					/>
 				</form>
 
 				<EmptyState v-if="playlists.length === 0" :title="t('playlists.empty')" bordered />
 
-				<div
+				<ListRow
 					v-for="playlist in playlists"
 					:key="playlist.id"
-					class="flex items-center gap-2 rounded-corner border p-3 transition-colors"
-					:class="
-						selectedPlaylist?.id === playlist.id
-							? 'border-primary bg-secondary/20'
-							: 'border-ui-border hover:bg-ui-surface/50'
-					"
+					role="button"
+					class="border border-ui-line"
+					:title="playlist.name"
+					truncate
+					:selected="selectedPlaylist?.id === playlist.id"
+					@click="selectPlaylist(playlist)"
 				>
-					<button
-						type="button"
-						class="min-w-0 flex-1 text-left"
-						@click="selectPlaylist(playlist)"
-					>
-						<span class="block truncate font-semibold text-tx-main">{{ playlist.name }}</span>
-					</button>
-					<button
-						type="button"
-:title="t('playlists.deleteList')"
-						:aria-label="t('playlists.deleteList')"
-						class="shrink-0 rounded-corner px-2 py-1 text-sm text-tx-muted hover:bg-status-error/15 hover:text-status-error"
-						@click="removePlaylist(playlist)"
-					>
-						✕
-					</button>
-				</div>
+					<template #trailing>
+						<ActionButton
+							label=""
+							:icon-alt="t('playlists.deleteList')"
+							:title="t('playlists.deleteList')"
+							icon="window-close-symbolic"
+							variant="ghost"
+							size="sm"
+							stop-propagation
+							@click="removePlaylist(playlist)"
+						/>
+					</template>
+				</ListRow>
 			</div>
 
 			<!-- The open list -->
-			<div v-if="selectedPlaylist" class="flex flex-col gap-4">
-				<div class="flex flex-wrap items-center gap-3">
+			<div v-if="selectedPlaylist" v-show="showDetail" class="flex min-w-0 flex-col gap-4">
+				<ActionButton
+					v-if="singleColumn"
+					class="self-start"
+					:label="t('artists.back')"
+					icon="go-previous-symbolic"
+					variant="secondary"
+					@click="detailOpen = false"
+				/>
+				<div class="flex min-w-0 flex-wrap items-center gap-3">
 					<div class="min-w-0 flex-1">
 						<h3 class="truncate text-base font-semibold text-tx-main">
 							{{ selectedPlaylist.name }}
@@ -249,22 +274,17 @@ onMounted(() =>
 							{{ trackSummaryLabel }}
 						</p>
 					</div>
-					<button
-						type="button"
+					<ActionButton
+						:label="t('common.play')"
 						:disabled="busy || playlistTracks.length === 0"
-						class="rounded-corner bg-primary px-3 py-2 text-sm font-semibold text-tx-on-primary disabled:opacity-50"
 						@click="playPlaylist"
-					>
-						{{ t('common.play') }}
-					</button>
-					<button
-						type="button"
+					/>
+					<ActionButton
+						:label="t('playlists.enqueue')"
+						variant="secondary"
 						:disabled="busy || playlistTracks.length === 0"
-						class="rounded-corner border border-ui-border px-3 py-2 text-sm text-tx-main disabled:opacity-50 hover:bg-ui-surface/50"
 						@click="enqueuePlaylist"
-					>
-						{{ t('playlists.enqueue') }}
-					</button>
+					/>
 				</div>
 
 				<EmptyState v-if="playlistTracks.length === 0" :title="t('playlists.emptyList')" bordered />
@@ -285,53 +305,52 @@ onMounted(() =>
 				<div
 					v-else
 					class="overflow-hidden"
-					:style="{ height: `${altoDeLaLista}px` }"
+					:style="{ height: `${listHeight}px` }"
 					@contextmenu="onTrackContextMenu"
 				>
 					<RecycleScroller
 						:items="playlistTracks"
 						key-field="track_id"
-						:item-size="ALTO_DE_LA_FILA"
+						:item-size="ROW_HEIGHT"
 						class="h-full overflow-y-auto"
 						v-slot="{ item: track, index }"
 					>
-					<div
-						:data-track-path="track.path"
-						class="mb-1 flex h-[54px] items-center gap-3 rounded-corner border border-ui-border/60 p-2"
-					>
-						<span class="w-6 shrink-0 text-right text-xs text-tx-muted">{{ index + 1 }}</span>
-						<div class="min-w-0 flex-1">
-							<span class="block truncate text-sm text-tx-main">{{ track.title }}</span>
-							<span class="block truncate text-xs text-tx-muted">{{ track.artist }}</span>
+						<div :data-track-path="track.path" class="mb-1 h-[54px]">
+							<ListRow
+								class="h-full border border-ui-line-weak"
+								:title="track.title"
+								:description="track.artist"
+								:meta="formatSeconds(track.duration_seconds)"
+								truncate
+							>
+								<template #leading>
+									<span class="w-6 shrink-0 text-right text-xs text-tx-muted tabular-nums">{{ index + 1 }}</span>
+								</template>
+								<template #trailing>
+									<ActionButton
+										label=""
+										:icon-alt="t('playlists.removeFromList')"
+										:title="t('playlists.removeFromList')"
+										icon="window-close-symbolic"
+										variant="ghost"
+										size="sm"
+										@click="removeTrack(track)"
+									/>
+								</template>
+							</ListRow>
 						</div>
-						<span class="shrink-0 text-xs tabular-nums text-tx-muted">
-							{{ formatSeconds(track.duration_seconds) }}
-						</span>
-						<button
-							type="button"
-:title="t('playlists.removeFromList')"
-							:aria-label="t('playlists.removeFromList')"
-							class="shrink-0 rounded-corner px-2 py-1 text-sm text-tx-muted hover:bg-status-error/15 hover:text-status-error"
-							@click="removeTrack(track)"
-						>
-							✕
-						</button>
-					</div>
 					</RecycleScroller>
 				</div>
 
 				<!-- Adding from the library -->
-				<div class="flex flex-col gap-2 border-t border-ui-border pt-4">
-					<label class="text-xs uppercase tracking-[0.16em] text-tx-muted" for="add-search">
-						{{ t('playlists.addFromLibrary') }}
-					</label>
-					<input
-						id="add-search"
-						v-model="addSearch"
-						type="search"
-:placeholder="t('playlists.addSearchPlaceholder')"
-						class="rounded-corner border border-ui-border bg-ui-surface/40 p-2 text-sm text-tx-main focus:ring-2 focus:ring-primary"
-					/>
+				<div class="flex flex-col gap-2 border-t border-ui-line-weak pt-4">
+					<FormGroup :label="t('playlists.addFromLibrary')" variant="eyebrow">
+						<SearchField
+							v-model="addSearch"
+							:label="t('playlists.addFromLibrary')"
+							:placeholder="t('playlists.addSearchPlaceholder')"
+						/>
+					</FormGroup>
 
 					<p v-if="libraryTracks.length === 0" class="text-sm text-tx-muted">
 						{{ t('playlists.libraryEmpty') }}
@@ -340,29 +359,26 @@ onMounted(() =>
 						{{ t('playlists.noMatches') }}
 					</p>
 
-					<button
+					<ListRow
 						v-for="track in addableTracks"
 						:key="track.id"
-						type="button"
-						class="flex items-center gap-3 rounded-corner border border-ui-border/60 p-2 text-left hover:bg-ui-surface/50"
+						role="button"
+						class="border border-ui-line-weak"
+						icon="list-add-symbolic"
+						icon-type="symbol"
+						:title="track.title"
+						:description="`${track.artist} · ${track.album}`"
+						truncate
 						@click="addTrack(track)"
-					>
-						<span class="shrink-0 text-tx-muted">+</span>
-						<div class="min-w-0 flex-1">
-							<span class="block truncate text-sm text-tx-main">{{ track.title }}</span>
-							<span class="block truncate text-xs text-tx-muted">
-								{{ track.artist }} · {{ track.album }}
-							</span>
-						</div>
-					</button>
+					/>
 				</div>
 			</div>
 		</div>
 
 		<!-- The play queue used to be the whole of this screen; it belongs here,
 		     but as what it is rather than under the "Playlists" name. -->
-		<div v-if="playerStore.queue.length > 0" class="mt-8 border-t border-ui-border pt-4">
-			<p class="mb-3 text-xs uppercase tracking-[0.16em] text-tx-muted">{{ t('queue.heading') }}</p>
+		<div v-if="playerStore.queue.length > 0" class="mt-8 border-t border-ui-line-weak pt-4">
+			<SectionHeading class="mb-3" :title="t('queue.heading')" />
 			<PlayerQueuePanel
 				:queue-items="playerStore.queueEntries"
 				@clear="playerStore.clearQueue"

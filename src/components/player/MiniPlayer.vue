@@ -62,7 +62,7 @@ watch(
 		try {
 			// La portada trae su color: lo calculó Rust con los bytes que ya
 			// tenía, en lugar de que esta ventana decodifique la imagen otra vez.
-			const portada = await fetchAlbumCover(track.artist, track.album);
+			const cover = await fetchAlbumCover(track.artist, track.album);
 			if (playerStore.currentTrack?.path !== newPath) {
 				return;
 			}
@@ -72,10 +72,10 @@ watch(
 				return;
 			}
 
-			fetchedCoverUrl.value = portada.cover_data_url;
+			fetchedCoverUrl.value = cover.cover_data_url;
 
-			if (portada.cover_data_url && !track.cover_data_url) {
-				playerStore.setCurrentTrackVisuals(portada.cover_data_url, portada.dominant_color || null);
+			if (cover.cover_data_url && !track.cover_data_url) {
+				playerStore.setCurrentTrackVisuals(cover.cover_data_url, cover.dominant_color || null);
 			}
 		} catch (error) {
 			console.debug('Failed to fetch cover for current track in miniplayer');
@@ -129,7 +129,7 @@ onUnmounted(() => {
 					:subtitle="trackSubtitle"
 					:cover-src="coverSrc"
 					placeholder-text="VR"
-					title-class="text-primary"
+					title-class="text-tx-main"
 				/>
 
 				<MiniTransportControls

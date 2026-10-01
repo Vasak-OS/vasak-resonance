@@ -33,9 +33,17 @@ export default defineConfig(async () => ({
     target: "es2022",
     rollupOptions: {
       output: {
-        manualChunks: {
-          "vendor-vue": ["vue", "vue-router", "pinia"],
-          "vendor-virtual-scroller": ["vue-virtual-scroller"],
+        // Con función y no con el objeto de nombres: Vite 8 empaqueta con
+        // rolldown, que sólo acepta la forma de función. Los dos trozos son
+        // los de antes: Vue con su enrutador y su almacén, y el desplazador.
+        manualChunks(id: string) {
+          if (/node_modules\/(?:vue|@vue\/[^/]+|vue-router|pinia)\//.test(id)) {
+            return "vendor-vue";
+          }
+          if (id.includes("node_modules/vue-virtual-scroller/")) {
+            return "vendor-virtual-scroller";
+          }
+          return undefined;
         },
       },
     },

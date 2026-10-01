@@ -2,9 +2,22 @@
 import { RecycleScroller } from 'vue-virtual-scroller';
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css';
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
-import { AlertMessage, EmptyState, LoadingState, ThemeIcon } from '@vasakgroup/vue-libvasak';
+import {
+	ActionButton,
+	AlertMessage,
+	Badge,
+	EmptyState,
+	FormGroup,
+	ListRow,
+	LoadingState,
+	PageHeader,
+	Panel,
+	SearchField,
+	SelectField,
+	type SelectOption,
+} from '@vasakgroup/vue-libvasak';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import LabeledField from '@/components/layout/LabeledField.vue';
+import { useElementWidth } from '@/composables/useElementWidth';
 import { useMetadataLabels } from '@/composables/useMetadataLabels';
 import { useTrackContextMenu } from '@/composables/useTrackContextMenu';
 import {
@@ -16,6 +29,7 @@ import {
 } from '@/services/player.service';
 import { usePlayerStore } from '@/stores/player';
 import { useSettingsStore } from '@/stores/settings';
+import { rowActionsWithLabels } from '@/tools/window-layout';
 
 const { t } = useI18n();
 const { artistLabel, albumLabel } = useMetadataLabels();
@@ -30,6 +44,20 @@ const artistFilter = ref('all');
 const albumFilter = ref('all');
 const sortBy = ref('recent-desc');
 const ftsSearchResults = ref<LibraryTrack[] | null>(null);
+
+/**
+ * Lo que mide una fila de la lista, contando el hueco de abajo: 84 de alto más
+ * los 8 del `mb-2`. El `RecycleScroller` coloca las filas a partir de este
+ * número y no las mide, así que si se separa de lo que dibuja el CSS las filas
+ * se pisan o dejan huecos, sin que nada falle. Hay una prueba que compara los
+ * dos, y el banco lo midió igual antes y después de pasar a `ListRow`.
+ */
+const ROW_HEIGHT = 92;
+
+/** La lista, para saber si los botones de cada fila entran con su texto. */
+const list = ref<HTMLElement | null>(null);
+const listWidth = useElementWidth(list);
+const labeledActions = computed(() => rowActionsWithLabels(listWidth.value));
 let searchDebounceTimer: number | null = null;
 
 const normalize = (value: string) => value.trim().toLowerCase();
@@ -208,11 +236,35 @@ const playRandomFiltered = async () => {
 	await settingsStore.setAleatorio(true);
 
 	const paths = list.map((track) => track.path);
-	const primera = paths[Math.floor(Math.random() * paths.length)];
+	const first = paths[Math.floor(Math.random() * paths.length)];
 
-	await playerStore.playDropped(primera);
-	playerStore.enqueuePaths(paths.filter((path) => path !== primera));
+	await playerStore.playDropped(first);
+	playerStore.enqueuePaths(paths.filter((path) => path !== first));
 };
+
+const artistSelectOptions = computed<SelectOption<string>[]>(() => [
+	{ label: t('common.all'), value: 'all' },
+	...artistOptions.value.map((artist) => ({ label: artistLabel(artist), value: artist })),
+]);
+
+const albumSelectOptions = computed<SelectOption<string>[]>(() => [
+	{ label: t('common.all'), value: 'all' },
+	...albumOptions.value.map((album) => ({ label: albumLabel(album), value: album })),
+]);
+
+const sortOptions = computed<SelectOption<string>[]>(() => [
+	{ label: t('sort.recent'), value: 'recent-desc' },
+	{ label: t('sort.titleAsc'), value: 'title-asc' },
+	{ label: t('sort.titleDesc'), value: 'title-desc' },
+	{ label: t('sort.artistAsc'), value: 'artist-asc' },
+	{ label: t('sort.artistDesc'), value: 'artist-desc' },
+	{ label: t('sort.albumAsc'), value: 'album-asc' },
+	{ label: t('sort.durationShort'), value: 'duration-asc' },
+	{ label: t('sort.durationLong'), value: 'duration-desc' },
+]);
+
+const favoriteLabel = (path: string) =>
+	playerStore.isFavoritePath(path) ? t('common.removeFavorite') : t('common.addFavorite');
 
 const toggleFavorite = (path: string) => {
 	playerStore.toggleFavoritePath(path);
@@ -259,84 +311,58 @@ const visibleCountLabel = computed(() => {
 </script>
 
 <template>
-	<section class="flex h-full flex-col gap-4 overflow-hidden p-4">
-		<header class="space-y-4 rounded-corner border border-ui-border bg-ui-bg/80 p-4">
-			<div class="flex flex-wrap items-end justify-between gap-4">
-				<div>
-					<p class="text-xs uppercase tracking-[0.16em] text-tx-muted">{{ t('home.eyebrow') }}</p>
-					<h2 class="text-lg font-semibold text-tx-main">{{ t('home.title') }}</h2>
-				</div>
-				<div class="text-xs text-tx-muted">
-					{{ visibleCountLabel }}
-				</div>
-			</div>
+	<!-- `@container`: los filtros se ponen en fila cuando la vista tiene lugar,
+	     mirando su propio ancho y no el de la pantalla (antes `lg:`, 1024 de
+	     ventana; 44 rem de vista es el mismo corte con la barra al costado). -->
+	<section class="@container flex h-full flex-col gap-4 overflow-hidden p-4">
+		<header class="shrink-0">
+		<Panel class="gap-4">
+			<PageHeader :eyebrow="t('home.eyebrow')" :title="t('home.title')" as="h2">
+				<template #actions>
+					<span class="text-xs text-tx-muted">{{ visibleCountLabel }}</span>
+				</template>
+			</PageHeader>
 
-			<div class="grid gap-3 lg:grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr]">
-				<LabeledField :label="t('common.search')">
-					<input
+			<div class="grid gap-3 @min-[44rem]:grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr]">
+				<FormGroup :label="t('common.search')" variant="eyebrow">
+					<SearchField
 						v-model="searchQuery"
-						type="search"
+						:label="t('common.search')"
 						:placeholder="t('home.searchPlaceholder')"
-						class="rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-sm text-tx-main transition-colors duration-200 placeholder:text-tx-muted/70 focus:border-primary/50"
 					/>
-				</LabeledField>
+				</FormGroup>
 
-				<LabeledField :label="t('common.artist')" wrapperClass="relative hidden lg:block">
-					<div class="relative">
-						<select v-model="artistFilter" class="appearance-none rounded-corner border border-ui-border bg-ui-surface/80 px-3 py-2 pr-8 text-sm text-tx-main transition-colors duration-200 focus:border-primary/50">
-							<option value="all">{{ t('common.all') }}</option>
-							<option v-for="artist in artistOptions" :key="artist" :value="artist">{{ artistLabel(artist) }}</option>
-						</select>
-						<svg class="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-tx-muted" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-							<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clip-rule="evenodd" />
-						</svg>
-					</div>
-				</LabeledField>
+				<!-- Los tres filtros, como antes, sólo con la vista ancha. -->
+				<div class="hidden min-w-0 @min-[44rem]:block">
+					<FormGroup v-slot="{ id }" :label="t('common.artist')" variant="eyebrow">
+						<SelectField v-bind="{ id }" v-model="artistFilter" :options="artistSelectOptions" />
+					</FormGroup>
+				</div>
 
-				<LabeledField :label="t('common.album')" wrapperClass="relative hidden lg:block">
-					<div class="relative">
-						<select v-model="albumFilter" class="appearance-none rounded-corner border border-ui-border bg-ui-surface/80 px-3 py-2 pr-8 text-sm text-tx-main transition-colors duration-200 focus:border-primary/50">
-							<option value="all">{{ t('common.all') }}</option>
-							<option v-for="album in albumOptions" :key="album" :value="album">{{ albumLabel(album) }}</option>
-						</select>
-						<svg class="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-tx-muted" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-							<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clip-rule="evenodd" />
-						</svg>
-					</div>
-				</LabeledField>
+				<div class="hidden min-w-0 @min-[44rem]:block">
+					<FormGroup v-slot="{ id }" :label="t('common.album')" variant="eyebrow">
+						<SelectField v-bind="{ id }" v-model="albumFilter" :options="albumSelectOptions" />
+					</FormGroup>
+				</div>
 
-				<LabeledField :label="t('common.sortBy')" wrapperClass="relative hidden lg:block">
-					<div class="relative">
-						<select v-model="sortBy" class="appearance-none rounded-corner border border-ui-border bg-ui-surface/80 px-3 py-2 pr-8 text-sm text-tx-main transition-colors duration-200 focus:border-primary/50">
-							<option value="recent-desc">{{ t('sort.recent') }}</option>
-							<option value="title-asc">{{ t('sort.titleAsc') }}</option>
-							<option value="title-desc">{{ t('sort.titleDesc') }}</option>
-							<option value="artist-asc">{{ t('sort.artistAsc') }}</option>
-							<option value="artist-desc">{{ t('sort.artistDesc') }}</option>
-							<option value="album-asc">{{ t('sort.albumAsc') }}</option>
-							<option value="duration-asc">{{ t('sort.durationShort') }}</option>
-							<option value="duration-desc">{{ t('sort.durationLong') }}</option>
-						</select>
-						<svg class="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-tx-muted" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-							<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clip-rule="evenodd" />
-						</svg>
-					</div>
-				</LabeledField>
+				<div class="hidden min-w-0 @min-[44rem]:block">
+					<FormGroup v-slot="{ id }" :label="t('common.sortBy')" variant="eyebrow">
+						<SelectField v-bind="{ id }" v-model="sortBy" :options="sortOptions" />
+					</FormGroup>
+				</div>
 
 				<div class="col-span-full flex items-end gap-2">
-					<button
-						@click="playRandomFiltered"
+					<ActionButton
+						:label="t('home.shuffle')"
+						:title="t('home.shuffleHint')"
+						icon="media-playlist-shuffle"
+						variant="secondary"
 						:disabled="sortedTracks.length === 0"
-						class="inline-flex items-center gap-2 rounded-corner border border-secondary/50 bg-secondary/15 px-4 py-2 text-sm font-medium text-secondary transition-colors duration-200 hover:enabled:border-secondary/80 hover:enabled:bg-secondary/25 disabled:opacity-50 disabled:cursor-not-allowed"
-:title="t('home.shuffleHint')"
-					>
-						<svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-							<path d="M3 2a1 1 0 011 1v2.101a7 7 0 0110.821 3.394c.105.302.214.602.321.901l1.196-.605A1 1 0 0117 7V4a1 1 0 00-2 0v1.101A9 9 0 005 3H4a1 1 0 00-1 1zm14 12a1 1 0 01-1 1h-1.101a7 7 0 01-10.82-3.394c-.105-.302-.214-.602-.321-.901l-1.196.605A1 1 0 003 13v3a1 1 0 002 0v-1.101A9 9 0 0015 17h1a1 1 0 001-1z" />
-						</svg>
-						<span>{{ t('home.shuffle') }}</span>
-					</button>
+						@click="playRandomFiltered"
+					/>
 				</div>
 			</div>
+		</Panel>
 		</header>
 
 		<LoadingState v-if="isLoading" :label="t('home.loading')" bordered />
@@ -350,67 +376,55 @@ const visibleCountLabel = computed(() => {
 		<!-- El menú es uno para toda la lista; cada fila dice cuál es la suya
 		     con `data-track-path`. Así el `RecycleScroller` puede reciclar las
 		     filas sin crear y destruir un menú por cada una. -->
-		<div
-			v-else
-			class="min-h-0 flex-1 overflow-hidden rounded-corner border border-ui-border bg-ui-bg/80"
-			@contextmenu="onTrackContextMenu"
-		>
-			<RecycleScroller
-				:items="sortedTracks"
-				:key-field="'path'"
-				:item-size="92"
-				class="h-full overflow-y-auto p-3"
-				v-slot="{ item: track }"
-			>
-				<article
-					:data-track-path="track.path"
-					class="mb-2 flex h-[84px] items-center gap-3 rounded-corner border border-ui-border bg-ui-surface/45 px-3 py-2.5 transition-colors duration-200 hover:border-primary/35 hover:bg-ui-surface/70"
-					:class="{
-						'pista-sonando': track.path === playerStore.currentPath,
-						'pista-sonando--activa':
-							track.path === playerStore.currentPath && playerStore.isPlaying,
-					}"
+		<Panel v-else padding="none" class="min-h-0 flex-1 overflow-hidden">
+			<div ref="list" class="h-full min-h-0" @contextmenu="onTrackContextMenu">
+				<RecycleScroller
+					:items="sortedTracks"
+					:key-field="'path'"
+					:item-size="ROW_HEIGHT"
+					class="h-full overflow-y-auto p-3"
+					v-slot="{ item: track }"
 				>
-					<div class="min-w-0 flex-1">
-						<div class="flex items-center gap-2">
-							<p class="truncate text-sm font-medium text-tx-main">{{ track.title }}</p>
-							<span class="rounded-full border border-ui-border bg-ui-bg/60 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-tx-muted">
-								{{ formatDuration(track.duration_seconds) }}
-							</span>
-						</div>
-						<p class="truncate text-xs text-tx-muted">{{ artistLabel(track.artist) }} • {{ albumLabel(track.album) }}</p>
-						<p class="truncate text-[11px] text-tx-muted/80">{{ track.path }}</p>
-					</div>
+					<!-- La fila con el alto fijo de siempre: el desplazador la coloca
+					     cada `ROW_HEIGHT` sin medirla. El envoltorio lleva la marca que
+					     busca el menú del clic derecho; adentro, `ListRow`. -->
+					<div :data-track-path="track.path" class="mb-2 h-[84px]">
+					<ListRow
+						class="h-full border border-ui-line-weak"
+						:class="{
+							'track-playing': track.path === playerStore.currentPath,
+							'track-playing--active':
+								track.path === playerStore.currentPath && playerStore.isPlaying,
+						}"
+					>
+						<span class="flex min-w-0 items-center gap-2">
+							<span class="truncate text-label-m">{{ track.title }}</span>
+							<Badge class="tabular-nums">{{ formatDuration(track.duration_seconds) }}</Badge>
+						</span>
+						<span class="truncate text-xs text-tx-muted">{{ artistLabel(track.artist) }} • {{ albumLabel(track.album) }}</span>
+						<span class="truncate text-[11px] text-tx-muted">{{ track.path }}</span>
 
-					<div class="flex items-center gap-2">
-						<button
-							type="button"
-							class="inline-flex items-center gap-1 rounded-corner border border-primary/45 bg-primary px-3 py-2 text-xs font-semibold text-tx-on-primary transition-colors duration-200 hover:bg-primary/90"
-							:title="t('common.play')"
-							:aria-label="t('common.play')"
-							@click="playTrack(track.path)"
-						>
-							<ThemeIcon name="media-playback-start" type="symbol" :size="16" />
-							{{ t('common.play') }}
-						</button>
-						<button
-							type="button"
-							class="inline-flex items-center gap-1 rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-2 text-xs font-semibold text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
-							:title="playerStore.isFavoritePath(track.path) ? t('common.removeFavorite') : t('common.addFavorite')"
-							:aria-label="playerStore.isFavoritePath(track.path) ? t('common.removeFavorite') : t('common.addFavorite')"
-							@click="toggleFavorite(track.path)"
-						>
-							<ThemeIcon
-								:name="playerStore.isFavoritePath(track.path) ? 'remove' : 'new-star'"
-								type="symbol"
-								:size="16"
+						<template #trailing>
+							<ActionButton
+								:label="labeledActions ? t('common.play') : ''"
+								:icon-alt="t('common.play')"
+								:title="t('common.play')"
+								icon="media-playback-start"
+								@click="playTrack(track.path)"
 							/>
-							{{ playerStore.isFavoritePath(track.path) ? t('common.removeFavorite') : t('common.favorite') }}
-						</button>
+							<ActionButton
+								:label="labeledActions ? (playerStore.isFavoritePath(track.path) ? t('common.removeFavorite') : t('common.favorite')) : ''"
+								:icon-alt="favoriteLabel(track.path)"
+								:title="favoriteLabel(track.path)"
+								:icon="playerStore.isFavoritePath(track.path) ? 'remove' : 'new-star'"
+								variant="secondary"
+								@click="toggleFavorite(track.path)"
+							/>
+						</template>
+					</ListRow>
 					</div>
-				</article>
-			</RecycleScroller>
-		</div>
-
+				</RecycleScroller>
+			</div>
+		</Panel>
 	</section>
 </template>

@@ -83,9 +83,9 @@ watch(
 </script>
 
 <template>
-	<section class="rounded-corner border border-primary/20 bg-ui-surface/40 px-3 py-2">
+	<section class="rounded-corner-m border border-ui-line bg-ui-surface/70 px-3 py-2">
 		<div class="mb-1 flex items-center justify-between gap-2">
-			<p class="text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">{{ t('lyrics.title') }}</p>
+			<p class="text-[10px] font-semibold uppercase tracking-[0.14em] text-tx-muted">{{ t('lyrics.title') }}</p>
 			<p v-if="loading" class="text-[10px] text-tx-muted">{{ t('lyrics.searching') }}</p>
 		</div>
 
@@ -120,7 +120,9 @@ watch(
 <style scoped>
 .lyrics-line-enter-active,
 .lyrics-line-leave-active {
-	transition: all 300ms ease;
+	transition:
+		opacity 300ms var(--ease-ui),
+		transform 300ms var(--ease-ui);
 }
 
 .lyrics-line-enter-from {

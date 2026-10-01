@@ -89,6 +89,7 @@ lyrics:
 miniPlayer:
   backToWindow: Volver
 player:
+  seek: Posición de la canción
   noTrack: Sin reproducción
   playError: "No se pudo reproducir el archivo: {0}"
   dropError: "No se pudo cargar el archivo arrastrado: {0}"
@@ -121,6 +122,8 @@ queue:
   dragToReorder: Arrastrá para reordenar
   nextUp: Siguiente
 radios:
+  tagsLabel: Etiquetas
+  votes: Votos
   title: Radios
   searchPlaceholder: Buscar emisoras...
   loading: Cargando emisoras...
@@ -202,6 +205,8 @@ volume:
   label: Volumen
 window:
   appIconAlt: Icono de la aplicación
+  showLibrary: Mostrar la biblioteca
+  hideLibrary: Volver al contenido
 windowControls:
   miniPlayer: Mini reproductor
   minimize: Minimizar
