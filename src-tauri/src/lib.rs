@@ -134,10 +134,15 @@ pub fn run() {
             #[cfg(target_os = "linux")]
             bandeja::iniciar(app.handle().clone(), audio_state.clone());
 
+            // El mini reproductor se muda a una superficie de capa antes de
+            // mostrarse nunca: ver `layer_shell`. Si no se puede, queda como
+            // ventana común y lo acomoda Wayfire al mostrarlo.
             #[cfg(target_os = "linux")]
-            if let Some(mini_window) = app.get_webview_window("mini-player") {
-                if let Ok(gtk_win) = mini_window.as_ref().window().gtk_window() {
-                    layer_shell::setup_mini_player(gtk_win);
+            if let Some(mini_window) = app.get_webview_window(layer_shell::MINI_PLAYER_LABEL) {
+                if let Err(error) = layer_shell::mount_mini_player(&mini_window) {
+                    eprintln!(
+                        "[layer_shell] el mini reproductor queda como ventana común: {error}"
+                    );
                 }
             }
 
