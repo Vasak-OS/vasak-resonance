@@ -152,3 +152,31 @@ describe('las listas de reproducción, angostas', () => {
 		expect(backButton()?.isVisible() ?? false).toBe(false);
 	});
 });
+
+describe('el ancho de lo que aparece después', () => {
+	test('la lista que se dibuja al terminar de cargar también se mide', async () => {
+		// Inicio y Favoritos dibujan la lista en un `v-else`, cuando ya cargó:
+		// medida sólo al montar, quedaba en cero y la fila angosta seguía con
+		// los botones con texto.
+		const { defineComponent, h, ref: makeRef } = await import('vue');
+		const { useElementWidth } = await import('@/composables/useElementWidth');
+		const shown = makeRef(false);
+		let measured = makeRef(-1);
+		const Probe = defineComponent({
+			setup() {
+				const list = makeRef<HTMLElement | null>(null);
+				measured = useElementWidth(list);
+				return () => (shown.value ? h('div', { ref: list }) : h('p', 'cargando'));
+			},
+		});
+		pretendWidth(300);
+		view = mount(Probe);
+		await nextTick();
+		expect(measured.value).toBe(0);
+
+		shown.value = true;
+		await nextTick();
+		await nextTick();
+		expect(measured.value).toBe(300);
+	});
+});
