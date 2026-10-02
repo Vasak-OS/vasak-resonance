@@ -238,8 +238,9 @@ const playRandomFiltered = async () => {
 	const paths = list.map((track) => track.path);
 	// Con qué canción arranca. `crypto` y no `Math.random`: no hay nada que
 	// proteger, pero así no queda la duda de qué generador se usó.
+	// Escalado y no con módulo: el módulo favorece a las primeras canciones.
 	const [draw = 0] = crypto.getRandomValues(new Uint32Array(1));
-	const first = paths[draw % paths.length];
+	const first = paths[Math.floor((draw / 0x1_0000_0000) * paths.length)];
 
 	await playerStore.playDropped(first);
 	playerStore.enqueuePaths(paths.filter((path) => path !== first));
