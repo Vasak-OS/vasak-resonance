@@ -203,7 +203,7 @@ async fn handle_connection(
                     if ok {
                         authenticated = true;
                         websocket
-                            .send(Message::Text(json!({"ok": true}).to_string()))
+                            .send(Message::Text(json!({"ok": true}).to_string().into()))
                             .await
                             .map_err(|error| {
                                 format!("No se pudo responder por WebSocket: {error}")
@@ -213,7 +213,8 @@ async fn handle_connection(
                         let _ = websocket
                             .send(Message::Text(
                                 json!({"ok": false, "error": "autenticación requerida"})
-                                    .to_string(),
+                                    .to_string()
+                                    .into(),
                             ))
                             .await;
                         break;
@@ -223,7 +224,7 @@ async fn handle_connection(
 
                 let response = handle_command_text(&text, &app_handle, &audio_state).await;
                 websocket
-                    .send(Message::Text(response))
+                    .send(Message::Text(response.into()))
                     .await
                     .map_err(|error| format!("No se pudo responder por WebSocket: {error}"))?;
             }

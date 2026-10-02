@@ -100,7 +100,7 @@ impl Mando for MandoDeTauri {
         #[cfg(target_os = "linux")]
         if let Ok(titulo) = ventana.title() {
             tauri::async_runtime::spawn(async move {
-                if let Err(error) = crate::wayfire_ipc::enfocar_ventana_propia(titulo).await {
+                if let Err(error) = crate::wayfire_ipc::focus_own_window(titulo).await {
                     eprintln!("No se pudo traer la ventana al frente: {error}");
                 }
             });
