@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
+import { ActionButton } from '@vasakgroup/vue-libvasak';
 import { computed } from 'vue';
-import TransportButton from '@/components/player/transport/TransportButton.vue';
 import type { Repeticion } from '@/stores/playerQueue';
 
 const props = defineProps<{
@@ -10,8 +10,8 @@ const props = defineProps<{
 	busy: boolean;
 	isPaused: boolean;
 	nextActionLabel: string;
-	repeticion: Repeticion;
-	aleatorio: boolean;
+	repeatMode: Repeticion;
+	shuffle: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -33,7 +33,7 @@ const playButtonLabel = computed(() => {
 
 /** El icono dice cuál de los tres modos está puesto. */
 const repeatButtonIcon = computed(() =>
-	props.repeticion === 'uno' ? 'media-playlist-repeat-song' : 'media-playlist-repeat'
+	props.repeatMode === 'uno' ? 'media-playlist-repeat-song' : 'media-playlist-repeat'
 );
 
 /**
@@ -43,14 +43,14 @@ const repeatButtonIcon = computed(() =>
  * un lector de pantalla, y «Repetir» sin más no dice si está puesto.
  */
 const repeatButtonLabel = computed(() => {
-	if (props.repeticion === 'uno') {
+	if (props.repeatMode === 'uno') {
 		return t('transport.repeatOne');
 	}
-	return props.repeticion === 'todo' ? t('transport.repeatAll') : t('transport.repeatNone');
+	return props.repeatMode === 'todo' ? t('transport.repeatAll') : t('transport.repeatNone');
 });
 
 const shuffleButtonLabel = computed(() =>
-	props.aleatorio ? t('transport.shuffleOn') : t('transport.shuffleOff')
+	props.shuffle ? t('transport.shuffleOn') : t('transport.shuffleOff')
 );
 
 const playPauseIcon = computed(() => {
@@ -59,37 +59,56 @@ const playPauseIcon = computed(() => {
 </script>
 
 <template>
+	<!-- Aleatorio y repetir son alternancias: `pressed` las marca puestas (y
+	     el `aria-pressed` lo dice), en lugar del relleno primario que antes
+	     las confundía con el botón de reproducir. El nombre de cada botón va en
+	     `aria-label` y en `title`: el icono no lleva texto propio, o un lector
+	     de pantalla lo diría dos veces. -->
 	<div class="grid grid-cols-5 gap-2">
-		<TransportButton
-			:label="shuffleButtonLabel"
+		<ActionButton
+			label=""
+			:icon-alt="shuffleButtonLabel"
+			:title="shuffleButtonLabel"
 			icon="media-playlist-shuffle"
-			:variant="aleatorio ? 'primary' : undefined"
+			variant="secondary"
+			:pressed="shuffle"
 			:disabled="busy"
 			@click="emit('shuffle')"
 		/>
-		<TransportButton
-			:label="t('transport.previous')"
+		<ActionButton
+			label=""
+			:icon-alt="t('transport.previous')"
+			:title="t('transport.previous')"
 			icon="player_rew"
+			variant="secondary"
 			:disabled="!hasTrack || busy"
 			@click="emit('prev')"
 		/>
-		<TransportButton
-			:label="playButtonLabel"
+		<ActionButton
+			label=""
+			:icon-alt="playButtonLabel"
+			:title="playButtonLabel"
 			:icon="playPauseIcon"
 			variant="primary"
 			:disabled="!hasTrack || busy"
 			@click="emit('toggle')"
 		/>
-		<TransportButton
-			:label="nextActionLabel"
+		<ActionButton
+			label=""
+			:icon-alt="nextActionLabel"
+			:title="nextActionLabel"
 			icon="player_fwd"
+			variant="secondary"
 			:disabled="!hasNextTrack || busy"
 			@click="emit('next')"
 		/>
-		<TransportButton
-			:label="repeatButtonLabel"
+		<ActionButton
+			label=""
+			:icon-alt="repeatButtonLabel"
+			:title="repeatButtonLabel"
 			:icon="repeatButtonIcon"
-			:variant="repeticion === 'ninguna' ? undefined : 'primary'"
+			variant="secondary"
+			:pressed="repeatMode !== 'ninguna'"
 			:disabled="busy"
 			@click="emit('repeat')"
 		/>

@@ -12,6 +12,17 @@ import { usePlayerStore } from '@/stores/player';
 import { siguienteRepeticion } from '@/stores/playerQueue';
 import { useSettingsStore } from '@/stores/settings';
 
+const props = withDefaults(
+	defineProps<{
+		/**
+		 * Ocupar el ancho entero: en ventana angosta la barra va sola, en lugar
+		 * del contenido, y no al costado con sus 18 rem.
+		 */
+		fill?: boolean;
+	}>(),
+	{ fill: false }
+);
+
 const { t } = useI18n();
 const playerStore = usePlayerStore();
 const settingsStore = useSettingsStore();
@@ -79,7 +90,7 @@ watch(
 		try {
 			// La portada trae su color: lo calculó Rust con los bytes que ya
 			// tenía, en lugar de que esta ventana decodifique la imagen otra vez.
-			const portada = await fetchAlbumCover(track.artist, track.album);
+			const cover = await fetchAlbumCover(track.artist, track.album);
 			if (playerStore.currentTrack?.path !== newPath) {
 				return;
 			}
@@ -89,12 +100,12 @@ watch(
 				return;
 			}
 
-			fetchedCoverUrl.value = portada.cover_data_url;
+			fetchedCoverUrl.value = cover.cover_data_url;
 
-			if (portada.cover_data_url && !track.cover_data_url) {
-				playerStore.setCurrentTrackVisuals(portada.cover_data_url, portada.dominant_color || null);
+			if (cover.cover_data_url && !track.cover_data_url) {
+				playerStore.setCurrentTrackVisuals(cover.cover_data_url, cover.dominant_color || null);
 			}
-		} catch (error) {
+		} catch {
 			console.debug('Failed to fetch cover for current track');
 			fetchedCoverUrl.value = '';
 		}
@@ -112,13 +123,22 @@ const onSelectSection = async (id: string) => {
 </script>
 
 <template>
-	<aside class="flex w-full shrink-0 flex-col rounded-corner border border-ui-border bg-ui-bg/80 p-2 md:w-72">
-		<header class="border-b border-ui-border px-2 pb-3 pt-1">
-			<p class="text-xs uppercase tracking-[0.12em] text-tx-muted">{{ t('sidebar.sectionTitle') }}</p>
-			<p class="text-sm font-semibold text-tx-main">{{ t('sidebar.library') }}</p>
+	<!-- La superficie de la barra es la de `SideBar` de la librería —el mismo
+	     canto, radio y material—, pero el componente no se adopta: se pliega
+	     solo a un riel de 84 píxeles por debajo de 767 de contenedor, y acá en
+	     angosto la barra va sola, de borde a borde, en lugar del contenido (una
+	     columna por vez). Un riel de iconos dejaría 150 píxeles para la lista a
+	     240 de ancho. -->
+	<aside
+		class="flex h-full min-h-0 shrink-0 flex-col rounded-corner-l border border-ui-line bg-ui-surface/70 p-2"
+		:class="props.fill ? 'w-full' : 'w-72'"
+	>
+		<header class="border-b border-ui-line-weak px-2 pb-3 pt-1">
+			<p class="text-label-xs font-semibold uppercase tracking-wider text-tx-muted">{{ t('sidebar.sectionTitle') }}</p>
+			<p class="text-label-m font-semibold text-tx-main">{{ t('sidebar.library') }}</p>
 		</header>
 
-		<nav class="flex-1 space-y-2 overflow-y-auto px-1 py-3">
+		<nav class="min-h-0 flex-1 space-y-2 overflow-y-auto px-1 py-3">
 			<SideButton
 				v-for="section in sections"
 				:key="section.id"
@@ -129,7 +149,7 @@ const onSelectSection = async (id: string) => {
 			/>
 		</nav>
 
-		<section class="mt-2 rounded-corner border border-ui-border bg-ui-surface/40 p-3">
+		<section class="mt-2 shrink-0 rounded-corner-m border border-ui-line bg-ui-surface/70 p-3">
 			<TrackMetaCard
 				:title="trackTitle"
 				:subtitle="trackSubtitle"
@@ -144,8 +164,8 @@ const onSelectSection = async (id: string) => {
 				:busy="playerStore.busy"
 				:is-paused="playerStore.isPaused"
 				:next-action-label="playerStore.nextActionLabel"
-				:repeticion="settingsStore.repeticion"
-				:aleatorio="settingsStore.aleatorio"
+				:repeat-mode="settingsStore.repeticion"
+				:shuffle="settingsStore.aleatorio"
 				@prev="playerStore.playPreviousTrack"
 				@toggle="playerStore.togglePlayPause"
 				@next="playerStore.advanceQueue"

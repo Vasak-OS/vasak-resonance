@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { type MenuEntry, useContextMenu } from '@vasakgroup/plugin-vsk-contextual-menu';
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
-import { ThemeIcon } from '@vasakgroup/vue-libvasak';
+import { ActionButton, ListRow, Panel, ThemeIcon } from '@vasakgroup/vue-libvasak';
 import { ref } from 'vue';
 import type { QueueEntry } from '@/stores/playerQueue';
 
@@ -117,35 +117,29 @@ const onQueueDrop = (targetId: string) => {
 	     atributos y terminaba igual en el `<ul>` que dibuja. Escuchando en la
 	     sección es lo mismo —el manejador busca la fila con `closest()` y se va
 	     si no hay ninguna— y además queda dicho dónde está puesto. -->
-	<section
-		class="rounded-corner border border-ui-border bg-ui-bg/80 p-4"
-		@contextmenu="onQueueContextMenu"
-	>
-		<div class="flex items-center justify-between gap-3 pb-3">
-			<div>
+	<section class="min-w-0" @contextmenu="onQueueContextMenu">
+	<Panel>
+		<div class="flex min-w-0 flex-wrap items-center justify-between gap-3 pb-3">
+			<div class="min-w-0">
 				<p class="text-xs uppercase tracking-[0.18em] text-tx-muted">{{ t('queue.eyebrow') }}</p>
 				<p class="text-sm font-medium text-tx-main">{{ t('queue.subtitle') }}</p>
 			</div>
-			<button
-				type="button"
-				class="inline-flex items-center gap-1 rounded-corner border border-ui-border bg-ui-surface/55 px-3 py-1.5 text-xs font-medium text-tx-main transition-colors duration-200 hover:border-primary/40 hover:bg-ui-surface/75"
-				:title="t('queue.clear')"
-				:aria-label="t('queue.clear')"
+			<ActionButton
+				:label="t('queue.clear')"
+				icon="edit-clear-all-symbolic"
+				variant="secondary"
 				@click="emit('clear')"
-			>
-				<ThemeIcon name="edit-clear-all-symbolic" type="symbol" :size="16" />
-				{{ t('queue.clear') }}
-			</button>
+			/>
 		</div>
 
 		<!-- Un solo menú para toda la cola; cada elemento dice cuál es el suyo
-		     con `data-queue-id`. -->
+		     con `data-queue-id`. El `li` lleva el arrastre; la fila es `ListRow`. -->
 		<TransitionGroup
 			tag="ul"
 			class="grid gap-2"
-			move-class="transition-transform duration-200 ease-out"
-			enter-active-class="transition-[opacity,translate] duration-200 ease-out"
-			leave-active-class="transition-[opacity,translate] duration-150 ease-in"
+			move-class="transition-transform duration-200 ease-ui"
+			enter-active-class="transition-[opacity,translate] duration-200 ease-ui-out"
+			leave-active-class="transition-[opacity,translate] duration-150 ease-ui"
 			enter-from-class="opacity-0 translate-y-2"
 			leave-to-class="opacity-0 translate-y-2"
 		>
@@ -153,12 +147,11 @@ const onQueueDrop = (targetId: string) => {
 				v-for="(entry, index) in props.queueItems"
 				:key="entry.id"
 				:data-queue-id="entry.id"
-				class="group flex items-center gap-3 rounded-corner border border-ui-border/80 bg-ui-surface/45 px-3 py-2.5 text-sm transition-colors duration-200 hover:border-primary/35 hover:bg-ui-surface/70"
-				:class="{
-					'border-primary/55 bg-primary/10': dropTargetId === entry.id,
-					'opacity-70': draggingQueueId === entry.id,
-					'border-secondary/40': index === 0,
-				}"
+				class="rounded-corner-m border transition-colors duration-200 ease-ui"
+				:class="[
+					dropTargetId === entry.id ? 'border-primary bg-ui-selected-accent' : index === 0 ? 'border-secondary' : 'border-ui-line',
+					{ 'opacity-70': draggingQueueId === entry.id },
+				]"
 				draggable="true"
 				@dragover.prevent
 				@dragenter.prevent="onQueueDragEnter(entry.id)"
@@ -167,26 +160,24 @@ const onQueueDrop = (targetId: string) => {
 				@dragstart="onQueueDragStart(entry.id)"
 				@dragend="onQueueDragEnd"
 			>
-				<span class="w-6 shrink-0 text-right text-xs font-semibold text-tx-muted">{{ index + 1 }}</span>
-				<span
-					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-corner border border-ui-border bg-ui-bg/70 text-xs font-bold tracking-[0.2em] text-primary transition-colors duration-200 group-hover:bg-primary/10 group-hover:text-tx-main"
-					:title="t('queue.dragToReorder')"
-					:aria-label="t('queue.dragToReorder')"
-				>
-					⋮⋮
-				</span>
-				<div class="min-w-0 flex-1">
-					<p v-if="index === 0" class="text-[11px] uppercase tracking-[0.2em] text-primary">{{ t('queue.nextUp') }}</p>
-					<p class="truncate text-sm text-tx-main">{{ extractTrackName(entry.path) }}</p>
-				</div>
-				<button
-					type="button"
-					class="rounded-corner border border-transparent bg-ui-bg/35 px-2.5 py-1 text-xs font-medium text-tx-muted transition-colors duration-200 hover:border-primary/30 hover:bg-primary/10 hover:text-tx-main"
-					@click="emit('remove', entry.id)"
-				>
-					{{ t('common.remove') }}
-				</button>
+				<ListRow>
+					<template #leading>
+						<span class="w-6 shrink-0 text-right text-xs font-semibold text-tx-muted tabular-nums">{{ index + 1 }}</span>
+						<span
+							class="ml-3 flex size-8 shrink-0 cursor-grab items-center justify-center rounded-corner-m text-tx-muted"
+							:title="t('queue.dragToReorder')"
+						>
+							<ThemeIcon name="list-drag-handle-symbolic" type="symbol" :size="16" :alt="t('queue.dragToReorder')" />
+						</span>
+					</template>
+					<span v-if="index === 0" class="text-[11px] uppercase tracking-[0.2em] text-tx-muted">{{ t('queue.nextUp') }}</span>
+					<span class="truncate text-label-m">{{ extractTrackName(entry.path) }}</span>
+					<template #trailing>
+						<ActionButton :label="t('common.remove')" variant="ghost" size="sm" @click="emit('remove', entry.id)" />
+					</template>
+				</ListRow>
 			</li>
 		</TransitionGroup>
+	</Panel>
 	</section>
 </template>

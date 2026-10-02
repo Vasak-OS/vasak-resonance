@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
+import { ActionButton } from '@vasakgroup/vue-libvasak';
 import { computed } from 'vue';
-import TransportButton from '@/components/player/transport/TransportButton.vue';
 
 const props = defineProps<{
 	hasTrack: boolean;
@@ -32,25 +32,30 @@ const playPauseIcon = computed(() => {
 
 <template>
 	<div class="flex shrink-0 items-center gap-1">
-		<TransportButton
-			:label="nextLabel || t('transport.next')"
+		<ActionButton
+			label=""
+			:icon-alt="nextLabel || t('transport.next')"
+			:title="nextLabel || t('transport.next')"
 			icon="player_fwd"
-			size="sm"
+			variant="secondary"
 			:disabled="!hasNextTrack || busy"
 			@click="emit('next')"
 		/>
-		<TransportButton
-			:label="toggleLabel"
+		<ActionButton
+			label=""
+			:icon-alt="toggleLabel"
+			:title="toggleLabel"
 			:icon="playPauseIcon"
 			variant="primary"
-			size="sm"
 			:disabled="!hasTrack || busy"
 			@click="emit('toggle')"
 		/>
-		<TransportButton
-			:label="openLabel || t('transport.open')"
+		<ActionButton
+			label=""
+			:icon-alt="openLabel || t('transport.open')"
+			:title="openLabel || t('transport.open')"
 			icon="stock_new-window"
-			size="sm"
+			variant="secondary"
 			@click="emit('open')"
 		/>
 	</div>
