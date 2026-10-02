@@ -211,7 +211,8 @@ const onPlayAlbum = async (paths: string[]) => {
 
 			     La tarjeta mide lo mismo que antes de pasar a los componentes de
 			     la librería (518 px a 1200 de ventana, 534 a 1400, medidos en el
-			     banco): los botones con texto van en filas de 34 px y las
+			     banco): los botones con texto van en filas de 34 px como mínimo —crecen
+			     si el texto baja de línea, como antes— y las
 			     canciones de la vista previa en 38, que es lo que medían. -->
 			<DynamicScroller
 				:items="albumRows"
