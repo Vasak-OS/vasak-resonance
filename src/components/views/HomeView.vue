@@ -28,6 +28,7 @@ import {
 	searchLibraryTracks,
 } from '@/services/player.service';
 import { usePlayerStore } from '@/stores/player';
+import { createQueueEntries, elegirSiguiente } from '@/stores/playerQueue';
 import { useSettingsStore } from '@/stores/settings';
 import { rowActionsWithLabels } from '@/tools/window-layout';
 
@@ -236,11 +237,12 @@ const playRandomFiltered = async () => {
 	await settingsStore.setAleatorio(true);
 
 	const paths = list.map((track) => track.path);
-	// Con qué canción arranca. `crypto` y no `Math.random`: no hay nada que
-	// proteger, pero así no queda la duda de qué generador se usó.
-	// Escalado y no con módulo: el módulo favorece a las primeras canciones.
-	const [draw = 0] = crypto.getRandomValues(new Uint32Array(1));
-	const first = paths[Math.floor((draw / 0x1_0000_0000) * paths.length)];
+	// Con qué canción arranca lo decide la misma regla que elige cada una de
+	// las siguientes con el aleatorio puesto: una sola forma de sortear.
+	const { siguiente: first } = elegirSiguiente(createQueueEntries(paths), null, 'ninguna', true);
+	if (!first) {
+		return;
+	}
 
 	await playerStore.playDropped(first);
 	playerStore.enqueuePaths(paths.filter((path) => path !== first));
