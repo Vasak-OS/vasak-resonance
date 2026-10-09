@@ -55,6 +55,41 @@ app.use(router);
 // Se espera a que estén las traducciones antes de mostrar nada: montando
 // primero, el arranque enseñaba las claves crudas —«contextMenu.play» y
 // compañía— hasta que el archivo de idioma terminaba de cargar.
-await i18n.load();
+//
+// Un intento que falla se reintenta —el backend puede tardar o no escuchar a la
+// primera—, pero la espera total está acotada: antes esto era un `await i18n.load()`
+// sin plazo, así que un backend colgado dejaba la ventana en blanco para siempre.
+// Con plazo, se monta con las claves crudas, que es feo pero funciona.
+const PLAZO_TRADUCCIONES_MS = 3000;
+
+async function cargarTraducciones(): Promise<void> {
+	const MAX_INTENTOS = 3;
+	const ESPERA_BASE_MS = 500;
+	const ESPERA_MAX_MS = 2000;
+
+	const intentar = async () => {
+		for (let intento = 0; intento < MAX_INTENTOS; intento++) {
+			try {
+				await i18n.load();
+				return;
+			} catch (error) {
+				console.error(
+					`No se pudieron cargar las traducciones (intento ${intento + 1}/${MAX_INTENTOS}):`,
+					error
+				);
+				if (intento === MAX_INTENTOS - 1) return;
+				const espera = Math.min(ESPERA_BASE_MS * 2 ** intento, ESPERA_MAX_MS);
+				await new Promise((resolve) => setTimeout(resolve, espera));
+			}
+		}
+	};
+
+	await Promise.race([
+		intentar(),
+		new Promise((resolve) => setTimeout(resolve, PLAZO_TRADUCCIONES_MS)),
+	]);
+}
+
+await cargarTraducciones();
 
 app.mount('#app');
