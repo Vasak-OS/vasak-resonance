@@ -95,15 +95,15 @@ async fn send_request(stream: &mut UnixStream, method: &str, data: Value) -> Res
 /// ventanas, la principal y el mini-reproductor, y las dos llevan el mismo pid.
 /// Sólo por título tampoco: dos instancias abiertas tienen el mismo, y lo
 /// escribe la página.
-pub fn vista_del_proceso(vistas: &Value, pid: u32, titulo: &str) -> Option<i64> {
-    vistas
+pub fn find_process_view(views: &Value, pid: u32, title: &str) -> Option<i64> {
+    views
         .as_array()?
         .iter()
-        .find(|vista| {
-            vista.get("pid").and_then(Value::as_u64) == Some(u64::from(pid))
-                && vista.get("title").and_then(Value::as_str) == Some(titulo)
+        .find(|view| {
+            view.get("pid").and_then(Value::as_u64) == Some(u64::from(pid))
+                && view.get("title").and_then(Value::as_str) == Some(title)
         })
-        .and_then(|vista| vista.get("id").and_then(Value::as_i64))
+        .and_then(|view| view.get("id").and_then(Value::as_i64))
 }
 
 /// Le pide al compositor que enfoque una ventana de este proceso.
@@ -117,22 +117,22 @@ pub fn vista_del_proceso(vistas: &Value, pid: u32, titulo: &str) -> Option<i64> 
 /// Fuera de Wayfire no hay socket, y entonces esto no hace nada y no es un
 /// error: la ventana ya se mostró, y lo que falta es que el compositor la
 /// levante.
-pub async fn enfocar_ventana_propia(titulo: String) -> Result<(), String> {
+pub async fn focus_own_window(title: String) -> Result<(), String> {
     if find_socket().is_none() {
         return Ok(());
     }
 
     let mut stream = connect().await?;
-    let vistas = send_request(
+    let views = send_request(
         &mut stream,
         "window-rules/list-views",
         serde_json::json!({}),
     )
     .await?;
 
-    let Some(id) = vista_del_proceso(&vistas, std::process::id(), &titulo) else {
+    let Some(id) = find_process_view(&views, std::process::id(), &title) else {
         return Err(format!(
-            "Wayfire no tiene ninguna vista «{titulo}» de este proceso"
+            "Wayfire no tiene ninguna vista «{title}» de este proceso"
         ));
     };
 
@@ -146,11 +146,180 @@ pub async fn enfocar_ventana_propia(titulo: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Dónde va una ventana de `size` en la esquina de abajo a la derecha de
+/// `workarea`, a `margin` de los dos bordes.
+///
+/// `workarea` es lo que devuelve `window-rules/output-info`: la pantalla menos
+/// lo que reservan el panel y las demás capas, en coordenadas de la pantalla.
+/// Sin las cuatro medidas no hay geometría.
+pub fn bottom_right_geometry(workarea: &Value, size: (i32, i32), margin: i32) -> Option<Value> {
+    let measure = |key: &str| workarea.get(key).and_then(Value::as_f64);
+    let (x, y) = (measure("x")?, measure("y")?);
+    let (width, height) = (measure("width")?, measure("height")?);
+    let (view_width, view_height) = (f64::from(size.0), f64::from(size.1));
+    let margin = f64::from(margin);
+
+    Some(serde_json::json!({
+        "x": (x + width - view_width - margin).max(x).round() as i64,
+        "y": (y + height - view_height - margin).max(y).round() as i64,
+        "width": size.0,
+        "height": size.1,
+    }))
+}
+
+/// Pone una ventana de este proceso abajo a la derecha y encima de las demás.
+///
+/// Es la reserva para cuando el compositor no ofrece `wlr-layer-shell`: una
+/// ventana común no puede elegir dónde va, pero a Wayfire sí se le puede pedir
+/// que la mueva. Se llama **cada vez** que se muestra, porque al volver a
+/// mapearla el compositor la acomoda de nuevo a su criterio.
+///
+/// La vista aparece en la lista recién cuando el compositor la mapea, que es un
+/// poco después del `show()`: por eso se la espera un rato. Fuera de Wayfire no
+/// hay socket, y entonces no hace nada.
+pub async fn place_own_view_bottom_right(
+    title: &str,
+    size: (i32, i32),
+    margin: i32,
+) -> Result<(), String> {
+    if find_socket().is_none() {
+        return Ok(());
+    }
+
+    let mut stream = connect().await?;
+
+    let mut found = None;
+    for _ in 0..40 {
+        let views = send_request(
+            &mut stream,
+            "window-rules/list-views",
+            serde_json::json!({}),
+        )
+        .await?;
+        found = mapped_process_view(&views, std::process::id(), title);
+        if found.is_some() {
+            break;
+        }
+        sleep(Duration::from_millis(50)).await;
+    }
+    let Some((id, output_id)) = found else {
+        return Err(format!(
+            "Wayfire no mapeó ninguna vista «{title}» de este proceso"
+        ));
+    };
+
+    let output = send_request(
+        &mut stream,
+        "window-rules/output-info",
+        serde_json::json!({ "id": output_id }),
+    )
+    .await?;
+    let geometry = output
+        .get("workarea")
+        .and_then(|workarea| bottom_right_geometry(workarea, size, margin))
+        .ok_or("Wayfire no dijo el área útil de la pantalla")?;
+
+    send_request(
+        &mut stream,
+        "window-rules/configure-view",
+        serde_json::json!({ "id": id, "output_id": output_id, "geometry": geometry }),
+    )
+    .await?;
+
+    // `alwaysOnTop` de Tauri no llega a Wayland. Se pide acá, y si el
+    // complemento `wm-actions` no está cargado la ventana queda bien puesta
+    // igual: no es motivo para avisar de un error.
+    let _ = send_request(
+        &mut stream,
+        "wm-actions/set-always-on-top",
+        serde_json::json!({ "view_id": id, "state": true }),
+    )
+    .await;
+
+    Ok(())
+}
+
+/// Como [`find_process_view`], pero sólo si ya está mapeada, y con la pantalla
+/// en la que está.
+fn mapped_process_view(views: &Value, pid: u32, title: &str) -> Option<(i64, i64)> {
+    let id = find_process_view(views, pid, title)?;
+    let view = views
+        .as_array()?
+        .iter()
+        .find(|view| view.get("id").and_then(Value::as_i64) == Some(id))?;
+
+    if view.get("mapped").and_then(Value::as_bool) != Some(true) {
+        return None;
+    }
+    let output_id = view.get("output-id").and_then(Value::as_i64)?;
+    Some((id, output_id))
+}
+
 #[cfg(test)]
-mod pruebas {
+mod tests {
     use super::*;
 
-    fn vistas() -> Value {
+    #[test]
+    fn la_esquina_de_abajo_a_la_derecha_deja_el_margen() {
+        let workarea = serde_json::json!({ "x": 0.0, "y": 0.0, "width": 1920.0, "height": 1080.0 });
+        assert_eq!(
+            bottom_right_geometry(&workarea, (360, 120), 10),
+            Some(serde_json::json!({ "x": 1550, "y": 950, "width": 360, "height": 120 }))
+        );
+    }
+
+    /// El área útil ya descuenta el panel: con un panel de 40 px abajo, el
+    /// mini reproductor queda encima de él y no tapado.
+    #[test]
+    fn respeta_lo_que_reserva_el_panel() {
+        let workarea = serde_json::json!({ "x": 0.0, "y": 0.0, "width": 1920.0, "height": 1040.0 });
+        let geometry = bottom_right_geometry(&workarea, (360, 120), 10).unwrap();
+        assert_eq!(geometry["y"], 910);
+
+        let workarea =
+            serde_json::json!({ "x": 48.0, "y": 0.0, "width": 1872.0, "height": 1080.0 });
+        let geometry = bottom_right_geometry(&workarea, (360, 120), 10).unwrap();
+        assert_eq!(geometry["x"], 1550);
+    }
+
+    /// En una pantalla más chica que la ventana, mejor recortada por abajo y a
+    /// la derecha que con la esquina de arriba fuera de la pantalla.
+    #[test]
+    fn no_se_va_por_arriba_ni_por_la_izquierda() {
+        let workarea = serde_json::json!({ "x": 0.0, "y": 0.0, "width": 300.0, "height": 100.0 });
+        let geometry = bottom_right_geometry(&workarea, (360, 120), 10).unwrap();
+        assert_eq!(
+            (geometry["x"].as_i64(), geometry["y"].as_i64()),
+            (Some(0), Some(0))
+        );
+    }
+
+    #[test]
+    fn sin_las_cuatro_medidas_no_hay_geometria() {
+        let workarea = serde_json::json!({ "x": 0.0, "y": 0.0, "width": 1920.0 });
+        assert_eq!(bottom_right_geometry(&workarea, (360, 120), 10), None);
+    }
+
+    #[test]
+    fn espera_a_que_la_vista_este_mapeada() {
+        let views = serde_json::json!([
+            { "id": 34, "pid": 527, "title": "MiniPlayer - Resonance", "mapped": false, "output-id": 2 }
+        ]);
+        assert_eq!(
+            mapped_process_view(&views, 527, "MiniPlayer - Resonance"),
+            None
+        );
+
+        let views = serde_json::json!([
+            { "id": 34, "pid": 527, "title": "MiniPlayer - Resonance", "mapped": true, "output-id": 2 }
+        ]);
+        assert_eq!(
+            mapped_process_view(&views, 527, "MiniPlayer - Resonance"),
+            Some((34, 2))
+        );
+    }
+
+    fn views() -> Value {
         serde_json::json!([
             { "id": 12, "pid": 100, "title": "Otra aplicación" },
             { "id": 34, "pid": 527, "title": "MiniPlayer - Resonance" },
@@ -161,7 +330,7 @@ mod pruebas {
 
     #[test]
     fn encuentra_la_ventana_por_pid_y_titulo() {
-        assert_eq!(vista_del_proceso(&vistas(), 527, "Resonance"), Some(56));
+        assert_eq!(find_process_view(&views(), 527, "Resonance"), Some(56));
     }
 
     /// Las dos ventanas del reproductor llevan el mismo pid, y el
@@ -170,7 +339,7 @@ mod pruebas {
     #[test]
     fn no_confunde_la_principal_con_el_mini_reproductor() {
         assert_eq!(
-            vista_del_proceso(&vistas(), 527, "MiniPlayer - Resonance"),
+            find_process_view(&views(), 527, "MiniPlayer - Resonance"),
             Some(34)
         );
     }
@@ -178,14 +347,14 @@ mod pruebas {
     /// Y otra instancia con el mismo título es de otro proceso.
     #[test]
     fn no_agarra_la_ventana_de_otra_instancia() {
-        assert_ne!(vista_del_proceso(&vistas(), 527, "Resonance"), Some(78));
+        assert_ne!(find_process_view(&views(), 527, "Resonance"), Some(78));
     }
 
     #[test]
     fn sin_esa_ventana_no_devuelve_nada() {
-        assert_eq!(vista_del_proceso(&vistas(), 527, "Inexistente"), None);
+        assert_eq!(find_process_view(&views(), 527, "Inexistente"), None);
         assert_eq!(
-            vista_del_proceso(&serde_json::json!({}), 527, "Resonance"),
+            find_process_view(&serde_json::json!({}), 527, "Resonance"),
             None
         );
     }

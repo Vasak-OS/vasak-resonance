@@ -3,8 +3,8 @@ import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { nextTick } from 'vue';
 import SettingsView from '@/components/views/SettingsView.vue';
-import { type EstadoDeLastfm, estadoDeLastfm } from '../src/services/lastfm.service';
-import { pasoDeLastfm } from '../src/tools/lastfm';
+import { getLastfmStatus } from '../src/services/lastfm.service';
+import { lastfmStep } from '../src/tools/lastfm';
 import { arreglar, contestar, invocaciones, romper } from './dobles';
 
 /**
@@ -15,20 +15,20 @@ import { arreglar, contestar, invocaciones, romper } from './dobles';
 
 describe('en qué punto está la vinculación con Last.fm', () => {
 	test('sin clave de API la sección no se dibuja', () => {
-		expect(pasoDeLastfm({ configurado: false, usuario: null }, null)).toBe('oculto');
+		expect(lastfmStep({ configured: false, user: null }, null)).toBe('hidden');
 	});
 
 	/** Ni siquiera con una sesión colgada de antes: sin clave no se puede firmar. */
 	test('sin clave no se dibuja aunque haya usuario', () => {
-		expect(pasoDeLastfm({ configurado: false, usuario: 'alguien' }, 'tok')).toBe('oculto');
+		expect(lastfmStep({ configured: false, user: 'alguien' }, 'tok')).toBe('hidden');
 	});
 
 	test('con clave y sin autorizar, ofrece vincular', () => {
-		expect(pasoDeLastfm({ configurado: true, usuario: null }, null)).toBe('sin-vincular');
+		expect(lastfmStep({ configured: true, user: null }, null)).toBe('unlinked');
 	});
 
 	test('con un token a medio usar, espera la confirmación', () => {
-		expect(pasoDeLastfm({ configurado: true, usuario: null }, 'tok')).toBe('autorizando');
+		expect(lastfmStep({ configured: true, user: null }, 'tok')).toBe('authorizing');
 	});
 
 	/**
@@ -37,7 +37,7 @@ describe('en qué punto está la vinculación con Last.fm', () => {
 	 * usarlo.
 	 */
 	test('vinculado gana sobre el token que quedó dando vueltas', () => {
-		expect(pasoDeLastfm({ configurado: true, usuario: 'alguien' }, 'tok')).toBe('vinculado');
+		expect(lastfmStep({ configured: true, user: 'alguien' }, 'tok')).toBe('linked');
 	});
 });
 
@@ -47,17 +47,19 @@ describe('leer el estado', () => {
 		arreglar('lastfm_status');
 	});
 
-	test('pasa por el backend', async () => {
+	test('pasa por el backend, y traduce los nombres del cable', async () => {
+		// Rust serializa `configurado` y `usuario` (`lastfm.rs`); la ventana
+		// habla de `configured` y `user`, y la traducción vive en el servicio.
 		contestar('lastfm_status', { configurado: true, usuario: 'alguien' });
 
-		expect(await estadoDeLastfm()).toEqual({ configurado: true, usuario: 'alguien' });
+		expect(await getLastfmStatus()).toEqual({ configured: true, user: 'alguien' });
 		expect(invocaciones).toContain('lastfm_status');
 	});
 
 	test('si el backend falla, queda apagado y no revienta', async () => {
 		romper('lastfm_status');
 
-		expect(await estadoDeLastfm()).toEqual({ configurado: false, usuario: null });
+		expect(await getLastfmStatus()).toEqual({ configured: false, user: null });
 	});
 });
 
@@ -77,37 +79,37 @@ describe('la sección de ajustes', () => {
 	 * `t()` devuelve la clave en las pruebas —no hay plugin de idiomas—, así que
 	 * lo que se busca es la clave y no el texto en español.
 	 */
-	const conEstado = async (estado: EstadoDeLastfm) => {
-		contestar('lastfm_status', estado);
-		const vista = mount(SettingsView);
+	const withStatus = async (status: { configurado: boolean; usuario: string | null }) => {
+		contestar('lastfm_status', status);
+		const view = mount(SettingsView);
 		// El estado se pide al montar y vuelve por una promesa, y los ajustes
 		// encadenan otras tres: sin dejar correr la cola de tareas, la sección
 		// todavía no se dibujó.
-		await new Promise((listo) => setTimeout(listo, 30));
+		await new Promise((done) => setTimeout(done, 30));
 		await nextTick();
-		return vista;
+		return view;
 	};
 
 	test('sin clave de API no se dibuja', async () => {
-		const vista = await conEstado({ configurado: false, usuario: null });
+		const view = await withStatus({ configurado: false, usuario: null });
 
-		expect(vista.text()).not.toContain('settings.lastfm');
+		expect(view.text()).not.toContain('settings.lastfm');
 	});
 
 	test('con clave y sin vincular, ofrece vincular', async () => {
-		const vista = await conEstado({ configurado: true, usuario: null });
+		const view = await withStatus({ configurado: true, usuario: null });
 
-		expect(vista.text()).toContain('settings.lastfmGroup');
-		expect(vista.text()).toContain('settings.lastfmLink');
-		expect(vista.text()).not.toContain('settings.lastfmUnlink');
-		expect(vista.text()).not.toContain('settings.lastfmLinkedAs');
+		expect(view.text()).toContain('settings.lastfmGroup');
+		expect(view.text()).toContain('settings.lastfmLink');
+		expect(view.text()).not.toContain('settings.lastfmUnlink');
+		expect(view.text()).not.toContain('settings.lastfmLinkedAs');
 	});
 
 	test('vinculada, dice con quién y ofrece soltarla', async () => {
-		const vista = await conEstado({ configurado: true, usuario: 'pato' });
+		const view = await withStatus({ configurado: true, usuario: 'pato' });
 
-		expect(vista.text()).toContain('settings.lastfmLinkedAs');
-		expect(vista.text()).toContain('settings.lastfmUnlink');
+		expect(view.text()).toContain('settings.lastfmLinkedAs');
+		expect(view.text()).toContain('settings.lastfmUnlink');
 	});
 
 	/**
@@ -118,18 +120,18 @@ describe('la sección de ajustes', () => {
 	 * que nadie autorizó.
 	 */
 	test('dos clics en vincular piden una sola autorización', async () => {
-		const vista = await conEstado({ configurado: true, usuario: null });
+		const view = await withStatus({ configurado: true, usuario: null });
 		contestar('lastfm_start_authorization', 'token-1');
 		invocaciones.length = 0;
 
-		const boton = vista
+		const button = view
 			.findAll('button')
-			.find((candidato) => candidato.text().includes('settings.lastfmLink'));
-		expect(boton, 'el botón de vincular tiene que estar').toBeDefined();
+			.find((candidate) => candidate.text().includes('settings.lastfmLink'));
+		expect(button, 'el botón de vincular tiene que estar').toBeDefined();
 
-		await boton?.trigger('click');
-		await boton?.trigger('click');
-		await new Promise((listo) => setTimeout(listo, 10));
+		await button?.trigger('click');
+		await button?.trigger('click');
+		await new Promise((done) => setTimeout(done, 10));
 
 		expect(invocaciones.filter((c) => c === 'lastfm_start_authorization')).toHaveLength(1);
 	});

@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 import { olvidarLosIconosDelTema } from '@vasakgroup/vue-libvasak';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick } from 'vue';
-import TransportButton from '@/components/player/transport/TransportButton.vue';
+import MiniTransportControls from '@/components/player/transport/MiniTransportControls.vue';
 import { emit, olvidarTodo, setThemeIcon } from './dobles';
 
 /**
@@ -53,11 +53,16 @@ async function advancePastReload() {
 
 let mounted: VueWrapper | null = null;
 
+/**
+ * El botón de reproducir del transporte, que desde la 2.x es `ActionButton` de
+ * la librería con el icono por nombre: se busca por su nombre accesible, que
+ * es lo único que lo distingue de los otros dos.
+ */
 function mountButton() {
-	mounted = mount(TransportButton, {
-		props: { label: 'Reproducir', icon: 'media-playback-start' },
+	mounted = mount(MiniTransportControls, {
+		props: { hasTrack: true, hasNextTrack: true, isPlaying: false, isPaused: true, busy: false },
 	});
-	return mounted;
+	return mounted.get('button[aria-label="transport.play"]');
 }
 
 beforeEach(() => {

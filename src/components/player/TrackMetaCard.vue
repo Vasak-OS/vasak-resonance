@@ -1,5 +1,14 @@
 <script setup lang="ts">
+/**
+ * La tapa de lo que suena con su título y su artista.
+ *
+ * La tapa es `CoverArt` de la librería: cuadrada, con el canto y el radio del
+ * sistema, y con el respaldo —el texto, o el icono del tema— cuando no hay
+ * imagen o la que hay no carga. Antes era una caja de 220 × 144 que recortaba
+ * la tapa, que es cuadrada, por arriba y por abajo.
+ */
 import { useI18n } from '@vasakgroup/tauri-plugin-i18n';
+import { CoverArt } from '@vasakgroup/vue-libvasak';
 import { computed } from 'vue';
 
 const props = withDefaults(
@@ -33,12 +42,6 @@ const rootClass = computed(() => {
 		: 'flex min-h-0 flex-1 items-center gap-3';
 });
 
-const coverWrapperClass = computed(() => {
-	return props.variant === 'stacked'
-		? 'mx-auto mb-3 flex h-36 w-full max-w-55 items-center justify-center overflow-hidden rounded-corner border border-ui-border bg-ui-bg/60'
-		: 'h-16 w-16 shrink-0 overflow-hidden rounded-corner border border-primary/25 bg-ui-bg/70';
-});
-
 const metaClass = computed(() => {
 	return props.variant === 'stacked' ? 'mb-3 w-full space-y-1' : 'min-w-0 flex-1';
 });
@@ -46,12 +49,11 @@ const metaClass = computed(() => {
 
 <template>
 	<div :class="rootClass">
-		<div :class="coverWrapperClass">
-			<img v-if="coverSrc" :src="coverSrc" :alt="title" class="h-full w-full object-cover">
-			<div v-else class="flex h-full w-full items-center justify-center text-[10px] font-semibold uppercase tracking-[0.14em] text-tx-muted">
-				{{ placeholder }}
-			</div>
+		<!-- Apilada mide lo mismo que antes de alto (`h-36`), ahora cuadrada. -->
+		<div v-if="variant === 'stacked'" class="mx-auto mb-3 aspect-square h-36 max-w-full">
+			<CoverArt :src="coverSrc" :alt="title" :fallback-text="placeholder" size="fill" />
 		</div>
+		<CoverArt v-else :src="coverSrc" :alt="title" :fallback-text="placeholder" size="md" />
 
 		<div :class="metaClass">
 			<p class="truncate text-sm font-semibold" :class="titleClass">{{ title }}</p>

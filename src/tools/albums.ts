@@ -7,7 +7,7 @@
  */
 
 /** Lo que hace falta saber de un tema para agruparlo. */
-export interface TemaAgrupable {
+export interface GroupableTrack {
 	path: string;
 	title: string;
 	artist: string;
@@ -18,7 +18,7 @@ export interface TemaAgrupable {
 }
 
 /** Un tema dentro de su disco. */
-export interface TemaDelDisco {
+export interface AlbumTrack {
 	path: string;
 	title: string;
 	artist: string;
@@ -26,20 +26,20 @@ export interface TemaDelDisco {
 }
 
 /** Un disco, con sus temas en orden. */
-export interface Disco {
+export interface Album {
 	key: string;
 	album: string;
 	artist: string;
 	cover: string;
 	coverDataUrl: string | null;
-	tracks: TemaDelDisco[];
-	tracksPreview: TemaDelDisco[];
+	tracks: AlbumTrack[];
+	tracksPreview: AlbumTrack[];
 }
 
-const ARTISTA_DESCONOCIDO = 'Unknown Artist';
-const ALBUM_DESCONOCIDO = 'Unknown Album';
+const UNKNOWN_ARTIST = 'Unknown Artist';
+const UNKNOWN_ALBUM = 'Unknown Album';
 
-const normalizar = (valor: string) => valor.trim().toLowerCase();
+const normalize = (value: string) => value.trim().toLowerCase();
 
 /**
  * De quién es el disco.
@@ -48,8 +48,8 @@ const normalizar = (valor: string) => valor.trim().toLowerCase();
  * es la etiqueta que existe para las recopilaciones: sin ella cada intérprete se
  * lleva su propio «álbum» y un disco de doce artistas queda partido en doce.
  */
-export const artistaDelDisco = (tema: TemaAgrupable): string =>
-	tema.album_artist || tema.artist || ARTISTA_DESCONOCIDO;
+export const albumArtistOf = (track: GroupableTrack): string =>
+	track.album_artist || track.artist || UNKNOWN_ARTIST;
 
 /**
  * La clave que identifica un disco.
@@ -64,8 +64,8 @@ export const artistaDelDisco = (tema: TemaAgrupable): string =>
  * disco —`A|B` con el álbum `C` da lo mismo que `A` con el álbum `B|C`— y
  * vuelve a pasar lo que esto viene a arreglar.
  */
-export const claveDeDisco = (tema: TemaAgrupable): string =>
-	JSON.stringify([normalizar(artistaDelDisco(tema)), normalizar(tema.album || ALBUM_DESCONOCIDO)]);
+export const albumKeyOf = (track: GroupableTrack): string =>
+	JSON.stringify([normalize(albumArtistOf(track)), normalize(track.album || UNKNOWN_ALBUM)]);
 
 /**
  * Ordena los temas como vienen en el disco.
@@ -74,8 +74,8 @@ export const claveDeDisco = (tema: TemaAgrupable): string =>
  * único que los ordena. Van al final y no al principio porque un archivo sin
  * numerar suele ser el agregado —la pista oculta, el bonus— y no la apertura.
  */
-export const enOrdenDeDisco = (temas: TemaDelDisco[]): TemaDelDisco[] =>
-	[...temas].sort((a, b) => {
+export const inAlbumOrder = (tracks: AlbumTrack[]): AlbumTrack[] =>
+	[...tracks].sort((a, b) => {
 		if (a.track_no !== b.track_no) {
 			if (a.track_no === 0) return 1;
 			if (b.track_no === 0) return -1;
@@ -87,49 +87,49 @@ export const enOrdenDeDisco = (temas: TemaDelDisco[]): TemaDelDisco[] =>
 /**
  * Junta los temas en discos, cada uno con sus pistas en orden.
  *
- * `tituloDesconocido` es el texto traducido para un tema sin título; se pasa
+ * `unknownTitle` es el texto traducido para un tema sin título; se pasa
  * como argumento para que esto no dependa de la interfaz.
  */
-export function agruparEnDiscos(temas: TemaAgrupable[], tituloDesconocido: string): Disco[] {
-	const discos = new Map<string, Disco>();
+export function groupIntoAlbums(tracks: GroupableTrack[], unknownTitle: string): Album[] {
+	const albums = new Map<string, Album>();
 
-	for (const tema of temas) {
-		const key = claveDeDisco(tema);
-		let disco = discos.get(key);
+	for (const track of tracks) {
+		const key = albumKeyOf(track);
+		let album = albums.get(key);
 
-		if (!disco) {
-			disco = {
+		if (!album) {
+			album = {
 				key,
-				album: tema.album || ALBUM_DESCONOCIDO,
-				artist: artistaDelDisco(tema),
-				cover: tema.cover_data_url || '',
-				coverDataUrl: tema.cover_data_url || null,
+				album: track.album || UNKNOWN_ALBUM,
+				artist: albumArtistOf(track),
+				cover: track.cover_data_url || '',
+				coverDataUrl: track.cover_data_url || null,
 				tracks: [],
 				tracksPreview: [],
 			};
-			discos.set(key, disco);
+			albums.set(key, album);
 		}
 
 		// La tapa la pone el primer tema que traiga una: en un disco bien
 		// etiquetado son todas la misma, y en uno a medio etiquetar alcanza con
 		// que una la tenga.
-		if (!disco.cover && tema.cover_data_url) {
-			disco.cover = tema.cover_data_url;
-			disco.coverDataUrl = tema.cover_data_url;
+		if (!album.cover && track.cover_data_url) {
+			album.cover = track.cover_data_url;
+			album.coverDataUrl = track.cover_data_url;
 		}
 
-		disco.tracks.push({
-			path: tema.path,
-			title: tema.title || tituloDesconocido,
-			artist: tema.artist || ARTISTA_DESCONOCIDO,
-			track_no: tema.track_no ?? 0,
+		album.tracks.push({
+			path: track.path,
+			title: track.title || unknownTitle,
+			artist: track.artist || UNKNOWN_ARTIST,
+			track_no: track.track_no ?? 0,
 		});
 	}
 
-	return Array.from(discos.values())
-		.map((disco) => {
-			const tracks = enOrdenDeDisco(disco.tracks);
-			return { ...disco, tracks, tracksPreview: tracks.slice(0, 4) };
+	return Array.from(albums.values())
+		.map((album) => {
+			const tracks = inAlbumOrder(album.tracks);
+			return { ...album, tracks, tracksPreview: tracks.slice(0, 4) };
 		})
 		.sort((a, b) => a.album.localeCompare(b.album));
 }
