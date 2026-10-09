@@ -1,6 +1,6 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useConfigStore } from '@vasakgroup/plugin-config-manager';
-import { onMounted, onUnmounted } from 'vue';
+import { nextTick, onMounted, onUnmounted } from 'vue';
 
 interface UseConfigSyncOptions {
 	useViewTransition?: boolean;
@@ -27,24 +27,40 @@ export const useConfigSync = ({ useViewTransition = false }: UseConfigSyncOption
 	onMounted(async () => {
 		activeConsumers += 1;
 
+		// Que la vista se pinte primero, antes de cualquier lectura: la
+		// configuración llega encima, no retrasa el primer dibujo.
+		await nextTick();
+
 		const configStore = useConfigStore();
 
-		await loadConfigSafely(configStore);
+		// Con su propio `try`: una lectura que falla no puede dejar esto sin
+		// suscribir a los cambios de después —antes, el rechazo se escapaba del
+		// `onMounted` y `sharedUnlisten` nunca se registraba—, ni impedir que
+		// el resto de los consumidores cuenten con el escucha compartido.
+		try {
+			await loadConfigSafely(configStore);
+		} catch (error) {
+			console.error('Error al cargar configuración en useConfigSync', error);
+		}
 
 		if (sharedUnlisten) {
 			return;
 		}
 
-		sharedUnlisten = await listen('config-changed', async () => {
-			if (useViewTransition && 'startViewTransition' in document) {
-				document.startViewTransition(() => {
-					void configStore.loadConfig();
-				});
-				return;
-			}
+		try {
+			sharedUnlisten = await listen('config-changed', async () => {
+				if (useViewTransition && 'startViewTransition' in document) {
+					document.startViewTransition(() => {
+						void configStore.loadConfig();
+					});
+					return;
+				}
 
-			await configStore.loadConfig();
-		});
+				await configStore.loadConfig();
+			});
+		} catch (error) {
+			console.error('No se pudo escuchar los cambios de configuración', error);
+		}
 	});
 
 	onUnmounted(() => {
