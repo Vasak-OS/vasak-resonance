@@ -1,87 +1,370 @@
-# Tauri + Vue + TypeScript
+# Vasak resonance
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+Todo sistema necesita un reproductor de musica, esto es Resonance el reporductor de VasakOS
 
-## Recommended IDE Setup
+---
 
-- [VS Code](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+## Tecnología
 
-## Type Support For `.vue` Imports in TS
+[![Rust](https://img.shields.io/badge/Rust-1.82%2B-orange?style=flat&logo=rust)](https://www.rust-lang.org/) [![Tauri](https://img.shields.io/badge/Tauri-2.0-24283b?style=flat&logo=tauri)](https://tauri.app/) [![Vue](https://img.shields.io/badge/Vue-3.5-42b883?style=flat&logo=vue.js)](https://vuejs.org/) [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178c6?style=flat&logo=typescript)](https://www.typescriptlang.org/)
 
-Since TypeScript cannot handle type information for `.vue` imports, they are shimmed to be a generic Vue component type by default. In most cases this is fine if you don't really care about component prop types outside of templates. However, if you wish to get actual prop types in `.vue` imports (for example to get props validation when using manual `h(...)` calls), you can enable Volar's Take Over mode by following these steps:
+## Estado
 
-1. Run `Extensions: Show Built-in Extensions` from VS Code's command palette, look for `TypeScript and JavaScript Language Features`, then right click and select `Disable (Workspace)`. By default, Take Over mode will enable itself if the default TypeScript extension is disabled.
-2. Reload the VS Code window by running `Developer: Reload Window` from the command palette.
+[![CI](https://github.com/Vasak-OS/vasak-resonance/actions/workflows/ci.yml/badge.svg)](https://github.com/Vasak-OS/vasak-resonance/actions/workflows/ci.yml)
+[![Versión](https://img.shields.io/github/v/release/Vasak-OS/vasak-resonance?style=flat&label=Versi%C3%B3n)](https://github.com/Vasak-OS/vasak-resonance/releases)
+[![Licencia](https://img.shields.io/github/license/Vasak-OS/vasak-resonance?style=flat)](LICENSE)
+[![Cobertura](https://sonarcloud.io/api/project_badges/measure?project=Vasak-OS_vasak-resonance&metric=coverage&style=flat)](https://sonarcloud.io/summary/new_code?id=Vasak-OS_vasak-resonance)
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=Vasak-OS_vasak-resonance&metric=alert_status&style=flat)](https://sonarcloud.io/summary/new_code?id=Vasak-OS_vasak-resonance)
+[![Tamaño repo](https://img.shields.io/github/repo-size/Vasak-OS/vasak-resonance?style=flat)](https://github.com/Vasak-OS/vasak-resonance)
 
-You can learn more about Take Over mode [here](https://github.com/johnsoncodehk/volar/discussions/471).
+---
 
-## Las letras
+## Descripción
 
-La letra de un tema se busca primero **en el disco**, y sólo si no está se sale a
-LRCLIB. En orden:
+Todo sistema necesita un reproductor de musica, esto es Resonance el reporductor de VasakOS
 
-1. Un archivo `.lrc` con el mismo nombre que el de audio, al lado. Es el formato
-   con marcas de tiempo, así que la letra sigue a la canción.
-2. La letra guardada en la etiqueta del propio archivo, que es donde la dejan los
-   etiquetadores. Si trae marcas de tiempo también sigue a la canción.
-3. Un `.txt` con el mismo nombre, sin tiempos.
+**Para el usuario:** Todo sistema necesita un reproductor de musica, esto es Resonance el reporductor de VasakOS
 
-O sea que una biblioteca prolija tiene letras **sin conexión**, y que un `.lrc`
-puesto a mano —el de la versión en vivo, el traducido, el que corrige lo que el
-servicio tiene mal— le gana a lo que venga de la red. Editarlo se ve enseguida:
-lo que sale del disco no se cachea.
+**Integración VasakOS:** Integra con el ecosistema VasakOS vía D-Bus y configuración compartida.
 
-Un archivo que no esté en UTF-8 se deja pasar en vez de adivinar la codificación,
-y la letra sale de la red como antes.
+---
 
-## Las tapas
+## Arquitectura (diagramas)
 
-La tapa de un tema sale de la etiqueta del archivo, y si no la trae, de la
-imagen que esté **al lado**, en la misma carpeta: `cover.jpg`, `cover.png`,
-`folder.jpg`, `folder.png`, `front.jpg` o `album.jpg`, en ese orden y sin
-importar cómo estén escritas las mayúsculas. Es la que dejan los ripeadores y
-casi todas las descargas, y es la única fuente que funciona sin conexión y sin
-equivocarse: la puso quien armó la carpeta.
+> Copia y pega la plantilla que necesites, descomenta y adapta.
 
-Una imagen suelta con cualquier otro nombre **no** se toma como tapa. Ahí es
-donde empiezan las equivocadas —la foto del grupo, el escaneo del librito—.
+### Flujo de datos
 
-Recién cuando no hay ninguna de las dos se sale a buscarla a Deezer o a Cover
-Art Archive, que es lo que necesita red y lo que puede traer la de otro disco.
+```mermaid
+<!--
+graph TD
+    A[Entrada: Teclado / Ratón / D-Bus / Sistema] --> B[Procesamiento: Core Rust + Tauri Commands]
+    B --> C[Salida: UI actualizada / Acciones del sistema]
+    style A fill:#e1f5fe
+    style C fill:#e8f5e9
+-->
+```
 
-## La presencia en Discord
+### Componentes internos
 
-Resonance puede mostrar en tu perfil de Discord lo que estás escuchando: el
-título, el artista, la barra con lo que falta, y la tapa del disco cuando hay una
-que Discord pueda ver.
+```mermaid
+<!--
+flowchart LR
+    subgraph App[Vasak resonance]
+        UI[Frontend Vue 3 + vue-libvasak]
+        Core[Core Rust: lógica principal]
+        IPC[Tauri Commands / Eventos]
+        System[Systemd / D-Bus / PipeWire / Wayland]
+    end
+    UI --> IPC
+    IPC --> Core
+    Core --> DBus[(D-Bus / zbus)]
+    Core --> System
+    style UI fill:#f3e5f5
+    style Core fill:#e3f2fd
+    style DBus fill:#fff3e0
+    style System fill:#fce4ec
+-->
+```
 
-Hace falta una aplicación de Discord propia, porque la presencia se asocia a una:
+### Integración en el sistema VasakOS
 
-1. Creá una aplicación en <https://discord.com/developers/applications>.
-2. En **Rich Presence → Art Assets**, subí dos imágenes con estos nombres:
-   `vasakos` (el logo del sistema, que se usa cuando no hay tapa) y `pausa` (el
-   icono chico que se superpone con la música detenida).
-3. Poné el identificador de esa aplicación en la configuración:
+```mermaid
+<!--
+C4Context
+    title Vasak resonance en VasakOS
+    Person(usuario, "Usuario", "Persona que usa el sistema")
+    System_Boundary(c1, "VasakOS") {
+        System(app, "Vasak resonance", "Todo sistema necesita un reproductor de musica, esto es Resonance el reporductor")
+        System_Ext(settings, "vasak-settings", "Configuración central")
+        System_Ext(keyring, "vasak-keyring", "Secrets y claves")
+        System_Ext(accounts, "vasak-accounts", "Cuentas e identidad")
+        System_Ext(permissions, "vasak-permissions", "Permisos y portales")
+    }
+    System_Ext(systemd, "systemd", "Gestión de servicios")
+    System_Ext(dbus, "D-Bus", "Bus de mensajes del sistema")
+    System_Ext(wayland, "Wayland / Wayfire", "Compositor")
+    System_Ext(pipewire, "PipeWire", "Multimedia")
+    Rel(usuario, app, "Usa")
+    Rel(app, settings, "Lee/escribe config")
+    Rel(app, keyring, "Guarda/lee secrets")
+    Rel(app, accounts, "Identidad de cuenta")
+    Rel(app, permissions, "Solicita permisos")
+    Rel(app, systemd, "Activación / sockets")
+    Rel(app, dbus, "Expone / consume interfaces")
+    Rel(app, wayland, "Superficies / protocolos")
+    Rel(app, pipewire, "Streams de audio/video")
+-->
+```
 
-   ```json
-   { "resonance": { "discord_app_id": "123456789012345678" } }
+---
+
+## Instalación
+
+### Arch Linux (repo oficial)
+
+```bash
+pacman -S vasak-vasak-resonance
+```
+
+### Debian / Ubuntu (.deb)
+
+```bash
+wget https://github.com/Vasak-OS/vasak-resonance/releases/download/v{{VERSION}}/vasak-vasak-resonance_{{VERSION}}_amd64.deb
+sudo apt install ./vasak-vasak-resonance_{{VERSION}}_amd64.deb
+```
+
+### Desde fuente
+
+```bash
+git clone https://github.com/Vasak-OS/vasak-resonance.git
+cd vasak-resonance
+
+# Desarrollo (recarga en caliente frontend + backend)
+bun run dev
+
+# Build producción
+bun run build
+
+# Solo frontend
+bun run build:frontend
+
+# Solo backend Rust
+cargo build --release --locked
+```
+
+### Flatpak / AppImage
+
+> *Placeholder: añadir cuando exista paquete Flatpak o AppImage oficial.*
+
+---
+
+## Uso rápido
+
+```bash
+# Se lanza automáticamente (systemd --user) o manualmente:
+vasak-resonance
+```
+
+### Atajos / flags principales
+
+| Acción | Comando / Tecla |
+|--------|-----------------|
+| Acción principal | `vasak-resonance` |
+| Configuración | `vasak-resonance --config` |
+| Ayuda | `vasak-resonance --help` |
+
+> **Captura:** `assets/demo.gif` *(placeholder — sustituir por GIF real)*
+
+---
+
+## Configuración
+
+### Archivo de configuración
+
+```
+~/.config/vasak/vasak-resonance.toml
+```
+
+### Variables de entorno
+
+| Variable | Descripción | Por defecto |
+|----------|-------------|-------------|
+| `VASAK_DEBUG` | Activa logs de depuración en consola | `false` |
+| `VASAK_PROFILE` | Perfil de rendimiento: `balanced`, `performance`, `power-save` | `balanced` |
+
+### Integración con `tauri-plugin-config-manager`
+
+- Esquemas de color: respeta `--ui-primary`, `--ui-surface`, `--ui-focus`, `--ui-on-surface`, `--ui-border`
+- Tema de iconos: usa el tema del sistema (`vasakos-icon-theme`) vía `vicon` lookup
+- Radio de bordes: variable CSS `--ui-radius` del esquema activo (por defecto 12px)
+- Fuentes: `--ui-font-family`, `--ui-font-size-base` desde el esquema
+
+---
+
+## Desarrollo
+
+### Requisitos
+
+- **Rust:** `rustup` toolchain estable (`rust-toolchain.toml` fija la versión)
+- **Node / bun:** `bun` ≥ 1.1 (nunca npm/yarn/pnpm para apps Tauri)
+- **Sistema:** `pkg-config`, `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libssl-dev`
+- *`libgtk-layer-shell-dev`, `wayland-protocols`, `wayfire-dev` para Wayland*
+
+### Dependencias de desarrollo
+
+#### Sistema (paquetes Arch / Debian / Fedora)
+
+`base-devel`, `pkgconf`, `libssl-dev`, `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `gstreamer1.0-plugins-base`, `gstreamer1.0-plugins-good`, `libpipewire-0.3-dev`, `libwireplumber-0.5-dev`, `libdbus-1-dev`, `libudev-dev`, `libxkbcommon-dev`, `libwayland-dev`, `meson`, `ninja`, `clang`, `lld`
+
+#### Rust
+
+`rustup` → `stable` + `rustfmt` + `clippy`
+
+#### Node
+
+**Solo `bun`** (nunca npm/yarn/pnpm para apps Tauri). `bun --version` ≥ 1.1
+
+#### Herramientas CLI
+
+`just` (command runner), `cargo-binstall` (opcional), `cargo-llvm-cov` (para cobertura)
+
+### Correr la app en desarrollo
+
+```bash
+# Frontend (Vite dev server + Tauri dev)
+bun run tauri dev
+
+# Solo frontend (Vite)
+bun run dev
+
+# Solo backend (cargo watch)
+cargo watch -x "run --bin vasak-resonance"
+```
+
+### Compilar / Build de release
+
+```bash
+# Build completo (frontend + backend + bundle)
+bun run tauri build
+
+# Solo frontend (para testear bundle después)
+bun run build
+
+# Solo backend Rust (binario optimizado)
+cargo build --release --locked
+
+# Paquetes nativos
+# Arch: makepkg -sf en PKGBUILDS/vasak-resonance/
+# Debian: cargo deb --no-build --target-dir src-tauri/target/release/debian
+```
+
+### Targets principales
+
+```bash
+# Desarrollo (Tauri dev server + hot reload)
+bun run dev
+
+# Build producción
+bun run build
+
+# Solo frontend
+bun run build:frontend
+
+# Solo backend Rust
+cargo build --release --locked
+
+# Lint + tipos (pre-commit / CI)
+bunx --bun biome check .
+bunx vue-tsc --noEmit
+cargo fmt --check
+```
+
+### Pruebas
+
+```bash
+# Suite completa JS (Vitest via bun:test)
+bun test
+
+# Suite completa Rust (crates en pruebas_rust del CI)
+cargo test -p vasak-resonance-core -p vasak-resonance-ui --locked
+
+# Integración (requiere Wayfire corriendo)
+cargo test -p vasak-resonance-integration --locked -- --ignored
+```
+
+### Convención de commits
+
+[Conventional Commits](https://www.conventionalcommits.org/es/v1.0.0/):
+
+```
+<tipo>(<ámbito>): <descripción corta>
+
+[cuerpo opcional]
+
+[pie opcional: Closes #N]
+```
+
+Tipos habituales: `feat`, `fix`, `bugfix`, `docs`, `ci`, `chore`, `security`, `refactor`, `perf`, `test`.
+
+### Cómo abrir PR
+
+1. Rama desde `origin/main`:
+   ```bash
+   git worktree add -b feat/tema ~/wt/vasak-resonance-tema origin/main
    ```
+2. Prefijos de rama: `fix/`, `feat/`, `bugfix/`, `docs/`, `ci/`, `chore/`, `security/`
+3. Escribe el fix → **`qa` escribe las pruebas** (fallan sin el fix) → suite verde → abre PR
+4. Al abrir PR, **cuatro cosas obligatorias**:
+   - Asignado a `JoaquinDecima`
+   - Etiqueta `enhancement` o `bug` (+ `ci` / `dependencies` si aplica)
+   - Añadido al proyecto «VasakOS Roadmap»
+   - Status **In Progress**
 
-   en `~/.config/vasak/vasak.conf`, o en la variable de entorno
-   `VASAK_DISCORD_APP_ID`, que gana sobre la anterior y sirve para probar.
+---
 
-Sin identificador la función queda apagada y el reproductor no cambia en nada.
-Si Discord no está abierto tampoco pasa nada: se reintenta cada tanto, y el que
-espera es un hilo aparte, nunca la interfaz ni el audio.
+## Arquitectura (texto)
 
-**La tapa del disco** la dibuja Discord desde su lado, así que sólo le sirven
-direcciones web: la imagen incrustada en el archivo no la puede ver. Lo que se le
-manda es la dirección de la portada del álbum en Deezer o en Cover Art Archive,
-que es de donde el reproductor ya baja las tapas que faltan; la dirección queda
-anotada al lado de la imagen cacheada, así sigue estando la próxima vez aunque no
-haya que volver a bajar nada. Si el álbum no está en ninguno de los dos, la
-tarjeta sale con el logo del sistema como antes.
+### Crates / módulos principales
 
-Esa búsqueda **sólo se hace con la presencia encendida**: le manda el artista y
-el álbum a un servicio ajeno, y en un equipo sin identificador configurado no hay
-ningún motivo para hacerlo.
+| `vasak-resonance-core` | Lógica compartida: estado, D-Bus, IPC |
+| `vasak-resonance-ui` | Frontend Vue 3 + componentes vue-libvasak |
+| `vasak-resonance-tauri` | Puente Tauri: commands, eventos, WebView |
+
+### Interfaces D-Bus / zbus expuestas
+
+| `org.vasak.Vasak-resonance` | `GetState()`, `StateChanged(dict)`, `SetConfig(dict)` | Estado y control principal |
+| `org.vasak.Vasak-resonance.Panel` | `SetPosition(string)`, `SetAutohide(bool)`, `Height(u32)` | Configuración panel en runtime |
+
+### Puntos de extensión
+
+- **Plugins:** Sistema de plugins modular
+- **Hooks:** Hooks de ciclo de vida
+- **API pública Rust:** API pública del crate principal
+
+### Features / Cargo features
+
+| Feature | Descripción | Default |
+|---------|-------------|---------|
+| `system-tray` | Bandeja del sistema + menú contextual | ✓ |
+| `notifications` | Integración libnotify / freedesktop | ✓ |
+| `updater` | Auto-actualización (tauri-plugin-updater) | |
+| `devtools` | DevTools en release (solo debug) | |
+| `experimental-wayland` | Protocolo Wayland inestable | |
+
+Y para apps Tauri+Vue: features del `tauri.conf.json` → `bundle` / `plugins` / `allowlist` (capabilities).
+
+---
+
+## Pruebas y calidad
+
+- **Cobertura objetivo:** ≥ 80 % del código nuevo (SonarCloud Quality Gate)
+- **Informes:** GitHub Actions → pestaña *SonarCloud Code Analysis* → enlace a SonarCloud
+- **Añadir pruebas:** ver `AGENTS.md` sección 9 (mapa de repos y comandos de prueba)
+- **Regla:** toda corrección lleva prueba escrita por `qa` que falla sin el fix
+
+---
+
+## Contribuir
+
+- **Guía:** [.github/CONTRIBUTING.md](https://github.com/Vasak-OS/.github/blob/main/CONTRIBUTING.md)
+- **Plantillas de issue:** [.github/ISSUE_TEMPLATE/](https://github.com/Vasak-OS/.github/tree/main/ISSUE_TEMPLATE)
+- **Código de conducta:** [CODE_OF_CONDUCT.md](https://github.com/Vasak-OS/.github/blob/main/CODE_OF_CONDUCT.md)
+
+---
+
+## Donadores / Sponsors
+
+[![Sponsors](https://img.shields.io/github/sponsors/Vasak-OS?style=flat&label=Sponsors)](https://github.com/sponsors/Vasak-OS)
+
+> **Backers:** *Actualizado automáticamente en CI desde GitHub Sponsors / OpenCollective / Polar.*
+
+[💖 Donar al proyecto](https://github.com/sponsors/Vasak-OS)
+
+---
+
+## Licencia
+
+`GPL-3.0` — Copyright © 2026 **Vasak-OS Contributors**
+
+[Ver licencia completa](LICENSE)
