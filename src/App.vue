@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { onMounted } from 'vue';
@@ -23,6 +24,11 @@ useConfigSync({ useViewTransition: true });
 useTextFieldContextMenu();
 
 onMounted(() => {
+	// Afina el WebKit de esta ventana para bajar su consumo de memoria. Va para
+	// las dos ventanas (principal y mini reproductor), antes del corte de abajo, y
+	// sin bloquear: si el comando no existe, no pasa nada.
+	void invoke('tune_webview').catch(() => {});
+
 	if (isMiniPlayerWindow) {
 		return;
 	}
