@@ -222,6 +222,7 @@ pub fn run() {
             commands::lastfm::lastfm_disconnect,
             commands::modos::set_playback_modes,
             commands::discord::clear_discord_presence,
+            commands::webkit::tune_webview,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
