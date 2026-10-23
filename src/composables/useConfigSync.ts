@@ -1,6 +1,7 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useConfigStore } from '@vasakgroup/plugin-config-manager';
 import { nextTick, onMounted, onUnmounted } from 'vue';
+import { saveTheme } from '@/tools/theme-cache';
 
 interface UseConfigSyncOptions {
 	useViewTransition?: boolean;
@@ -15,9 +16,12 @@ let activeLoad: Promise<void> | null = null;
 // es justo lo que pasó cuando el store empezó a publicar bien sus acciones.
 const loadConfigSafely = async (configStore: ReturnType<typeof useConfigStore>) => {
 	if (!activeLoad) {
-		activeLoad = configStore.loadConfig().finally(() => {
-			activeLoad = null;
-		});
+		activeLoad = configStore
+			.loadConfig()
+			.then(() => saveTheme())
+			.finally(() => {
+				activeLoad = null;
+			});
 	}
 
 	await activeLoad;
@@ -51,12 +55,13 @@ export const useConfigSync = ({ useViewTransition = false }: UseConfigSyncOption
 			sharedUnlisten = await listen('config-changed', async () => {
 				if (useViewTransition && 'startViewTransition' in document) {
 					document.startViewTransition(() => {
-						void configStore.loadConfig();
+						void configStore.loadConfig().then(() => saveTheme());
 					});
 					return;
 				}
 
 				await configStore.loadConfig();
+				saveTheme();
 			});
 		} catch (error) {
 			console.error('No se pudo escuchar los cambios de configuración', error);
